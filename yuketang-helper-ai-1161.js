@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         AI雨课堂助手
-// @version      1.16.2
+// @version      1.16.1
 // @namespace    https://github.com/ZaytsevZY/yuketang-helper-ai
 // @author       ZaytsevZY/
 // @description  雨课堂辅助工具：课堂习题提示，AI解答习题
@@ -8,10 +8,6 @@
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
 // @match        https://*.yuketang.cn/lesson/fullscreen/v3/*
 // @match        https://*.yuketang.cn/v2/web/*
-// @match        https://www.yuketang.cn/lesson/fullscreen/v3/*
-// @match        https://www.yuketang.cn/v2/web/*
-// @match        https://pro.yuketang.cn/lesson/fullscreen/v3/*
-// @match        https://pro.yuketang.cn/v2/web/*
 // @grant        GM_addStyle
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
@@ -273,65 +269,37 @@
     MyXMLHttpRequest.original = XMLHttpRequest;
     MyXMLHttpRequest.handlers = [];
 
-    // 检测环境并适配API路径
-    function detectEnvironmentAndAdaptAPI() {
-        const hostname = window.location.hostname;
-        let envType = 'unknown';
-        
-        if (hostname === 'www.yuketang.cn') {
-            envType = 'standard';
-            console.log('[雨课堂助手] 检测到标准雨课堂环境');
-        } else if (hostname === 'pro.yuketang.cn') {
-            envType = 'pro';
-            console.log('[雨课堂助手] 检测到荷塘雨课堂环境');
-        } else {
-            console.log('[雨课堂助手] 未知环境:', hostname);
-        }
-        
-        return envType;
-    }
     // 拦截WebSocket通信
     function interceptWebSockets() {
-        const envType = detectEnvironmentAndAdaptAPI();
-        console.log("[雨课堂助手] 拦截WebSocket通信 - 环境:", envType);
+        console.log("[雨课堂助手] 拦截WebSocket通信");
         
         MyWebSocket.addHandler((ws, url) => {
-            console.log('[雨课堂助手] WebSocket连接尝试:', url.href);
-            
-            // 扩展匹配条件，支持不同环境的WebSocket路径
-            const wsPath = url.pathname;
-            const isRainClassroomWS = wsPath === '/wsapp/' || 
-                                    wsPath.includes('/ws') || 
-                                    wsPath.includes('/websocket') ||
-                                    url.href.includes('websocket');
-                                    
-            if (isRainClassroomWS) {
-                console.log("[雨课堂助手] ✅ 检测到雨课堂WebSocket连接:", wsPath);
+            if (url.pathname === '/wsapp/') {
+                console.log("[雨课堂助手] 检测到雨课堂WebSocket连接");
                 
                 ws.intercept((message) => {
-                    // 拦截发送的消息
-                    console.log('[雨课堂助手] WebSocket发送:', message);
+                    // 可以在这里拦截发送的消息
                 });
 
                 ws.listen((message) => {
                     try {
-                        console.log('[雨课堂助手] WebSocket接收:', message);
+                        console.log('[雨课堂助手] WebSocket消息:', message);
                         
-                        // 检查消息结构
-                        if (typeof message === 'string') {
-                            const parsed = JSON.parse(message);
-                            console.log('[雨课堂助手] 解析后的消息:', parsed);
-                            handleWebSocketMessage(parsed);
-                        } else if (typeof message === 'object') {
-                            console.log('[雨课堂助手] 对象消息:', message);
-                            handleWebSocketMessage(message);
+                        switch (message.op) {
+                            case 'fetchtimeline':
+                                onFetchTimeline(message.timeline);
+                                break;
+                            case 'unlockproblem':
+                                onUnlockProblem(message.problem);
+                                break;
+                            case 'lessonfinished':
+                                onLessonFinished();
+                                break;
                         }
                     } catch (e) {
-                        console.debug("[雨课堂助手] 解析WebSocket消息失败", e, message);
+                        console.debug("[雨课堂助手] 解析WebSocket消息失败", e);
                     }
                 });
-            } else {
-                console.log('[雨课堂助手] ❌ 非雨课堂WebSocket:', wsPath);
             }
         });
 
@@ -341,70 +309,31 @@
 
     // 拦截XMLHttpRequest
     function interceptXHR() {
-        const envType = detectEnvironmentAndAdaptAPI();
-        console.log("[雨课堂助手] 拦截XMLHttpRequest - 环境:", envType);
+        console.log("[雨课堂助手] 拦截XMLHttpRequest");
         
         MyXMLHttpRequest.addHandler((xhr, method, url) => {
-            const pathname = url.pathname;
-            console.log('[雨课堂助手] XHR请求:', method, pathname, url.search);
-            
-            // 适配不同环境的API路径
-            if (pathname === '/api/v3/lesson/presentation/fetch' || 
-                pathname.includes('presentation') && pathname.includes('fetch')) {
-                
-                console.log('[雨课堂助手] ✅ 拦截课件请求');
+            if (url.pathname === '/api/v3/lesson/presentation/fetch') {
                 xhr.intercept((resp) => {
                     const id = url.searchParams.get('presentation_id');
-                    console.log('[雨课堂助手] 课件响应:', resp);
-                    if (resp && (resp.code === 0 || resp.success)) {
-                        onPresentationLoaded(id, resp.data || resp.result);
+                    console.log('[雨课堂助手] XHR课件响应:', resp);
+                    if (resp.code === 0) {
+                        onPresentationLoaded(id, resp.data);
                     }
                 });
-                
-            } else if (pathname === '/api/v3/lesson/problem/answer' || 
-                    pathname.includes('problem') && pathname.includes('answer')) {
-                
-                console.log('[雨课堂助手] ✅ 拦截答题请求');
+            }
+
+            if (url.pathname === '/api/v3/lesson/problem/answer') {
                 xhr.intercept((resp, payload) => {
-                    try {
-                        const { problemId, result } = JSON.parse(payload);
-                        if (resp && (resp.code === 0 || resp.success)) {
-                            onAnswerProblem(problemId, result);
-                        }
-                    } catch (e) {
-                        console.error('[雨课堂助手] 解析答题响应失败:', e);
+                    const { problemId, result } = JSON.parse(payload);
+                    if (resp.code === 0) {
+                        onAnswerProblem(problemId, result);
                     }
                 });
-                
-            } else if (pathname.includes('/api/')) {
-                // 记录所有API调用
-                console.log('[雨课堂助手] 其他API:', method, pathname);
             }
         });
 
         // 替换原始XMLHttpRequest
         unsafeWindow.XMLHttpRequest = MyXMLHttpRequest;
-    }
-
-    // 处理WebSocket消息的统一函数
-    function handleWebSocketMessage(message) {
-        switch (message.op) {
-            case 'fetchtimeline':
-                console.log('[雨课堂助手] 收到时间线:', message.timeline);
-                onFetchTimeline(message.timeline);
-                break;
-            case 'unlockproblem':
-                console.log('[雨课堂助手] 收到解锁问题:', message.problem);
-                onUnlockProblem(message.problem);
-                break;
-            case 'lessonfinished':
-                console.log('[雨课堂助手] 课程结束');
-                onLessonFinished();
-                break;
-            default:
-                // 记录所有未知操作，帮助发现新的消息类型
-                console.log('[雨课堂助手] 未知WebSocket操作:', message.op, message);
-        }
     }
 
     // 处理timeline获取
