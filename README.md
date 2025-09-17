@@ -11,6 +11,12 @@ forked from [github.com/hotwords123/yuketang-helper](github.com/hotwords123/yuke
 
 或手动创建新脚本，复制```yuketang-helper-ai.js```到油猴新建脚本中。
 
+## 源代码
+
+- 我们重构的代码放在`../ykt-helper`文件夹中，建议在此处加入新功能或进行修改。
+
+- 代码的组装方法请参考[npm构建方法](../yuketang-helper/ykt-helper/readme.md)
+
 ## 功能介绍
 
 加载成功时，进入课堂后页面左下角会出现一个工具栏。
