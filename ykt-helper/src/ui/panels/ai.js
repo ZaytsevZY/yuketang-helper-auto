@@ -4,6 +4,7 @@ import { repo } from '../../state/repo.js';
 import { formatProblemForAI, formatProblemForDisplay, parseAIAnswer } from '../../tsm/ai-format.js';
 import { queryDeepSeek } from '../../ai/deepseek.js';
 import { submitAnswer } from '../../tsm/answer.js';
+import { showAutoAnswerPopup } from '../panels/auto-answer-popup.js';
 
 let mounted = false;
 let root;
@@ -87,6 +88,7 @@ export async function askAIForCurrent() {
       try {
         await submitAnswer(problem, parsed);
         ui.toast('提交成功');
+        showAutoAnswerPopup(problem, typeof aiContent === 'string' ? aiContent : JSON.stringify(aiContent, null, 2));
       } catch (e) {
         ui.toast(`提交失败: ${e.message}`);
       }

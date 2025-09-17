@@ -104,6 +104,7 @@ export const actions = {
       await submitAnswer(problem, parsed);
       this.onAnswerProblem(problem.problemId, parsed);
       ui.toast(`自动作答完成: ${String(problem.body || '').slice(0, 30)}...`, 3000);
+      showAutoAnswerPopup(problem, typeof aiAnswer === 'string' ? aiAnswer : JSON.stringify(aiAnswer, null, 2));
     } catch (e) {
       console.error('[AutoAnswer] failed', e);
       ui.toast(`自动作答失败: ${e.message}`, 3000);

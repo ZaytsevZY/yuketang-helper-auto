@@ -182,3 +182,32 @@
   #ykt-presentation-panel{ width: auto; }
   #ykt-presentation-panel .panel-body{ grid-template-columns: 1fr; }
 }
+
+/* ===== 自动作答成功弹窗 ===== */
+.auto-answer-popup{
+  position: fixed; inset: 0; z-index: calc(var(--ykt-z) + 2);
+  background: rgba(0,0,0,.2);
+  display: flex; align-items: flex-end; justify-content: flex-end;
+  opacity: 0; transition: opacity .18s ease;
+}
+.auto-answer-popup.visible{ opacity: 1; }
+
+.auto-answer-popup .popup-content{
+  width: min(560px, 96vw);
+  background: #fff; border: 1px solid var(--ykt-border-strong);
+  border-radius: 10px; box-shadow: var(--ykt-shadow);
+  margin: 16px; overflow: hidden;
+}
+
+.auto-answer-popup .popup-header{
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);
+}
+.auto-answer-popup .popup-header h4{ margin: 0; font-size: 16px; }
+.auto-answer-popup .close-btn{ cursor: pointer; color: var(--ykt-muted); }
+.auto-answer-popup .close-btn:hover{ color: var(--ykt-hover); }
+
+.auto-answer-popup .popup-body{ padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.auto-answer-popup .popup-row{ display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: start; }
+.auto-answer-popup .label{ color: #666; font-size: 12px; line-height: 1.8; }
+.auto-answer-popup .content{ white-space: normal; word-break: break-word; }
