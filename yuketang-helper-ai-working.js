@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         AI雨课堂助手
-// @version      1.16.2
+// @version      1.16.4
 // @namespace    https://github.com/ZaytsevZY/yuketang-helper-ai
 // @author       ZaytsevZY/
 // @description  雨课堂辅助工具：课堂习题提示，AI解答习题
@@ -35,6 +35,7 @@
     let problems = new Map(); // 存储问题
     let problemStatus = new Map(); // 存储问题状态
     let encounteredProblems = []; // 用于列表展示的问题
+    let currentLessonId = null; // 当前课程ID
 
     // 当前选中的内容
     let currentPresentationId = null;
@@ -444,17 +445,12 @@
             }
         }
 
-        // 存储课件数据到本地存储
-        storage.alterMap("presentations", (map) => {
-            map.set(id, data);
-            const excess = map.size - config.maxPresentations;
-            if (excess > 0) {
-                const keys = [...map.keys()].slice(0, excess);
-                for (const key of keys) {
-                    map.delete(key);
-                }
-            }
-        });
+        // 存储课件数据到本地存储（按课程分组）
+        if (currentLessonId) {
+            storage.alterMap(`presentations-${currentLessonId}`, (map) => {
+                map.set(id, data);
+            });
+        }
 
         // 更新UI
         updatePresentationList();
@@ -1351,7 +1347,7 @@
         showPresentationPanel(true);
     }
 
-    // 更新课件列表
+    // 更新课件列表（修改这里解决多课件问题）
     function updatePresentationList() {
         const listEl = document.getElementById('ykt-presentation-list');
         if (!listEl) return;
@@ -1364,8 +1360,31 @@
             return;
         }
 
-        // 为每个课件创建展示区
+        // 只显示当前课程的课件（基于URL路径过滤）
+        const currentPath = window.location.pathname;
+        const currentLessonMatch = currentPath.match(/\/lesson\/fullscreen\/v3\/([^\/]+)/);
+        const currentLessonFromURL = currentLessonMatch ? currentLessonMatch[1] : null;
+
+        // 过滤课件：只显示当前课程相关的课件
+        const filteredPresentations = new Map();
         for (const [id, presentation] of presentations) {
+            // 如果能从URL获取到课程ID，则根据课程过滤
+            if (currentLessonFromURL && currentLessonId && currentLessonFromURL === currentLessonId) {
+                filteredPresentations.set(id, presentation);
+            } else if (!currentLessonFromURL) {
+                // 如果无法获取课程ID，显示所有课件（向后兼容）
+                filteredPresentations.set(id, presentation);
+            } else if (currentLessonFromURL === currentLessonId) {
+                // 当前课程的课件
+                filteredPresentations.set(id, presentation);
+            }
+        }
+
+        // 如果过滤后没有课件，显示所有课件（向后兼容）
+        const presentationsToShow = filteredPresentations.size > 0 ? filteredPresentations : presentations;
+
+        // 为每个课件创建展示区
+        for (const [id, presentation] of presentationsToShow) {
             const presentationContainer = document.createElement('div');
             presentationContainer.className = 'presentation-container';
 
@@ -3121,26 +3140,28 @@
         console.log("[雨课堂助手] 工具栏已创建");
     }
 
-    // 加载本地存储的课件
+    // 加载本地存储的课件（按课程过滤）
     function loadStoredPresentations() {
-        const storedPresentations = storage.getMap("presentations");
-
-        // 加载已存储的课件
-        for (const [id, data] of storedPresentations.entries()) {
-            onPresentationLoaded(id, data);
+        if (currentLessonId) {
+            const storedPresentations = storage.getMap(`presentations-${currentLessonId}`);
+            
+            // 加载当前课程的课件
+            for (const [id, data] of storedPresentations.entries()) {
+                onPresentationLoaded(id, data);
+            }
         }
     }
 
     // 进入课堂
     function launchLessonHelper() {
-        const lessonId = window.location.pathname.split("/")[4];
-        console.log(`[雨课堂助手] 检测到课堂页面 lessonId: ${lessonId}`);
+        currentLessonId = window.location.pathname.split("/")[4];
+        console.log(`[雨课堂助手] 检测到课堂页面 lessonId: ${currentLessonId}`);
 
         // 存储课程ID
         if (typeof GM_getTab === 'function' && typeof GM_saveTab === 'function') {
             GM_getTab((tab) => {
                 tab.type = "lesson";
-                tab.lessonId = lessonId;
+                tab.lessonId = currentLessonId;
                 GM_saveTab(tab);
             });
         }
