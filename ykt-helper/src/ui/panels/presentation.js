@@ -44,54 +44,170 @@ export function showPresentationPanel(visible = true) {
   if (visible) updatePresentationList();
 }
 
+// export function updatePresentationList() {
+//   mountPresentationPanel();
+//   const list = $('#ykt-presentation-list');
+//   list.innerHTML = '';
+
+//   const showAll = !!ui.config.showAllSlides;
+//   const presEntries = [...repo.presentations.values()].slice(-ui.config.maxPresentations);
+
+//   presEntries.forEach((pres) => {
+//     const item = document.createElement('div');
+//     item.className = 'presentation-item';
+
+//     const title = document.createElement('div');
+//     title.className = 'presentation-title';
+//     title.textContent = pres.title || `课件 ${pres.id}`;
+//     item.appendChild(title);
+
+//     const slidesWrap = document.createElement('div');
+//     slidesWrap.className = 'slide-thumb-list';
+
+//     (pres.slides || []).forEach((s) => {
+//       if (!showAll && !s.problem) return;
+
+//       const thumb = document.createElement('div');
+//       thumb.className = 'slide-thumb';
+//       thumb.title = s.title || `第 ${s.page} 页`;
+//       if (s.thumbnail) {
+//         const img = document.createElement('img');
+//         img.src = s.thumbnail;
+//         img.alt = thumb.title;
+//         thumb.appendChild(img);
+//       } else {
+//         thumb.textContent = s.title || String(s.page ?? '');
+//       }
+
+//       thumb.addEventListener('click', () => {
+//         repo.currentPresentationId = pres.id;
+//         repo.currentSlideId = s.id;
+//         updateSlideView();
+//       });
+
+//       slidesWrap.appendChild(thumb);
+//     });
+
+//     item.appendChild(slidesWrap);
+//     list.appendChild(item);
+//   });
+// }
+
+//1.16.4 更新课件加载方法
 export function updatePresentationList() {
   mountPresentationPanel();
-  const list = $('#ykt-presentation-list');
-  list.innerHTML = '';
+  const listEl = document.getElementById('ykt-presentation-list');
+  if (!listEl) return;
 
-  const showAll = !!ui.config.showAllSlides;
-  const presEntries = [...repo.presentations.values()].slice(-ui.config.maxPresentations);
+  listEl.innerHTML = '';
 
-  presEntries.forEach((pres) => {
-    const item = document.createElement('div');
-    item.className = 'presentation-item';
+  if (repo.presentations.size === 0) {
+    listEl.innerHTML = '<p class="no-presentations">暂无课件记录</p>';
+    return;
+  }
 
-    const title = document.createElement('div');
-    title.className = 'presentation-title';
-    title.textContent = pres.title || `课件 ${pres.id}`;
-    item.appendChild(title);
+  // 只显示当前课程的课件（基于 URL 与 repo.currentLessonId 过滤）
+  const currentPath = window.location.pathname;
+  const m = currentPath.match(/\/lesson\/fullscreen\/v3\/([^/]+)/);
+  const currentLessonFromURL = m ? m[1] : null;
 
-    const slidesWrap = document.createElement('div');
-    slidesWrap.className = 'slide-thumb-list';
+  const filtered = new Map();
+  for (const [id, presentation] of repo.presentations) {
+    // 若 URL 和 repo 同时能取到 lessonId，则要求一致
+    if (currentLessonFromURL && repo.currentLessonId && currentLessonFromURL === repo.currentLessonId) {
+      filtered.set(id, presentation);
+    } else if (!currentLessonFromURL) {
+      // 向后兼容：无法从 URL 提取课程 ID 时，展示全部
+      filtered.set(id, presentation);
+    } else if (currentLessonFromURL === repo.currentLessonId) {
+      filtered.set(id, presentation);
+    }
+  }
 
-    (pres.slides || []).forEach((s) => {
-      if (!showAll && !s.problem) return;
+  const presentationsToShow = filtered.size > 0 ? filtered : repo.presentations;
 
-      const thumb = document.createElement('div');
-      thumb.className = 'slide-thumb';
-      thumb.title = s.title || `第 ${s.page} 页`;
-      if (s.thumbnail) {
-        const img = document.createElement('img');
-        img.src = s.thumbnail;
-        img.alt = thumb.title;
-        thumb.appendChild(img);
-      } else {
-        thumb.textContent = s.title || String(s.page ?? '');
-      }
+  for (const [id, presentation] of presentationsToShow) {
+    const cont = document.createElement('div');
+    cont.className = 'presentation-container';
 
-      thumb.addEventListener('click', () => {
-        repo.currentPresentationId = pres.id;
-        repo.currentSlideId = s.id;
-        updateSlideView();
-      });
+    // 标题 + 下载按钮
+    const titleEl = document.createElement('div');
+    titleEl.className = 'presentation-title';
+    titleEl.innerHTML = `
+      <span>${presentation.title || `课件 ${id}`}</span>
+      <i class="fas fa-download download-btn" title="下载课件"></i>
+    `;
+    cont.appendChild(titleEl);
 
-      slidesWrap.appendChild(thumb);
+    // 下载按钮
+    titleEl.querySelector('.download-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      downloadPresentation(presentation);
     });
 
-    item.appendChild(slidesWrap);
-    list.appendChild(item);
-  });
+    // 幻灯片缩略图区域
+    const slidesWrap = document.createElement('div');
+    slidesWrap.className = 'presentation-slides';
+
+    // 是否显示全部页
+    const showAll = !!ui.config.showAllSlides;
+    const slidesToShow = showAll ? (presentation.slides || []) : (presentation.slides || []).filter(s => s.problem);
+
+    for (const s of slidesToShow) {
+      const thumb = document.createElement('div');
+      thumb.className = 'slide-thumbnail';
+
+      // 当前高亮
+      if (s.id === repo.currentSlideId) thumb.classList.add('active');
+
+      // 状态样式：解锁 / 已作答
+      if (s.problem) {
+        const pid = s.problem.problemId;
+        const status = repo.problemStatus.get(pid);
+        if (status) thumb.classList.add('unlocked');
+        if (s.problem.result) thumb.classList.add('answered');
+      }
+
+      // 点击跳转
+      thumb.addEventListener('click', () => {
+        actions.navigateTo(presentation.id, s.id);
+      });
+
+      // 缩略图内容
+      const img = document.createElement('img');
+      if (presentation.width && presentation.height) {
+        img.style.aspectRatio = `${presentation.width}/${presentation.height}`;
+      }
+      img.src = s.thumbnail || '';
+      img.alt = s.title || `第 ${s.page ?? ''} 页`;
+      // 关键：图片加载失败时移除（可能非本章节的页）
+      img.onerror = function () {
+        if (thumb.parentNode) thumb.parentNode.removeChild(thumb);
+      };
+
+      const idx = document.createElement('span');
+      idx.className = 'slide-index';
+      idx.textContent = s.index ?? '';
+
+      thumb.appendChild(img);
+      thumb.appendChild(idx);
+      slidesWrap.appendChild(thumb);
+    }
+
+    cont.appendChild(slidesWrap);
+    listEl.appendChild(cont);
+  }
 }
+
+// 课件下载入口：切换当前课件后调用现有 PDF 导出逻辑
+function downloadPresentation(presentation) {
+  // 先切到该课件，再复用“整册下载(PDF)”按钮逻辑
+  repo.currentPresentationId = presentation.id;
+  // 这里直接调用现有的 downloadPresentationPDF（定义在本文件尾部）
+  // 若你希望仅下载题目页，可根据 ui.config.showAllSlides 控制
+  downloadPresentationPDF();
+}
+
 
 export function updateSlideView() {
   mountPresentationPanel();

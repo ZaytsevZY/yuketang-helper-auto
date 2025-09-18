@@ -30,4 +30,7 @@ import { ui } from './ui/ui-api.js'; // ✅ 补：导入 ui
 
   // 5) 启动自动作答轮询（替代原来的 tickAutoAnswer 占位）
   actions.startAutoAnswerLoop();
+
+  // 6)1.16.4 更新课件加载
+  actions.launchLessonHelper();
 })();

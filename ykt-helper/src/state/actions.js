@@ -146,4 +146,26 @@ export const actions = {
     ui.updateSlideView();
     ui.showPresentationPanel(true);
   },
+
+  //1.16.4: 进入课堂：设置 lessonId +（可选）写入 Tab 信息 + 载入本课已存课件
+  launchLessonHelper() {
+    // 从 URL 提取 lessonId（/lesson/fullscreen/v3/<lessonId>/...）
+    const path = window.location.pathname;
+    const m = path.match(/\/lesson\/fullscreen\/v3\/([^/]+)/);
+    repo.currentLessonId = m ? m[1] : null;
+    if (repo.currentLessonId) {
+      console.log(`[雨课堂助手] 检测到课堂页面 lessonId: ${repo.currentLessonId}`);
+    }
+
+    // GM_* Tab 状态（存在才用，向后兼容）
+    if (typeof window.GM_getTab === 'function' && typeof window.GM_saveTab === 'function' && repo.currentLessonId) {
+      window.GM_getTab((tab) => {
+        tab.type = 'lesson';
+        tab.lessonId = repo.currentLessonId;
+        window.GM_saveTab(tab);
+      });
+    }
+  // 载入“本课”的历史课件
+    repo.loadStoredPresentations();
+  },
 };
