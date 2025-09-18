@@ -3,7 +3,7 @@ import { gm } from '../core/env.js';
 
 export function queryDeepSeek(question, aiCfg) {
   const { apiKey, endpoint, model, temperature, maxTokens } = aiCfg || {};
-  if (!apiKey) return Promise.reject(new Error('请先在设置中填写 DeepSeek API 密钥'));
+  if (!apiKey) return Promise.reject(new Error('请先设置API密钥'));
 
   return new Promise((resolve, reject) => {
     gm.xhr({
@@ -25,12 +25,31 @@ export function queryDeepSeek(question, aiCfg) {
       onload: (res) => {
         try {
           const data = JSON.parse(res.responseText);
-          if (data.error) reject(new Error(`API错误: ${data.error.message}`));
-          else if (data.choices?.[0]) resolve(data.choices[0].message.content);
-          else reject(new Error('API返回结果格式异常'));
+          console.log('[雨课堂助手] API响应状态:', res.status);
+          console.log('[雨课堂助手] API响应内容:', res.responseText);
+          if (res.status !== 200) {
+            reject(new Error(`API请求失败: HTTP ${res.status}`));
+            return;
+          }
+          if (data.error) {
+            reject(new Error(`API错误: ${data.error.message}`));
+            return;
+          }
+          const content = data.choices?.[0]?.message?.content?.trim?.();
+          if (content && content.length > 10) {
+            console.log('[雨课堂助手] AI回答:', content);
+            resolve(content);
+          } else {
+            reject(new Error('AI返回内容为空或过短'));
+          }
         } catch (e) { reject(new Error(`解析API响应失败: ${e.message}`)); }
       },
-      onerror: (err) => reject(new Error(`请求失败: ${err?.statusText || 'network error'}`)),
+      onerror: (err) => {
+        console.error('[雨课堂助手] 网络请求失败:', err);
+        reject(new Error(`请求失败: ${err?.statusText || '网络错误'}`));
+      },
+      ontimeout: () => reject(new Error('请求超时，请检查网络连接')),
+      timeout: 30000,
     });
   });
 }

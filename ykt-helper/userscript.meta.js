@@ -10,6 +10,10 @@ export const meta = `
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
 // @match        https://*.yuketang.cn/lesson/fullscreen/v3/*
 // @match        https://*.yuketang.cn/v2/web/*
+// @match        https://www.yuketang.cn/lesson/fullscreen/v3/*
+// @match        https://www.yuketang.cn/v2/web/*
+// @match        https://pro.yuketang.cn/lesson/fullscreen/v3/*
+// @match        https://pro.yuketang.cn/v2/web/*
 // @grant        GM_addStyle
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
