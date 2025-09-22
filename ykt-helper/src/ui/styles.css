@@ -211,3 +211,50 @@
 .auto-answer-popup .popup-row{ display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: start; }
 .auto-answer-popup .label{ color: #666; font-size: 12px; line-height: 1.8; }
 .auto-answer-popup .content{ white-space: normal; word-break: break-word; }
+
+/* ===== 1.16.6: 课件浏览面板：固定右侧详细视图，左侧独立滚动 ===== */
+#ykt-presentation-panel {
+  --ykt-panel-max-h: 72vh;           /* 与 .ykt-panel 的最大高度保持一致 */
+}
+
+/* 两列布局：左列表 + 右详细视图 */
+#ykt-presentation-panel .panel-body{
+  display: grid;
+  grid-template-columns: 300px 1fr;  /* 左列宽度可按需调整 */
+  gap: 12px;
+  overflow: hidden;                  /* 避免内部再出现双滚动条 */
+  align-items: start;
+}
+
+/* 左侧：只让左列滚动，限制在面板可视高度内 */
+#ykt-presentation-panel .panel-left{
+  max-height: var(--ykt-panel-max-h);
+  overflow: auto;
+  min-width: 0;                      /* 防止子元素撑破 */
+}
+
+/* 右侧：粘性定位为“固定”，始终在面板可视区内 */
+#ykt-presentation-panel .panel-right{
+  position: sticky;
+  top: 0;                            /* 相对可滚动祖先（面板）吸顶 */
+  align-self: start;
+}
+
+/* 右侧详细视图自身也限制高度并允许内部滚动 */
+#ykt-presentation-panel .slide-view{
+  max-height: var(--ykt-panel-max-h);
+  overflow: auto;
+  border: 1px solid var(--ykt-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+/* 小屏自适配：堆叠布局时取消 sticky，避免遮挡 */
+@media (max-width: 900px){
+  #ykt-presentation-panel .panel-body{
+    grid-template-columns: 1fr;
+  }
+  #ykt-presentation-panel .panel-right{
+    position: static;
+  }
+}

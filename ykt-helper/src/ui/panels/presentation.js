@@ -147,7 +147,7 @@ export function updatePresentationList() {
 
     // 幻灯片缩略图区域
     const slidesWrap = document.createElement('div');
-    slidesWrap.className = 'presentation-slides';
+    slidesWrap.className = 'slide-thumb-list';
 
     // 是否显示全部页
     const showAll = !!ui.config.showAllSlides;
@@ -155,7 +155,7 @@ export function updatePresentationList() {
 
     for (const s of slidesToShow) {
       const thumb = document.createElement('div');
-      thumb.className = 'slide-thumbnail';
+      thumb.className = 'slide-thumb';
 
       // 当前高亮
       if (s.id === repo.currentSlideId) thumb.classList.add('active');

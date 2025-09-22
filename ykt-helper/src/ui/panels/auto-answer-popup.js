@@ -15,6 +15,7 @@ function esc(s) {
  * @param {string} aiAnswer - 原始 AI 文本（未解析前）
  * @param {object} [cfg] - 可选配置（用于局部覆写）
  */
+
 export function showAutoAnswerPopup(problem, aiAnswer, cfg = {}) {
   // 避免重复
   const existed = document.getElementById('ykt-auto-answer-popup');
