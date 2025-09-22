@@ -38,10 +38,15 @@ export function mountPresentationPanel() {
   return host;
 }
 
+// 在 showPresentationPanel 函数中添加按钮状态同步
 export function showPresentationPanel(visible = true) {
   mountPresentationPanel();
   host.classList.toggle('visible', !!visible);
   if (visible) updatePresentationList();
+  
+  // 同步工具栏按钮状态
+  const presBtn = document.getElementById('ykt-btn-pres');
+  if (presBtn) presBtn.classList.toggle('active', !!visible);
 }
 
 // export function updatePresentationList() {

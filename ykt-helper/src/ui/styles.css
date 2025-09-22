@@ -18,13 +18,15 @@
 #ykt-helper-toolbar{
   position: fixed; z-index: calc(var(--ykt-z) + 1);
   left: 15px; bottom: 15px;
-  width: 252px; height: 36px; padding: 5px;
+  /* 移除固定宽度，让内容自适应 */
+  height: 36px; padding: 5px;
   display: flex; gap: 6px; align-items: center;
   background: var(--ykt-bg);
   border: 1px solid var(--ykt-border-strong);
   border-radius: 4px;
   box-shadow: 0 1px 4px 3px rgba(0,0,0,.1);
 }
+
 #ykt-helper-toolbar .btn{
   display: inline-block; padding: 4px; cursor: pointer;
   color: var(--ykt-muted); line-height: 1;
@@ -39,9 +41,15 @@
   background: var(--ykt-bg); color: var(--ykt-fg);
   border: 1px solid var(--ykt-border-strong); border-radius: 8px;
   box-shadow: var(--ykt-shadow);
-  display: none; z-index: var(--ykt-z);
+  display: none; 
+  /* 提高z-index，确保后打开的面板在最上层 */
+  z-index: var(--ykt-z);
 }
-.ykt-panel.visible{ display: block; }
+.ykt-panel.visible{ 
+  display: block; 
+  /* 动态提升z-index */
+  z-index: calc(var(--ykt-z) + 10);
+}
 
 .panel-header{
   display: flex; align-items: center; justify-content: space-between;

@@ -33,10 +33,15 @@ window.addEventListener('ykt:open-ai', () => {
   // renderQuestion(); // 若 renderQuestion 非导出，可在 showAIPanel(true) 内部触发
 });
 
+// 在 showAIPanel 函数中添加按钮状态同步
 export function showAIPanel(visible = true) {
   mountAIPanel();
   root.classList.toggle('visible', !!visible);
   if (visible) renderQuestion();
+  
+  // 同步工具栏按钮状态
+  const aiBtn = document.getElementById('ykt-btn-ai');
+  if (aiBtn) aiBtn.classList.toggle('active', !!visible);
 }
 
 export function setAILoading(v) {

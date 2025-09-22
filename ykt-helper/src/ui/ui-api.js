@@ -18,6 +18,9 @@ _config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
 
 function saveConfig() { storage.set('config', _config); }
 
+// 面板层级管理
+let currentZIndex = 10000000;
+
 export const ui = {
   get config() { return _config; },
   saveConfig,
@@ -28,11 +31,56 @@ export const ui = {
   updateProblemList: ProbListPanel.updateProblemList,
   updateActiveProblems: ActivePanel.updateActiveProblems,
 
-  showPresentationPanel: PresPanel.showPresentationPanel,
-  showProblemListPanel: ProbListPanel.showProblemListPanel,
-  showAIPanel: AIPanel.showAIPanel,
-  toggleSettingsPanel: SettingsPanel.toggleSettingsPanel,
-  toggleTutorialPanel: TutorialPanel.toggleTutorialPanel,
+  // 提升面板层级的辅助函数
+  _bringToFront(panelElement) {
+    if (panelElement && panelElement.classList.contains('visible')) {
+      currentZIndex += 1;
+      panelElement.style.zIndex = currentZIndex;
+    }
+  },
+
+  // 修改后的面板显示函数，添加z-index管理
+  showPresentationPanel(visible = true) {
+    PresPanel.showPresentationPanel(visible);
+    if (visible) {
+      const panel = document.getElementById('ykt-presentation-panel');
+      this._bringToFront(panel);
+    }
+  },
+
+  showProblemListPanel(visible = true) {
+    ProbListPanel.showProblemListPanel(visible);
+    if (visible) {
+      const panel = document.getElementById('ykt-problem-list-panel');
+      this._bringToFront(panel);
+    }
+  },
+
+  showAIPanel(visible = true) {
+    AIPanel.showAIPanel(visible);
+    if (visible) {
+      const panel = document.getElementById('ykt-ai-answer-panel');
+      this._bringToFront(panel);
+    }
+  },
+
+  toggleSettingsPanel() {
+    SettingsPanel.toggleSettingsPanel();
+    // 检查面板是否变为可见状态
+    const panel = document.getElementById('ykt-settings-panel');
+    if (panel && panel.classList.contains('visible')) {
+      this._bringToFront(panel);
+    }
+  },
+
+  toggleTutorialPanel() {
+    TutorialPanel.toggleTutorialPanel();
+    // 检查面板是否变为可见状态
+    const panel = document.getElementById('ykt-tutorial-panel');
+    if (panel && panel.classList.contains('visible')) {
+      this._bringToFront(panel);
+    }
+  },
 
   // 在 index.js 初始化时挂载一次
   _mountAll() {
@@ -42,7 +90,7 @@ export const ui = {
     ProbListPanel.mountProblemListPanel();
     ActivePanel.mountActiveProblemsPanel();
     TutorialPanel.mountTutorialPanel(); 
-    window.addEventListener('ykt:open-ai', () => AIPanel.showAIPanel(true));
+    window.addEventListener('ykt:open-ai', () => this.showAIPanel(true));
   },
 
   notifyProblem(problem, slide) {

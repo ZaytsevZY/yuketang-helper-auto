@@ -29,13 +29,28 @@ export function installToolbar() {
     bar.querySelector('#ykt-btn-bell')?.classList.toggle('active', ui.config.notifyProblems);
   });
 
-  bar.querySelector('#ykt-btn-pres')?.addEventListener('click', () => ui.showPresentationPanel?.(true));
-  bar.querySelector('#ykt-btn-ai')?.addEventListener('click', async () => {
-    ui.showAIPanel?.(true);
-    try {
-      await ui.askAIForCurrent?.();
-    } catch (e) {
-      ui.toast?.(e?.message || 'AI 请求失败');
+  // 修改课件浏览按钮 - 切换显示/隐藏
+  bar.querySelector('#ykt-btn-pres')?.addEventListener('click', () => {
+    const btn = bar.querySelector('#ykt-btn-pres');
+    const isActive = btn.classList.contains('active');
+    ui.showPresentationPanel?.(!isActive);
+    btn.classList.toggle('active', !isActive);
+  });
+
+  // 修改AI按钮 - 切换显示/隐藏
+  bar.querySelector('#ykt-btn-ai')?.addEventListener('click', () => {
+    const btn = bar.querySelector('#ykt-btn-ai');
+    const isActive = btn.classList.contains('active');
+    ui.showAIPanel?.(!isActive);
+    btn.classList.toggle('active', !isActive);
+    
+    // 只在打开时执行AI查询
+    if (!isActive) {
+      try {
+        ui.askAIForCurrent?.();
+      } catch (e) {
+        ui.toast?.(e?.message || 'AI 请求失败');
+      }
     }
   });
 
@@ -45,6 +60,7 @@ export function installToolbar() {
     ui.toast(`自动作答：${ui.config.autoAnswer ? '开' : '关'}`);
     ui.updateAutoAnswerBtn();
   });
+
   bar.querySelector('#ykt-btn-settings')?.addEventListener('click', () => {
     ui.toggleSettingsPanel?.();
   });
