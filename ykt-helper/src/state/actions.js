@@ -7,6 +7,7 @@ import { ui } from '../ui/ui-api.js';
 import { submitAnswer, retryAnswer } from '../tsm/answer.js';
 import { formatProblemForAI, formatProblemForDisplay, parseAIAnswer } from '../tsm/ai-format.js';
 import { queryDeepSeek } from '../ai/deepseek.js';
+import { showAutoAnswerPopup } from '../ui/panels/auto-answer-popup.js';
 
 let _autoLoopStarted = false;
 

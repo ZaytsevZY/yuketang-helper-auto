@@ -41,7 +41,7 @@ export function parseAIAnswer(problem, aiAnswer) {
     if (!answerLine) answerLine = lines[0]?.trim() || '';
 
     switch (problem.problemType) {
-      case 1: // 单选
+      case 1: {break;}// 单选
       case 3: { // 投票
         let m = answerLine.match(/[ABCD]/i);
         if (m) return [m[0].toUpperCase()];
