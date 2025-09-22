@@ -1,0 +1,1173 @@
+// ==UserScript==
+// @name         AI雨课堂助手（模块化构建版）
+// @namespace    https://github.com/your/repo
+// @version      1.15.2-mod
+// @description  课堂习题提示，AI解答习题
+// @license      MIT
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
+// @match        https://*.yuketang.cn/lesson/fullscreen/v3/*
+// @match        https://*.yuketang.cn/v2/web/*
+// @grant        GM_addStyle
+// @grant        GM_notification
+// @grant        GM_xmlhttpRequest
+// @grant        GM_openInTab
+// @grant        GM_getTab
+// @grant        GM_getTabs
+// @grant        GM_saveTab
+// @grant        unsafeWindow
+// @run-at       document-start
+// @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
+// ==/UserScript==
+(function() {
+  "use strict";
+  // src/core/env.js
+    const gm = {
+    notify(opt) {
+      if (typeof window.GM_notification === "function") window.GM_notification(opt);
+    },
+    addStyle(css) {
+      if (typeof window.GM_addStyle === "function") window.GM_addStyle(css); else {
+        const s = document.createElement("style");
+        s.textContent = css;
+        document.head.appendChild(s);
+      }
+    },
+    xhr(opt) {
+      if (typeof window.GM_xmlhttpRequest === "function") return window.GM_xmlhttpRequest(opt);
+      throw new Error("GM_xmlhttpRequest is not available");
+    },
+    uw: window.unsafeWindow || window
+  };
+  function loadScriptOnce(src) {
+    return new Promise((resolve, reject) => {
+      if ([ ...document.scripts ].some(s => s.src === src)) return resolve();
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error(`Failed to load: ${src}`));
+      document.head.appendChild(s);
+    });
+  }
+  async function ensureHtml2Canvas() {
+    const w = gm.uw || window;
+ // ★ 用页面 window
+        if (typeof w.html2canvas === "function") return w.html2canvas;
+    await loadScriptOnce("https://html2canvas.hertzen.com/dist/html2canvas.min.js");
+    const h2c = w.html2canvas?.default || w.html2canvas;
+    if (typeof h2c === "function") return h2c;
+    throw new Error("html2canvas 未正确加载");
+  }
+  async function ensureJsPDF() {
+    if (window.jspdf?.jsPDF) return window.jspdf;
+    await loadScriptOnce("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js");
+    if (!window.jspdf?.jsPDF) throw new Error("jsPDF 未加载成功");
+    return window.jspdf;
+  }
+  function randInt(l, r) {
+    return l + Math.floor(Math.random() * (r - l + 1));
+  }
+  // src/core/types.js
+    const PROBLEM_TYPE_MAP = {
+    1: "单选题",
+    2: "多选题",
+    3: "投票题",
+    4: "填空题",
+    5: "主观题"
+  };
+  const DEFAULT_CONFIG = {
+    notifyProblems: true,
+    autoAnswer: false,
+    autoAnswerDelay: 3e3,
+    autoAnswerRandomDelay: 2e3,
+    ai: {
+      provider: "deepseek",
+      apiKey: "",
+      endpoint: "https://api.deepseek.com/v1/chat/completions",
+      model: "deepseek-chat",
+      temperature: .3,
+      maxTokens: 1e3
+    },
+    showAllSlides: false,
+    maxPresentations: 5
+  };
+  // src/core/storage.js
+    class StorageManager {
+    constructor(prefix) {
+      this.prefix = prefix;
+    }
+    get(key, dv = null) {
+      try {
+        const v = localStorage.getItem(this.prefix + key);
+        return v ? JSON.parse(v) : dv;
+      } catch {
+        return dv;
+      }
+    }
+    set(key, value) {
+      localStorage.setItem(this.prefix + key, JSON.stringify(value));
+    }
+    remove(key) {
+      localStorage.removeItem(this.prefix + key);
+    }
+    getMap(key) {
+      const arr = this.get(key, []);
+      try {
+        return new Map(arr);
+      } catch {
+        return new Map;
+      }
+    }
+    setMap(key, map) {
+      this.set(key, [ ...map ]);
+    }
+    alterMap(key, fn) {
+      const m = this.getMap(key);
+      fn(m);
+      this.setMap(key, m);
+    }
+  }
+  const storage = new StorageManager("ykt-helper:");
+  // src/state/repo.js
+    const repo = {
+    presentations: new Map,
+    // id -> presentation
+    slides: new Map,
+    // slideId -> slide
+    problems: new Map,
+    // problemId -> problem
+    problemStatus: new Map,
+    // problemId -> {presentationId, slideId, startTime, endTime, done, autoAnswerTime, answering}
+    encounteredProblems: [],
+    // [{problemId, ...ref}]
+    currentPresentationId: null,
+    currentSlideId: null,
+    setPresentation(id, data) {
+      this.presentations.set(id, {
+        id: id,
+        ...data
+      });
+      storage.alterMap("presentations", m => {
+        m.set(id, data);
+        const excess = m.size - (storage.get("config", {})?.maxPresentations ?? 5);
+        if (excess > 0) [ ...m.keys() ].slice(0, excess).forEach(k => m.delete(k));
+      });
+    },
+    upsertSlide(slide) {
+      this.slides.set(slide.id, slide);
+    },
+    upsertProblem(prob) {
+      this.problems.set(prob.problemId, prob);
+    },
+    pushEncounteredProblem(prob, slide, presentationId) {
+      if (!this.encounteredProblems.some(p => p.problemId === prob.problemId)) this.encounteredProblems.push({
+        problemId: prob.problemId,
+        problemType: prob.problemType,
+        body: prob.body || `题目ID: ${prob.problemId}`,
+        options: prob.options || [],
+        blanks: prob.blanks || [],
+        answers: prob.answers || [],
+        slide: slide,
+        presentationId: presentationId
+      });
+    }
+  };
+  // src/ui/toast.js
+    function toast(message, duration = 2e3) {
+    const el = document.createElement("div");
+    el.textContent = message;
+    el.style.cssText = `\n    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);\n    background: rgba(0,0,0,.7); color: #fff; padding: 10px 20px;\n    border-radius: 4px; z-index: 10000000; max-width: 80%;\n  `;
+    document.body.appendChild(el);
+    setTimeout(() => {
+      el.style.opacity = "0";
+      el.style.transition = "opacity .5s";
+      setTimeout(() => el.remove(), 500);
+    }, duration);
+  }
+  var tpl$5 = '<div id="ykt-settings-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>AI雨课堂助手设置</h3>\r\n    <span class="close-btn" id="ykt-settings-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="settings-content">\r\n      <div class="setting-group">\r\n        <h4>AI配置</h4>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-api-key">DeepSeek API密钥:</label>\r\n          <input type="text" id="ykt-input-api-key" placeholder="请输入API密钥">\r\n        </div>\r\n      </div>\r\n\r\n      <div class="setting-group">\r\n        <h4>自动作答设置</h4>\r\n        <div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-input-auto-answer">\r\n            <span class="checkmark"></span>\r\n            启用自动作答\r\n          </label>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\r\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\r\n          <small>题目出现后等待多长时间开始作答</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\r\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\r\n          <small>在基础延迟基础上随机增加的时间范围</small>\r\n        </div>\r\n      </div>\r\n\r\n      <div class="setting-actions">\r\n        <button id="ykt-btn-settings-save">保存设置</button>\r\n        <button id="ykt-btn-settings-reset">重置为默认</button>\r\n      </div>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
+  let mounted$5 = false;
+  let root$4;
+  function mountSettingsPanel() {
+    if (mounted$5) return root$4;
+    root$4 = document.createElement("div");
+    root$4.innerHTML = tpl$5;
+    document.body.appendChild(root$4.firstElementChild);
+    root$4 = document.getElementById("ykt-settings-panel");
+    // 初始化表单
+        const $api = root$4.querySelector("#ykt-input-api-key");
+    const $auto = root$4.querySelector("#ykt-input-auto-answer");
+    const $delay = root$4.querySelector("#ykt-input-answer-delay");
+    const $rand = root$4.querySelector("#ykt-input-random-delay");
+    $api.value = ui.config.ai.apiKey || "";
+    $auto.checked = !!ui.config.autoAnswer;
+    $delay.value = Math.floor(ui.config.autoAnswerDelay / 1e3);
+    $rand.value = Math.floor(ui.config.autoAnswerRandomDelay / 1e3);
+    root$4.querySelector("#ykt-settings-close").addEventListener("click", () => showSettingsPanel(false));
+    root$4.querySelector("#ykt-btn-settings-save").addEventListener("click", () => {
+      ui.config.ai.apiKey = $api.value.trim();
+      ui.config.autoAnswer = !!$auto.checked;
+      ui.config.autoAnswerDelay = Math.max(1e3, (+$delay.value || 0) * 1e3);
+      ui.config.autoAnswerRandomDelay = Math.max(0, (+$rand.value || 0) * 1e3);
+      storage.set("aiApiKey", ui.config.ai.apiKey);
+      ui.saveConfig();
+      ui.updateAutoAnswerBtn();
+      ui.toast("设置已保存");
+    });
+    root$4.querySelector("#ykt-btn-settings-reset").addEventListener("click", () => {
+      if (!confirm("确定要重置为默认设置吗？")) return;
+      Object.assign(ui.config, DEFAULT_CONFIG);
+      ui.config.ai.apiKey = "";
+      storage.set("aiApiKey", "");
+      ui.saveConfig();
+      ui.updateAutoAnswerBtn();
+      $api.value = "";
+      $auto.checked = DEFAULT_CONFIG.autoAnswer;
+      $delay.value = Math.floor(DEFAULT_CONFIG.autoAnswerDelay / 1e3);
+      $rand.value = Math.floor(DEFAULT_CONFIG.autoAnswerRandomDelay / 1e3);
+      ui.toast("设置已重置");
+    });
+    mounted$5 = true;
+    return root$4;
+  }
+  function showSettingsPanel(visible = true) {
+    mountSettingsPanel();
+    const panel = document.getElementById("ykt-settings-panel");
+    if (!panel) return;
+    panel.classList.toggle("visible", !!visible);
+  }
+  function toggleSettingsPanel() {
+    mountSettingsPanel();
+    const panel = document.getElementById("ykt-settings-panel");
+    showSettingsPanel(!panel.classList.contains("visible"));
+  }
+  var tpl$4 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>AI 解答</h3>\r\n    <span class="close-btn" id="ykt-ai-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div id="ykt-ai-question" class="ai-question"></div>\r\n    <div id="ykt-ai-loading" class="ai-loading" style="display:none;">\r\n      <i class="fas fa-circle-notch fa-spin"></i> 正在思考中...\r\n    </div>\r\n    <div id="ykt-ai-error" class="ai-error" style="display:none;"></div>\r\n    <div id="ykt-ai-answer" class="ai-answer"></div>\r\n    <div class="ai-actions">\r\n      <button id="ykt-ai-ask">向 AI 询问当前题目</button>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
+  // src/tsm/ai-format.js
+    function formatProblemForAI(problem, TYPE_MAP) {
+    let q = `请回答以下${TYPE_MAP[problem.problemType] || "题目"}，按照格式回复：先给出答案，然后给出解释。\n\n题目：${problem.body || ""}`;
+    if (problem.options?.length) {
+      q += "\n选项：";
+      for (const o of problem.options) q += `\n${o.key}. ${o.value}`;
+    }
+    q += `\n\n请按照以下格式回答：\n答案: [你的答案]\n解释: [详细解释]\n\n注意：\n- 单选题和投票题请回答选项字母\n- 多选题请回答多个选项字母\n- 填空题请直接给出答案内容\n- 主观题请给出完整回答`;
+    return q;
+  }
+  function formatProblemForDisplay(problem, TYPE_MAP) {
+    let s = `${TYPE_MAP[problem.problemType] || "题目"}：${problem.body || ""}`;
+    if (problem.options?.length) {
+      s += "\n\n选项：";
+      for (const o of problem.options) s += `\n${o.key}. ${o.value}`;
+    }
+    return s;
+  }
+  function parseAIAnswer(problem, aiAnswer) {
+    try {
+      const lines = String(aiAnswer || "").split("\n");
+      let answerLine = "";
+      for (const line of lines) if (line.includes("答案:") || line.includes("答案：")) {
+        answerLine = line.replace(/答案[:：]\s*/, "").trim();
+        break;
+      }
+      if (!answerLine) answerLine = lines[0]?.trim() || "";
+      switch (problem.problemType) {
+       case 1:
+ // 单选
+               case 3:
+        {
+          // 投票
+          let m = answerLine.match(/[ABCD]/i);
+          if (m) return [ m[0].toUpperCase() ];
+          m = answerLine.match(/[A-Za-z]/);
+          if (m) return [ m[0].toUpperCase() ];
+          return null;
+        }
+
+       case 2:
+        {
+          // 多选
+          let ms = answerLine.match(/[ABCD]/gi);
+          if (ms?.length) return [ ...new Set(ms.map(x => x.toUpperCase())) ].sort();
+          ms = answerLine.match(/[A-Za-z]/g);
+          if (ms?.length) return [ ...new Set(ms.map(x => x.toUpperCase())) ].sort();
+          return null;
+        }
+
+       case 4:
+        {
+          // 填空
+          const blanks = answerLine.split(/[,，\s]+/).filter(Boolean);
+          return blanks.length ? blanks : null;
+        }
+
+       case 5:
+        // 主观
+        return {
+          content: answerLine,
+          pics: []
+        };
+
+       default:
+        return null;
+      }
+    } catch (e) {
+      console.error("[parseAIAnswer] failed", e);
+      return null;
+    }
+  }
+  // src/ai/deepseek.js
+    function queryDeepSeek(question, aiCfg) {
+    const {apiKey: apiKey, endpoint: endpoint, model: model, temperature: temperature, maxTokens: maxTokens} = aiCfg || {};
+    if (!apiKey) return Promise.reject(new Error("请先在设置中填写 DeepSeek API 密钥"));
+    return new Promise((resolve, reject) => {
+      gm.xhr({
+        method: "POST",
+        url: endpoint,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`
+        },
+        data: JSON.stringify({
+          model: model,
+          messages: [ {
+            role: "system",
+            content: "你是一个专业学习助手，你的任务是帮助回答雨课堂中的题目。请按照要求的格式回答，先给出答案，然后给出解释。"
+          }, {
+            role: "user",
+            content: question
+          } ],
+          temperature: temperature,
+          max_tokens: maxTokens
+        }),
+        onload: res => {
+          try {
+            const data = JSON.parse(res.responseText);
+            if (data.error) reject(new Error(`API错误: ${data.error.message}`)); else if (data.choices?.[0]) resolve(data.choices[0].message.content); else reject(new Error("API返回结果格式异常"));
+          } catch (e) {
+            reject(new Error(`解析API响应失败: ${e.message}`));
+          }
+        },
+        onerror: err => reject(new Error(`请求失败: ${err?.statusText || "network error"}`))
+      });
+    });
+  }
+  // src/tsm/answer.js
+    function submitAnswer(problem, result) {
+    const url = "/api/v3/lesson/problem/answer";
+    const headers = {
+      "Content-Type": "application/json",
+      xtbz: "ykt",
+      "X-Client": "h5",
+      Authorization: "Bearer " + localStorage.getItem("Authorization")
+    };
+    const data = {
+      problemId: problem.problemId,
+      problemType: problem.problemType,
+      dt: Date.now(),
+      result: result
+    };
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest;
+      xhr.open("POST", url);
+      for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
+      xhr.onload = () => {
+        try {
+          const resp = JSON.parse(xhr.responseText);
+          if (resp.code === 0) resolve(resp); else reject(new Error(`${resp.msg} (${resp.code})`));
+        } catch {
+          reject(new Error("解析响应失败"));
+        }
+      };
+      xhr.onerror = () => reject(new Error("网络请求失败"));
+      xhr.send(JSON.stringify(data));
+    });
+  }
+  // src/ui/auto-answer-popup.js
+  // 简单 HTML 转义，避免把题目中的 <> 等插入为标签
+    function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[c]));
+  }
+  /**
+   * 显示自动作答成功弹窗
+   * @param {object} problem - 题目对象
+   * @param {string} aiAnswer - 原始 AI 文本（未解析前）
+   * @param {object} [cfg] - 可选配置（用于局部覆写）
+   */  function showAutoAnswerPopup$1(problem, aiAnswer, cfg = {}) {
+    // 避免重复
+    const existed = document.getElementById("ykt-auto-answer-popup");
+    if (existed) existed.remove();
+    const popup = document.createElement("div");
+    popup.id = "ykt-auto-answer-popup";
+    popup.className = "auto-answer-popup";
+    // 模块版签名：需要传 TYPE_MAP
+        const questionText = formatProblemForDisplay(problem, ui.config && ui.config.TYPE_MAP || {});
+    // 采用“全屏遮罩 + 内部卡片”的结构，外层用于点击关闭
+        popup.innerHTML = `\n    <div class="popup-content">\n      <div class="popup-header">\n        <h4><i class="fas fa-robot"></i> AI自动作答成功</h4>\n        <span class="close-btn" title="关闭"><i class="fas fa-times"></i></span>\n      </div>\n      <div class="popup-body">\n        <div class="popup-row popup-question">\n          <div class="label">题目：</div>\n          <div class="content">${esc(questionText).replace(/\n/g, "<br>")}</div>\n        </div>\n        <div class="popup-row popup-answer">\n          <div class="label">AI回答：</div>\n          <div class="content">${esc(aiAnswer || "").replace(/\n/g, "<br>")}</div>\n        </div>\n      </div>\n    </div>\n  `;
+    document.body.appendChild(popup);
+    // 关闭按钮
+        popup.querySelector(".close-btn")?.addEventListener("click", () => popup.remove());
+    // 点击遮罩关闭（只在点击外层时才关闭）
+        popup.addEventListener("click", e => {
+      if (e.target === popup) popup.remove();
+    });
+    // 自动关闭
+        const ac = ui.config && ui.config.autoAnswerPopup || {};
+    const autoClose = cfg.autoClose ?? ac.autoClose ?? true;
+    const autoDelay = cfg.autoCloseDelay ?? ac.autoCloseDelay ?? 4e3;
+    if (autoClose) setTimeout(() => {
+      if (popup.parentNode) popup.remove();
+    }, autoDelay);
+    // 入场动画
+        requestAnimationFrame(() => popup.classList.add("visible"));
+  }
+  let mounted$4 = false;
+  let root$3;
+  function $$4(sel) {
+    return document.querySelector(sel);
+  }
+  function mountAIPanel() {
+    if (mounted$4) return root$3;
+    const host = document.createElement("div");
+    host.innerHTML = tpl$4;
+    document.body.appendChild(host.firstElementChild);
+    root$3 = document.getElementById("ykt-ai-answer-panel");
+    $$4("#ykt-ai-close")?.addEventListener("click", () => showAIPanel(false));
+    $$4("#ykt-ai-ask")?.addEventListener("click", askAIForCurrent);
+    mounted$4 = true;
+    return root$3;
+  }
+  window.addEventListener("ykt:open-ai", () => {
+    showAIPanel(true);
+ // 打开面板
+    // 可选：再次同步当前题面
+    // renderQuestion(); // 若 renderQuestion 非导出，可在 showAIPanel(true) 内部触发
+    });
+  function showAIPanel(visible = true) {
+    mountAIPanel();
+    root$3.classList.toggle("visible", !!visible);
+    if (visible) renderQuestion();
+  }
+  function setAILoading(v) {
+    mountAIPanel();
+    $$4("#ykt-ai-loading").style.display = v ? "" : "none";
+  }
+  function setAIError(msg = "") {
+    mountAIPanel();
+    const el = $$4("#ykt-ai-error");
+    el.style.display = msg ? "" : "none";
+    el.textContent = msg || "";
+  }
+  function setAIAnswer(content = "") {
+    mountAIPanel();
+    $$4("#ykt-ai-answer").textContent = content || "";
+  }
+  function renderQuestion() {
+    const p = repo.currentSlideId ? repo.slides.get(repo.currentSlideId)?.problem : null;
+    const problem = p || (repo.encounteredProblems.at(-1) ? repo.problems.get(repo.encounteredProblems.at(-1).problemId) : null);
+    const text = problem ? formatProblemForDisplay(problem, ui.config.TYPE_MAP || {}) : "未选择题目";
+    $$4("#ykt-ai-question").textContent = text;
+  }
+  async function askAIForCurrent() {
+    const slide = repo.currentSlideId ? repo.slides.get(repo.currentSlideId) : null;
+    const problem = slide?.problem || (repo.encounteredProblems.at(-1) ? repo.problems.get(repo.encounteredProblems.at(-1).problemId) : null);
+    if (!problem) return setAIError("未找到当前题目");
+    setAIError("");
+    setAILoading(true);
+    setAIAnswer("");
+    try {
+      const q = formatProblemForAI(problem, ui.config.TYPE_MAP || {});
+      const aiContent = await queryDeepSeek(q, ui.config.ai);
+      const parsed = parseAIAnswer(problem, aiContent);
+      setAILoading(false);
+      if (!parsed) return setAIError("无法解析 AI 答案");
+      setAIAnswer(`AI 建议答案：${JSON.stringify(parsed)}`);
+      const submitBtn = document.createElement("button");
+      submitBtn.textContent = "提交答案";
+      submitBtn.onclick = async () => {
+        try {
+          await submitAnswer(problem, parsed);
+          ui.toast("提交成功");
+          showAutoAnswerPopup$1(problem, typeof aiContent === "string" ? aiContent : JSON.stringify(aiContent, null, 2));
+        } catch (e) {
+          ui.toast(`提交失败: ${e.message}`);
+        }
+      };
+      $$4("#ykt-ai-answer").appendChild(document.createElement("br"));
+      $$4("#ykt-ai-answer").appendChild(submitBtn);
+    } catch (e) {
+      setAILoading(false);
+      setAIError(e.message);
+    }
+  }
+  var tpl$3 = '<div id="ykt-presentation-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>课件浏览</h3>\r\n    <div class="panel-controls">\r\n      <label>\r\n        <input type="checkbox" id="ykt-show-all-slides"> 切换全部页面/问题页面\r\n      </label>\r\n      <button id="ykt-open-problem-list">题目列表</button>\r\n      <button id="ykt-download-current">截图下载</button>\r\n      <button id="ykt-download-pdf">整册下载(PDF)</button>\r\n      <span class="close-btn" id="ykt-presentation-close"><i class="fas fa-times"></i></span>\r\n    </div>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="panel-left">\r\n      <div id="ykt-presentation-list" class="presentation-list"></div>\r\n    </div>\r\n    <div class="panel-right">\r\n      <div id="ykt-slide-view" class="slide-view">\r\n        <div class="slide-cover">\r\n          <div class="empty-message">选择左侧的幻灯片查看详情</div>\r\n        </div>\r\n        <div id="ykt-problem-view" class="problem-view"></div>\r\n      </div>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
+  let mounted$3 = false;
+  let host;
+  function $$3(sel) {
+    return document.querySelector(sel);
+  }
+  function mountPresentationPanel() {
+    if (mounted$3) return host;
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = tpl$3;
+    document.body.appendChild(wrapper.firstElementChild);
+    host = document.getElementById("ykt-presentation-panel");
+    $$3("#ykt-presentation-close")?.addEventListener("click", () => showPresentationPanel(false));
+    $$3("#ykt-open-problem-list")?.addEventListener("click", () => {
+      showPresentationPanel(false);
+      window.dispatchEvent(new CustomEvent("ykt:open-problem-list"));
+    });
+    $$3("#ykt-download-current")?.addEventListener("click", downloadCurrentSlide);
+    $$3("#ykt-download-pdf")?.addEventListener("click", downloadPresentationPDF);
+    const cb = $$3("#ykt-show-all-slides");
+    cb.checked = !!ui.config.showAllSlides;
+    cb.addEventListener("change", () => {
+      ui.config.showAllSlides = !!cb.checked;
+      ui.saveConfig();
+      updatePresentationList();
+    });
+    mounted$3 = true;
+    return host;
+  }
+  function showPresentationPanel(visible = true) {
+    mountPresentationPanel();
+    host.classList.toggle("visible", !!visible);
+    if (visible) updatePresentationList();
+  }
+  function updatePresentationList() {
+    mountPresentationPanel();
+    const list = $$3("#ykt-presentation-list");
+    list.innerHTML = "";
+    const showAll = !!ui.config.showAllSlides;
+    const presEntries = [ ...repo.presentations.values() ].slice(-ui.config.maxPresentations);
+    presEntries.forEach(pres => {
+      const item = document.createElement("div");
+      item.className = "presentation-item";
+      const title = document.createElement("div");
+      title.className = "presentation-title";
+      title.textContent = pres.title || `课件 ${pres.id}`;
+      item.appendChild(title);
+      const slidesWrap = document.createElement("div");
+      slidesWrap.className = "slide-thumb-list";
+      (pres.slides || []).forEach(s => {
+        if (!showAll && !s.problem) return;
+        const thumb = document.createElement("div");
+        thumb.className = "slide-thumb";
+        thumb.title = s.title || `第 ${s.page} 页`;
+        if (s.thumbnail) {
+          const img = document.createElement("img");
+          img.src = s.thumbnail;
+          img.alt = thumb.title;
+          thumb.appendChild(img);
+        } else thumb.textContent = s.title || String(s.page ?? "");
+        thumb.addEventListener("click", () => {
+          repo.currentPresentationId = pres.id;
+          repo.currentSlideId = s.id;
+          updateSlideView();
+        });
+        slidesWrap.appendChild(thumb);
+      });
+      item.appendChild(slidesWrap);
+      list.appendChild(item);
+    });
+  }
+  function updateSlideView() {
+    mountPresentationPanel();
+    const slideView = $$3("#ykt-slide-view");
+    const problemView = $$3("#ykt-problem-view");
+    slideView.querySelector(".slide-cover")?.classList.add("hidden");
+    problemView.innerHTML = "";
+    if (!repo.currentSlideId) {
+      slideView.querySelector(".slide-cover")?.classList.remove("hidden");
+      return;
+    }
+    const slide = repo.slides.get(repo.currentSlideId);
+    if (!slide) return;
+    const cover = document.createElement("div");
+    cover.className = "slide-cover";
+    const img = document.createElement("img");
+    img.crossOrigin = "anonymous";
+    img.src = slide.image || slide.thumbnail || "";
+    img.alt = slide.title || "";
+    cover.appendChild(img);
+    if (slide.problem) {
+      const prob = slide.problem;
+      const box = document.createElement("div");
+      box.className = "problem-box";
+      const head = document.createElement("div");
+      head.className = "problem-head";
+      head.textContent = prob.body || `题目 ${prob.problemId}`;
+      box.appendChild(head);
+      if (Array.isArray(prob.options) && prob.options.length) {
+        const opts = document.createElement("div");
+        opts.className = "problem-options";
+        prob.options.forEach(o => {
+          const li = document.createElement("div");
+          li.className = "problem-option";
+          li.textContent = `${o.key}. ${o.value}`;
+          opts.appendChild(li);
+        });
+        box.appendChild(opts);
+      }
+      problemView.appendChild(box);
+    }
+    slideView.innerHTML = "";
+    slideView.appendChild(cover);
+    slideView.appendChild(problemView);
+  }
+  async function downloadCurrentSlide() {
+    if (!repo.currentSlideId) return ui.toast("请先选择一页课件/题目");
+    const slide = repo.slides.get(repo.currentSlideId);
+    if (!slide) return;
+    try {
+      const html2canvas = await ensureHtml2Canvas();
+      const el = document.getElementById("ykt-slide-view");
+      const canvas = await html2canvas(el, {
+        useCORS: true,
+        allowTaint: false
+      });
+      const a = document.createElement("a");
+      a.download = `slide-${slide.id}.png`;
+      a.href = canvas.toDataURL("image/png");
+      a.click();
+    } catch (e) {
+      ui.toast(`截图失败: ${e.message}`);
+    }
+  }
+  async function downloadPresentationPDF() {
+    if (!repo.currentPresentationId) return ui.toast("请先在左侧选择一份课件");
+    const pres = repo.presentations.get(repo.currentPresentationId);
+    if (!pres || !Array.isArray(pres.slides) || pres.slides.length === 0) return ui.toast("未找到该课件的页面");
+    // 是否导出全部页：沿用你面板的“切换全部/题目页”开关语义
+        const showAll = !!ui.config.showAllSlides;
+    const slides = pres.slides.filter(s => showAll || s.problem);
+    if (slides.length === 0) return ui.toast("当前筛选下没有可导出的页面");
+    try {
+      // 1) 确保 jsPDF 就绪
+      await ensureJsPDF();
+      const {jsPDF: jsPDF} = window.jspdf || {};
+      if (!jsPDF) throw new Error("jsPDF 未加载成功");
+      // 2) A4 纸张（pt）：595 x 842（竖版）
+            const doc = new jsPDF({
+        unit: "pt",
+        format: "a4",
+        orientation: "portrait"
+      });
+      const pageW = 595, pageH = 842;
+      // 页边距（视觉更好看）
+            const margin = 24;
+      const maxW = pageW - margin * 2;
+      const maxH = pageH - margin * 2;
+      // 简单的图片加载器（拿到原始宽高以保持比例居中）
+            const loadImage = src => new Promise((resolve, reject) => {
+        const img = new Image;
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+      });
+      for (let i = 0; i < slides.length; i++) {
+        const s = slides[i];
+        const url = s.image || s.thumbnail;
+        if (!url) {
+          // 无图页可跳过，也可在此尝试 html2canvas 截图（复杂度更高，此处先跳过）
+          if (i > 0) doc.addPage();
+          continue;
+        }
+        // 3) 加载图片并按比例缩放到 A4
+                const img = await loadImage(url);
+        const iw = img.naturalWidth || img.width;
+        const ih = img.naturalHeight || img.height;
+        const r = Math.min(maxW / iw, maxH / ih);
+        const w = Math.floor(iw * r);
+        const h = Math.floor(ih * r);
+        const x = Math.floor((pageW - w) / 2);
+        const y = Math.floor((pageH - h) / 2);
+        // 4) 首页直接画，后续页先 addPage
+                if (i > 0) doc.addPage();
+        // 通过 <img> 对象加图（jsPDF 自动推断类型；如需可改成 'PNG'）
+                doc.addImage(img, "PNG", x, y, w, h);
+      }
+      // 5) 文件名：保留课件标题或 id
+            const name = (pres.title || `课件-${pres.id}`).replace(/[\\/:*?"<>|]/g, "_");
+      doc.save(`${name}.pdf`);
+    } catch (e) {
+      ui.toast(`导出 PDF 失败：${e.message || e}`);
+    }
+  }
+  var tpl$2 = '<div id="ykt-problem-list-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>课堂习题列表</h3>\r\n    <span class="close-btn" id="ykt-problem-list-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div id="ykt-problem-list" class="problem-list">\r\n      \x3c!-- 由 problem-list.js 动态填充：\r\n           .problem-row\r\n             .problem-title\r\n             .problem-meta\r\n             .problem-actions (查看 / AI解答 / 已作答) --\x3e\r\n    </div>\r\n  </div>\r\n</div>\r\n';
+  let mounted$2 = false;
+  let root$2;
+  function $$2(sel) {
+    return document.querySelector(sel);
+  }
+  function mountProblemListPanel() {
+    if (mounted$2) return root$2;
+    const wrap = document.createElement("div");
+    wrap.innerHTML = tpl$2;
+    document.body.appendChild(wrap.firstElementChild);
+    root$2 = document.getElementById("ykt-problem-list-panel");
+    $$2("#ykt-problem-list-close")?.addEventListener("click", () => showProblemListPanel(false));
+    window.addEventListener("ykt:open-problem-list", () => showProblemListPanel(true));
+    mounted$2 = true;
+    updateProblemList();
+    return root$2;
+  }
+  function showProblemListPanel(visible = true) {
+    mountProblemListPanel();
+    root$2.classList.toggle("visible", !!visible);
+    if (visible) updateProblemList();
+  }
+  function updateProblemList() {
+    mountProblemListPanel();
+    const container = $$2("#ykt-problem-list");
+    container.innerHTML = "";
+    repo.encounteredProblems.forEach(e => {
+      const prob = repo.problems.get(e.problemId);
+      const row = document.createElement("div");
+      row.className = "problem-row";
+      const title = document.createElement("div");
+      title.className = "problem-title";
+      title.textContent = (prob?.body || e.body || `题目 ${e.problemId}`).slice(0, 120);
+      row.appendChild(title);
+      const meta = document.createElement("div");
+      meta.className = "problem-meta";
+      meta.textContent = `PID: ${e.problemId} / 类型: ${e.problemType}`;
+      row.appendChild(meta);
+      const actionsBar = document.createElement("div");
+      actionsBar.className = "problem-actions";
+      const btnGo = document.createElement("button");
+      btnGo.textContent = "查看";
+      btnGo.onclick = () => actions.navigateTo(e.presentationId, e.slide?.id || e.slideId);
+      actionsBar.appendChild(btnGo);
+      const btnAI = document.createElement("button");
+      btnAI.textContent = "AI解答";
+      btnAI.onclick = () => window.dispatchEvent(new CustomEvent("ykt:open-ai"));
+      actionsBar.appendChild(btnAI);
+      if (prob?.result) {
+        const ok = document.createElement("span");
+        ok.className = "problem-done";
+        ok.textContent = "已作答";
+        actionsBar.appendChild(ok);
+      }
+      row.appendChild(actionsBar);
+      container.appendChild(row);
+    });
+  }
+  var tpl$1 = '<div id="ykt-active-problems-panel" class="ykt-active-wrapper">\r\n  <div id="ykt-active-problems" class="active-problems"></div>\r\n</div>\r\n';
+  let mounted$1 = false;
+  let root$1;
+  function $$1(sel) {
+    return document.querySelector(sel);
+  }
+  function mountActiveProblemsPanel() {
+    if (mounted$1) return root$1;
+    const wrap = document.createElement("div");
+    wrap.innerHTML = tpl$1;
+    document.body.appendChild(wrap.firstElementChild);
+    root$1 = document.getElementById("ykt-active-problems-panel");
+    mounted$1 = true;
+    // 轻量刷新计时器
+        setInterval(() => updateActiveProblems(), 1e3);
+    return root$1;
+  }
+  function updateActiveProblems() {
+    mountActiveProblemsPanel();
+    const box = $$1("#ykt-active-problems");
+    box.innerHTML = "";
+    const now = Date.now();
+    repo.problemStatus.forEach((status, pid) => {
+      const p = repo.problems.get(pid);
+      if (!p || p.result) return;
+      const card = document.createElement("div");
+      card.className = "active-problem-card";
+      const title = document.createElement("div");
+      title.className = "ap-title";
+      title.textContent = (p.body || `题目 ${pid}`).slice(0, 80);
+      card.appendChild(title);
+      const remain = Math.max(0, Math.floor((status.endTime - now) / 1e3));
+      const info = document.createElement("div");
+      info.className = "ap-info";
+      info.textContent = `剩余 ${remain}s`;
+      card.appendChild(info);
+      const bar = document.createElement("div");
+      bar.className = "ap-actions";
+      const go = document.createElement("button");
+      go.textContent = "查看";
+      go.onclick = () => actions.navigateTo(status.presentationId, status.slideId);
+      bar.appendChild(go);
+      const ai = document.createElement("button");
+      ai.textContent = "AI 解答";
+      ai.onclick = () => window.dispatchEvent(new CustomEvent("ykt:open-ai"));
+      bar.appendChild(ai);
+      card.appendChild(bar);
+      box.appendChild(card);
+    });
+  }
+  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>AI雨课堂助手使用教程</h3>\r\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="tutorial-content">\r\n      <h4>功能介绍</h4>\r\n      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>\r\n      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-ai" target="_blank" rel="noopener">GitHub</a></p>\r\n      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai雨课堂助手" target="_blank" rel="noopener">GreasyFork</a></p>\r\n\r\n      <h4>工具栏按钮说明</h4>\r\n      <ul>\r\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>\r\n        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面。</li>\r\n        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>\r\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\r\n        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>\r\n        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>\r\n      </ul>\r\n\r\n      <h4>自动作答</h4>\r\n      <ul>\r\n        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>\r\n        <li>需要配置 DeepSeek API 密钥。</li>\r\n        <li>答案来自 AI，结果仅供参考。</li>\r\n      </ul>\r\n\r\n      <h4>AI 解答</h4>\r\n      <ol>\r\n        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>\r\n        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>\r\n      </ol>\r\n\r\n      <h4>注意事项</h4>\r\n      <p>1) 仅供学习参考，请独立思考；2) 合理使用 API 额度；3) 答案不保证 100% 正确；4) 自动作答有一定风险，谨慎开启。</p>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
+  let mounted = false;
+  let root;
+  function $(sel) {
+    return document.querySelector(sel);
+  }
+  function mountTutorialPanel() {
+    if (mounted) return root;
+    const host = document.createElement("div");
+    host.innerHTML = tpl;
+    document.body.appendChild(host.firstElementChild);
+    root = document.getElementById("ykt-tutorial-panel");
+    $("#ykt-tutorial-close")?.addEventListener("click", () => showTutorialPanel(false));
+    mounted = true;
+    return root;
+  }
+  function showTutorialPanel(visible = true) {
+    mountTutorialPanel();
+    root.classList.toggle("visible", !!visible);
+  }
+  function toggleTutorialPanel() {
+    mountTutorialPanel();
+    const vis = root.classList.contains("visible");
+    showTutorialPanel(!vis);
+    // 同步工具条按钮激活态（如果存在）
+        const helpBtn = document.getElementById("ykt-btn-help");
+    if (helpBtn) helpBtn.classList.toggle("active", !vis);
+  }
+  // src/ui/ui-api.js
+    const _config = Object.assign({}, DEFAULT_CONFIG, storage.get("config", {}));
+  _config.ai.apiKey = storage.get("aiApiKey", _config.ai.apiKey);
+  _config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
+  function saveConfig() {
+    storage.set("config", _config);
+  }
+  const ui = {
+    get config() {
+      return _config;
+    },
+    saveConfig: saveConfig,
+    updatePresentationList: updatePresentationList,
+    updateSlideView: updateSlideView,
+    askAIForCurrent: askAIForCurrent,
+    updateProblemList: updateProblemList,
+    updateActiveProblems: updateActiveProblems,
+    showPresentationPanel: showPresentationPanel,
+    showProblemListPanel: showProblemListPanel,
+    showAIPanel: showAIPanel,
+    toggleSettingsPanel: toggleSettingsPanel,
+    toggleTutorialPanel: toggleTutorialPanel,
+    // 在 index.js 初始化时挂载一次
+    _mountAll() {
+      mountSettingsPanel();
+      mountAIPanel();
+      mountPresentationPanel();
+      mountProblemListPanel();
+      mountActiveProblemsPanel();
+      mountTutorialPanel();
+      window.addEventListener("ykt:open-ai", () => showAIPanel(true));
+    },
+    notifyProblem(problem, slide) {
+      gm.notify({
+        title: "雨课堂习题提示",
+        text: this.getProblemDetail(problem),
+        image: slide?.thumbnail || null,
+        timeout: 5e3
+      });
+    },
+    getProblemDetail(problem) {
+      if (!problem) return "题目未找到";
+      const lines = [ problem.body || "" ];
+      if (Array.isArray(problem.options)) lines.push(...problem.options.map(({key: key, value: value}) => `${key}. ${value}`));
+      return lines.join("\n");
+    },
+    toast: toast,
+    nativeNotify: gm.notify,
+    // Buttons 状态
+    updateAutoAnswerBtn() {
+      const el = document.getElementById("ykt-btn-auto-answer");
+      if (!el) return;
+      if (_config.autoAnswer) el.classList.add("active"); else el.classList.remove("active");
+    }
+  };
+  // src/state/actions.js
+    const actions = {
+    onFetchTimeline(timeline) {
+      for (const piece of timeline) if (piece.type === "problem") this.onUnlockProblem(piece);
+    },
+    onPresentationLoaded(id, data) {
+      repo.setPresentation(id, data);
+      const pres = repo.presentations.get(id);
+      for (const slide of pres.slides) {
+        repo.upsertSlide(slide);
+        if (slide.problem) {
+          repo.upsertProblem(slide.problem);
+          repo.pushEncounteredProblem(slide.problem, slide, id);
+        }
+      }
+      ui.updatePresentationList();
+    },
+    onUnlockProblem(data) {
+      const problem = repo.problems.get(data.prob);
+      const slide = repo.slides.get(data.sid);
+      if (!problem || !slide) return;
+      const status = {
+        presentationId: data.pres,
+        slideId: data.sid,
+        startTime: data.dt,
+        endTime: data.dt + 1e3 * data.limit,
+        done: !!problem.result,
+        autoAnswerTime: null,
+        answering: false
+      };
+      repo.problemStatus.set(data.prob, status);
+      if (Date.now() > status.endTime || problem.result) return;
+      // toast + 通知
+            if (ui.config.notifyProblems) ui.notifyProblem(problem, slide);
+      // 自动作答
+            if (ui.config.autoAnswer) {
+        const delay = ui.config.autoAnswerDelay + randInt(0, ui.config.autoAnswerRandomDelay);
+        status.autoAnswerTime = Date.now() + delay;
+        ui.toast(`将在 ${Math.floor(delay / 1e3)} 秒后自动作答本题`, 3e3);
+      }
+      ui.updateActiveProblems();
+    },
+    onLessonFinished() {
+      ui.nativeNotify({
+        title: "下课提示",
+        text: "当前课程已结束",
+        timeout: 5e3
+      });
+    },
+    onAnswerProblem(problemId, result) {
+      const p = repo.problems.get(problemId);
+      if (p) {
+        p.result = result;
+        const i = repo.encounteredProblems.findIndex(e => e.problemId === problemId);
+        if (i !== -1) repo.encounteredProblems[i].result = result;
+        ui.updateProblemList();
+      }
+    },
+    async handleAutoAnswer(problem) {
+      const status = repo.problemStatus.get(problem.problemId);
+      if (!status || status.answering || problem.result) return;
+      if (Date.now() >= status.endTime) return;
+      try {
+        const q = formatProblemForAI(problem, PROBLEM_TYPE_MAP);
+        const aiAnswer = await queryDeepSeek(q, ui.config.ai);
+        const parsed = parseAIAnswer(problem, aiAnswer);
+        if (!parsed) return ui.toast("无法解析AI答案，跳过自动作答", 2e3);
+        await submitAnswer(problem, parsed);
+        this.onAnswerProblem(problem.problemId, parsed);
+        ui.toast(`自动作答完成: ${String(problem.body || "").slice(0, 30)}...`, 3e3);
+        showAutoAnswerPopup(problem, typeof aiAnswer === "string" ? aiAnswer : JSON.stringify(aiAnswer, null, 2));
+      } catch (e) {
+        console.error("[AutoAnswer] failed", e);
+        ui.toast(`自动作答失败: ${e.message}`, 3e3);
+      }
+    },
+    // 定时器驱动（由 index.js 安装）
+    tickAutoAnswer() {
+      const now = Date.now();
+      for (const [pid, status] of repo.problemStatus) if (status.autoAnswerTime !== null && now >= status.autoAnswerTime) {
+        const p = repo.problems.get(pid);
+        if (p) {
+          status.autoAnswerTime = null;
+          this.handleAutoAnswer(p);
+        }
+      }
+    },
+    async submit(problem, content) {
+      const result = this.parseManual(problem.problemType, content);
+      await submitAnswer(problem, result);
+      this.onAnswerProblem(problem.problemId, result);
+    },
+    parseManual(problemType, content) {
+      switch (problemType) {
+       case 1:
+       case 2:
+       case 3:
+        return content.split("").sort();
+
+       case 4:
+        return content.split("\n").filter(Boolean);
+
+       case 5:
+        return {
+          content: content,
+          pics: []
+        };
+
+       default:
+        return null;
+      }
+    },
+    navigateTo(presId, slideId) {
+      repo.currentPresentationId = presId;
+      repo.currentSlideId = slideId;
+      ui.updateSlideView();
+      ui.showPresentationPanel(true);
+    }
+  };
+  // src/net/ws-interceptor.js
+    function installWSInterceptor() {
+    class MyWebSocket extends WebSocket {
+      static handlers=[];
+      static addHandler(h) {
+        this.handlers.push(h);
+      }
+      constructor(url, protocols) {
+        super(url, protocols);
+        const parsed = new URL(url, location.href);
+        for (const h of this.constructor.handlers) h(this, parsed);
+      }
+      intercept(cb) {
+        const raw = this.send;
+        this.send = data => {
+          try {
+            cb(JSON.parse(data));
+          } catch {}
+          return raw.call(this, data);
+        };
+      }
+      listen(cb) {
+        this.addEventListener("message", e => {
+          try {
+            cb(JSON.parse(e.data));
+          } catch {}
+        });
+      }
+    }
+    MyWebSocket.addHandler((ws, url) => {
+      if (url.pathname === "/wsapp/") ws.listen(msg => {
+        switch (msg.op) {
+         case "fetchtimeline":
+          actions.onFetchTimeline(msg.timeline);
+          break;
+
+         case "unlockproblem":
+          actions.onUnlockProblem(msg.problem);
+          break;
+
+         case "lessonfinished":
+          actions.onLessonFinished();
+          break;
+        }
+      });
+    });
+    gm.uw.WebSocket = MyWebSocket;
+  }
+  // src/net/xhr-interceptor.js
+    function installXHRInterceptor() {
+    class MyXHR extends XMLHttpRequest {
+      static handlers=[];
+      static addHandler(h) {
+        this.handlers.push(h);
+      }
+      open(method, url, async) {
+        const parsed = new URL(url, location.href);
+        for (const h of this.constructor.handlers) h(this, method, parsed);
+        return super.open(method, url, async ?? true);
+      }
+      intercept(cb) {
+        let payload;
+        const rawSend = this.send;
+        this.send = body => {
+          payload = body;
+          return rawSend.call(this, body);
+        };
+        this.addEventListener("load", () => {
+          try {
+            cb(JSON.parse(this.responseText), payload);
+          } catch {}
+        });
+      }
+    }
+    MyXHR.addHandler((xhr, method, url) => {
+      if (url.pathname === "/api/v3/lesson/presentation/fetch") xhr.intercept(resp => {
+        const id = url.searchParams.get("presentation_id");
+        if (resp?.code === 0) actions.onPresentationLoaded(id, resp.data);
+      });
+      if (url.pathname === "/api/v3/lesson/problem/answer") xhr.intercept((resp, payload) => {
+        try {
+          const {problemId: problemId, result: result} = JSON.parse(payload || "{}");
+          if (resp?.code === 0) actions.onAnswerProblem(problemId, result);
+        } catch {}
+      });
+      if (url.pathname === "/api/v3/lesson/problem/retry") xhr.intercept((resp, payload) => {
+        try {
+          // retry 请求体是 { problems: [{ problemId, result, ...}] }
+          const body = JSON.parse(payload || "{}");
+          const first = Array.isArray(body?.problems) ? body.problems[0] : null;
+          if (resp?.code === 0 && first?.problemId) actions.onAnswerProblem(first.problemId, first.result);
+        } catch {}
+      });
+    });
+    gm.uw.XMLHttpRequest = MyXHR;
+  }
+  var css = '/* ===== 通用 & 修复 ===== */\r\n#watermark_layer { display: none !important; visibility: hidden !important; }\r\n.hidden { display: none !important; }\r\n\r\n:root{\r\n  --ykt-z: 10000000;\r\n  --ykt-border: #ddd;\r\n  --ykt-border-strong: #ccc;\r\n  --ykt-bg: #fff;\r\n  --ykt-fg: #222;\r\n  --ykt-muted: #607190;\r\n  --ykt-accent: #1d63df;\r\n  --ykt-hover: #1e3050;\r\n  --ykt-shadow: 0 10px 30px rgba(0,0,0,.18);\r\n}\r\n\r\n/* ===== 工具栏 ===== */\r\n#ykt-helper-toolbar{\r\n  position: fixed; z-index: calc(var(--ykt-z) + 1);\r\n  left: 15px; bottom: 15px;\r\n  width: 252px; height: 36px; padding: 5px;\r\n  display: flex; gap: 6px; align-items: center;\r\n  background: var(--ykt-bg);\r\n  border: 1px solid var(--ykt-border-strong);\r\n  border-radius: 4px;\r\n  box-shadow: 0 1px 4px 3px rgba(0,0,0,.1);\r\n}\r\n#ykt-helper-toolbar .btn{\r\n  display: inline-block; padding: 4px; cursor: pointer;\r\n  color: var(--ykt-muted); line-height: 1;\r\n}\r\n#ykt-helper-toolbar .btn:hover{ color: var(--ykt-hover); }\r\n#ykt-helper-toolbar .btn.active{ color: var(--ykt-accent); }\r\n\r\n/* ===== 面板通用样式 ===== */\r\n.ykt-panel{\r\n  position: fixed; right: 20px; bottom: 60px;\r\n  width: 560px; max-height: 72vh; overflow: auto;\r\n  background: var(--ykt-bg); color: var(--ykt-fg);\r\n  border: 1px solid var(--ykt-border-strong); border-radius: 8px;\r\n  box-shadow: var(--ykt-shadow);\r\n  display: none; z-index: var(--ykt-z);\r\n}\r\n.ykt-panel.visible{ display: block; }\r\n\r\n.panel-header{\r\n  display: flex; align-items: center; justify-content: space-between;\r\n  gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);\r\n}\r\n.panel-header h3{ margin: 0; font-size: 16px; font-weight: 600; }\r\n.panel-body{ padding: 10px 12px; }\r\n.close-btn{ cursor: pointer; color: var(--ykt-muted); }\r\n.close-btn:hover{ color: var(--ykt-hover); }\r\n\r\n/* ===== 设置面板 (#ykt-settings-panel) ===== */\r\n#ykt-settings-panel .settings-content{ display: flex; flex-direction: column; gap: 14px; }\r\n#ykt-settings-panel .setting-group{ border: 1px dashed var(--ykt-border); border-radius: 6px; padding: 10px; }\r\n#ykt-settings-panel .setting-group h4{ margin: 0 0 8px 0; font-size: 14px; }\r\n#ykt-settings-panel .setting-item{ display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }\r\n#ykt-settings-panel label{ font-size: 13px; }\r\n#ykt-settings-panel input[type="text"],\r\n#ykt-settings-panel input[type="number"]{\r\n  height: 30px; border: 1px solid var(--ykt-border-strong);\r\n  border-radius: 4px; padding: 0 8px; min-width: 220px;\r\n}\r\n#ykt-settings-panel small{ color: #666; }\r\n#ykt-settings-panel .setting-actions{ display: flex; gap: 8px; margin-top: 6px; }\r\n#ykt-settings-panel button{\r\n  height: 30px; padding: 0 12px; border-radius: 6px;\r\n  border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\r\n}\r\n#ykt-settings-panel button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\r\n\r\n/* 自定义复选框（与手写脚本一致的视觉语义） */\r\n#ykt-settings-panel .checkbox-label{ position: relative; padding-left: 26px; cursor: pointer; user-select: none; }\r\n#ykt-settings-panel .checkbox-label input{ position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }\r\n#ykt-settings-panel .checkbox-label .checkmark{\r\n  position: absolute; left: 0; top: 50%; transform: translateY(-50%);\r\n  height: 16px; width: 16px; border:1px solid var(--ykt-border-strong); border-radius: 3px; background: #fff;\r\n}\r\n#ykt-settings-panel .checkbox-label input:checked ~ .checkmark{\r\n  background: var(--ykt-accent); border-color: var(--ykt-accent);\r\n}\r\n#ykt-settings-panel .checkbox-label .checkmark:after{\r\n  content: ""; position: absolute; display: none;\r\n  left: 5px; top: 1px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);\r\n}\r\n#ykt-settings-panel .checkbox-label input:checked ~ .checkmark:after{ display: block; }\r\n\r\n/* ===== AI 解答面板 (#ykt-ai-answer-panel) ===== */\r\n#ykt-ai-answer-panel .ai-question{\r\n  white-space: pre-wrap; background: #fafafa; border: 1px solid var(--ykt-border);\r\n  padding: 8px; border-radius: 6px; margin-bottom: 8px; max-height: 160px; overflow: auto;\r\n}\r\n#ykt-ai-answer-panel .ai-loading{ color: var(--ykt-accent); margin-bottom: 6px; }\r\n#ykt-ai-answer-panel .ai-error{ color: #b00020; margin-bottom: 6px; }\r\n#ykt-ai-answer-panel .ai-answer{ white-space: pre-wrap; margin-top: 4px; }\r\n#ykt-ai-answer-panel .ai-actions{ margin-top: 10px; }\r\n#ykt-ai-answer-panel .ai-actions button{\r\n  height: 30px; padding: 0 12px; border-radius: 6px;\r\n  border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\r\n}\r\n#ykt-ai-answer-panel .ai-actions button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\r\n\r\n/* ===== 课件浏览面板 (#ykt-presentation-panel) ===== */\r\n#ykt-presentation-panel{ width: 900px; }\r\n#ykt-presentation-panel .panel-controls{ display: flex; align-items: center; gap: 8px; }\r\n#ykt-presentation-panel .panel-body{\r\n  display: grid; grid-template-columns: 300px 1fr; gap: 10px;\r\n}\r\n#ykt-presentation-panel .presentation-title{\r\n  font-weight: 600; padding: 6px 0; border-bottom: 1px solid var(--ykt-border);\r\n}\r\n#ykt-presentation-panel .slide-thumb-list{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }\r\n#ykt-presentation-panel .slide-thumb{\r\n  border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa;\r\n  min-height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 4px; text-align: center;\r\n}\r\n#ykt-presentation-panel .slide-thumb:hover{ border-color: var(--ykt-accent); background: #eef3ff; }\r\n#ykt-presentation-panel .slide-thumb img{ max-width: 100%; max-height: 120px; object-fit: contain; display: block; }\r\n\r\n#ykt-presentation-panel .slide-view{\r\n  position: relative; border: 1px solid var(--ykt-border); border-radius: 8px; min-height: 360px; background: #fff; overflow: hidden;\r\n}\r\n#ykt-presentation-panel .slide-cover{ display: flex; align-items: center; justify-content: center; min-height: 360px; }\r\n#ykt-presentation-panel .slide-cover img{ max-width: 100%; max-height: 100%; object-fit: contain; display: block; }\r\n\r\n#ykt-presentation-panel .problem-box{\r\n  position: absolute; left: 12px; right: 12px; bottom: 12px;\r\n  background: rgba(255,255,255,.96); border: 1px solid var(--ykt-border);\r\n  border-radius: 8px; padding: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.12);\r\n}\r\n#ykt-presentation-panel .problem-head{ font-weight: 600; margin-bottom: 6px; }\r\n#ykt-presentation-panel .problem-options{ display: grid; grid-template-columns: 1fr; gap: 4px; }\r\n#ykt-presentation-panel .problem-option{ padding: 6px 8px; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa; }\r\n\r\n/* ===== 题目列表面板 (#ykt-problem-list-panel) ===== */\r\n#ykt-problem-list{ display: flex; flex-direction: column; gap: 10px; }\r\n#ykt-problem-list .problem-row{\r\n  border: 1px solid var(--ykt-border); border-radius: 8px; padding: 8px; background: #fafafa;\r\n}\r\n#ykt-problem-list .problem-title{ font-weight: 600; margin-bottom: 4px; }\r\n#ykt-problem-list .problem-meta{ color: #666; font-size: 12px; margin-bottom: 6px; }\r\n#ykt-problem-list .problem-actions{ display: flex; gap: 8px; align-items: center; }\r\n#ykt-problem-list .problem-actions button{\r\n  height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\r\n}\r\n#ykt-problem-list .problem-actions button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\r\n#ykt-problem-list .problem-done{ color: #0a7a2f; font-weight: 600; }\r\n\r\n/* ===== 活动题目列表（右下角小卡片） ===== */\r\n#ykt-active-problems-panel.ykt-active-wrapper{\r\n  position: fixed; right: 20px; bottom: 60px; z-index: var(--ykt-z);\r\n}\r\n#ykt-active-problems{ display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow: auto; }\r\n#ykt-active-problems .active-problem-card{\r\n  width: 320px; background: #fff; border: 1px solid var(--ykt-border);\r\n  border-radius: 8px; box-shadow: var(--ykt-shadow); padding: 10px;\r\n}\r\n#ykt-active-problems .ap-title{ font-weight: 600; margin-bottom: 4px; }\r\n#ykt-active-problems .ap-info{ color: #666; font-size: 12px; margin-bottom: 8px; }\r\n#ykt-active-problems .ap-actions{ display: flex; gap: 8px; }\r\n#ykt-active-problems .ap-actions button{\r\n  height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\r\n}\r\n#ykt-active-problems .ap-actions button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\r\n\r\n/* ===== 教程面板 (#ykt-tutorial-panel) ===== */\r\n#ykt-tutorial-panel .tutorial-content h4{ margin: 8px 0 6px; }\r\n#ykt-tutorial-panel .tutorial-content p,\r\n#ykt-tutorial-panel .tutorial-content li{ line-height: 1.5; }\r\n#ykt-tutorial-panel .tutorial-content a{ color: var(--ykt-accent); text-decoration: none; }\r\n#ykt-tutorial-panel .tutorial-content a:hover{ text-decoration: underline; }\r\n\r\n/* ===== 小屏适配 ===== */\r\n@media (max-width: 1200px){\r\n  #ykt-presentation-panel{ width: 760px; }\r\n  #ykt-presentation-panel .panel-body{ grid-template-columns: 260px 1fr; }\r\n}\r\n@media (max-width: 900px){\r\n  .ykt-panel{ right: 12px; left: 12px; width: auto; }\r\n  #ykt-presentation-panel{ width: auto; }\r\n  #ykt-presentation-panel .panel-body{ grid-template-columns: 1fr; }\r\n}\r\n\r\n/* ===== 自动作答成功弹窗 ===== */\r\n.auto-answer-popup{\r\n  position: fixed; inset: 0; z-index: calc(var(--ykt-z) + 2);\r\n  background: rgba(0,0,0,.2);\r\n  display: flex; align-items: flex-end; justify-content: flex-end;\r\n  opacity: 0; transition: opacity .18s ease;\r\n}\r\n.auto-answer-popup.visible{ opacity: 1; }\r\n\r\n.auto-answer-popup .popup-content{\r\n  width: min(560px, 96vw);\r\n  background: #fff; border: 1px solid var(--ykt-border-strong);\r\n  border-radius: 10px; box-shadow: var(--ykt-shadow);\r\n  margin: 16px; overflow: hidden;\r\n}\r\n\r\n.auto-answer-popup .popup-header{\r\n  display: flex; align-items: center; justify-content: space-between;\r\n  gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);\r\n}\r\n.auto-answer-popup .popup-header h4{ margin: 0; font-size: 16px; }\r\n.auto-answer-popup .close-btn{ cursor: pointer; color: var(--ykt-muted); }\r\n.auto-answer-popup .close-btn:hover{ color: var(--ykt-hover); }\r\n\r\n.auto-answer-popup .popup-body{ padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }\r\n.auto-answer-popup .popup-row{ display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: start; }\r\n.auto-answer-popup .label{ color: #666; font-size: 12px; line-height: 1.8; }\r\n.auto-answer-popup .content{ white-space: normal; word-break: break-word; }';
+  // src/ui/styles.js
+    function injectStyles() {
+    gm.addStyle(css);
+  }
+  // src/ui/toolbar.js
+    function installToolbar() {
+    // 仅创建容器与按钮；具体面板之后用 HTML/Vue 接入
+    const bar = document.createElement("div");
+    bar.id = "ykt-helper-toolbar";
+    bar.innerHTML = `\n    <span id="ykt-btn-bell" class="btn" title="习题提醒"><i class="fas fa-bell"></i></span>\n    <span id="ykt-btn-pres" class="btn" title="课件浏览"><i class="fas fa-file-powerpoint"></i></span>\n    <span id="ykt-btn-ai" class="btn" title="AI解答"><i class="fas fa-robot"></i></span>\n    <span id="ykt-btn-auto-answer" class="btn" title="自动作答"><i class="fas fa-magic-wand-sparkles"></i></span>\n    <span id="ykt-btn-settings" class="btn" title="设置"><i class="fas fa-cog"></i></span>\n    <span id="ykt-btn-help" class="btn" title="使用教程"><i class="fas fa-question-circle"></i></span>\n  `;
+    document.body.appendChild(bar);
+    // 初始激活态
+        if (ui.config.notifyProblems) bar.querySelector("#ykt-btn-bell")?.classList.add("active");
+    ui.updateAutoAnswerBtn();
+    // 事件绑定
+        bar.querySelector("#ykt-btn-bell")?.addEventListener("click", () => {
+      ui.config.notifyProblems = !ui.config.notifyProblems;
+      ui.saveConfig();
+      ui.toast(`习题提醒：${ui.config.notifyProblems ? "开" : "关"}`);
+      bar.querySelector("#ykt-btn-bell")?.classList.toggle("active", ui.config.notifyProblems);
+    });
+    bar.querySelector("#ykt-btn-pres")?.addEventListener("click", () => ui.showPresentationPanel?.(true));
+    bar.querySelector("#ykt-btn-ai")?.addEventListener("click", async () => {
+      ui.showAIPanel?.(true);
+      try {
+        await (ui.askAIForCurrent?.());
+      } catch (e) {
+        ui.toast?.(e?.message || "AI 请求失败");
+      }
+    });
+    bar.querySelector("#ykt-btn-auto-answer")?.addEventListener("click", () => {
+      ui.config.autoAnswer = !ui.config.autoAnswer;
+      ui.saveConfig();
+      ui.toast(`自动作答：${ui.config.autoAnswer ? "开" : "关"}`);
+      ui.updateAutoAnswerBtn();
+    });
+    bar.querySelector("#ykt-btn-settings")?.addEventListener("click", () => {
+      ui.toggleSettingsPanel?.();
+    });
+    bar.querySelector("#ykt-btn-help")?.addEventListener("click", () => {
+      ui.toggleTutorialPanel?.();
+    });
+  }
+  // src/index.js
+  // 可选：统一放到 core/env.js 的 ensureFontAwesome；这里保留现有注入方式也可以
+    (function loadFA() {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css";
+    document.head.appendChild(link);
+  })();
+  (function main() {
+    // 1) 样式/图标
+    injectStyles();
+    // 2) 先挂 UI（面板、事件桥接）
+        ui._mountAll?.();
+ // ✅ 现在 ui 已导入，确保执行到位
+    // 3) 再装网络拦截
+        installWSInterceptor();
+    installXHRInterceptor();
+    // 4) 装工具条（按钮会用到 ui.config 状态）
+        installToolbar();
+    // 5) 启动自动作答轮询（替代原来的 tickAutoAnswer 占位）
+        actions.startAutoAnswerLoop();
+  })();
+})();

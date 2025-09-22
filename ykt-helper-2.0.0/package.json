@@ -1,0 +1,21 @@
+{
+  "name": "ykt-helper-userscript",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "postbuild": "node -e \"console.log('\\n✅ Build done: dist/ykt-helper.user.js')\""
+  },
+  "devDependencies": {
+    "@bkuri/rollup-plugin-string": "^1.0.0",
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-replace": "^5.0.7",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "rollup": "^4.21.2",
+    "typescript": "^5.6.3"
+  }
+}
