@@ -2,7 +2,7 @@ import tpl from './ai.html';
 import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
 import { formatProblemForAI, formatProblemForDisplay, parseAIAnswer } from '../../tsm/ai-format.js';
-import { queryDeepSeek } from '../../ai/deepseek.js';
+import { queryKimi } from '../../ai/kimi.js';
 import { submitAnswer } from '../../tsm/answer.js';
 import { showAutoAnswerPopup } from '../panels/auto-answer-popup.js';
 
@@ -79,7 +79,7 @@ export async function askAIForCurrent() {
 
   try {
     const q = formatProblemForAI(problem, ui.config.TYPE_MAP || {});
-    const aiContent = await queryDeepSeek(q, ui.config.ai);
+    const aiContent = await queryKimi(q, ui.config.ai);
     const parsed = parseAIAnswer(problem, aiContent);
 
     setAILoading(false);

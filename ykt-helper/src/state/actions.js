@@ -6,10 +6,32 @@ import { repo } from './repo.js';
 import { ui } from '../ui/ui-api.js';
 import { submitAnswer, retryAnswer } from '../tsm/answer.js';
 import { formatProblemForAI, formatProblemForDisplay, parseAIAnswer } from '../tsm/ai-format.js';
-import { queryDeepSeek } from '../ai/deepseek.js';
+import { queryKimi } from '../ai/kimi.js';
 import { showAutoAnswerPopup } from '../ui/panels/auto-answer-popup.js';
 
 let _autoLoopStarted = false;
+
+// 内部自动答题处理函数
+async function handleAutoAnswerInternal(problem) {
+  const status = repo.problemStatus.get(problem.problemId);
+  if (!status || status.answering || problem.result) return;
+  if (Date.now() >= status.endTime) return;
+
+  try {
+    const q = formatProblemForAI(problem, PROBLEM_TYPE_MAP);
+    const aiAnswer = await queryKimi(q, ui.config.ai);
+    const parsed = parseAIAnswer(problem, aiAnswer);
+    if (!parsed) return ui.toast('无法解析AI答案，跳过自动作答', 2000);
+
+    await submitAnswer(problem, parsed);
+    actions.onAnswerProblem(problem.problemId, parsed);
+    ui.toast(`自动作答完成: ${String(problem.body || '').slice(0, 30)}...`, 3000);
+    showAutoAnswerPopup(problem, typeof aiAnswer === 'string' ? aiAnswer : JSON.stringify(aiAnswer, null, 2));
+  } catch (e) {
+    console.error('[AutoAnswer] failed', e);
+    ui.toast(`自动作答失败: ${e.message}`, 3000);
+  }
+}
 
 export function startAutoAnswerLoop() {
   if (_autoLoopStarted) return;
@@ -22,7 +44,7 @@ export function startAutoAnswerLoop() {
         const problem = repo.problems.get(pid);
         if (problem && !problem.result) {
           status.autoAnswerTime = null;      // 防重入
-          actions.handleAutoAnswer(problem); // 已实现
+          handleAutoAnswerInternal(problem); // 使用内部函数
         }
       }
     });
@@ -92,24 +114,7 @@ export const actions = {
   },
 
   async handleAutoAnswer(problem) {
-    const status = repo.problemStatus.get(problem.problemId);
-    if (!status || status.answering || problem.result) return;
-    if (Date.now() >= status.endTime) return;
-
-    try {
-      const q = formatProblemForAI(problem, PROBLEM_TYPE_MAP);
-      const aiAnswer = await queryDeepSeek(q, ui.config.ai);
-      const parsed = parseAIAnswer(problem, aiAnswer);
-      if (!parsed) return ui.toast('无法解析AI答案，跳过自动作答', 2000);
-
-      await submitAnswer(problem, parsed);
-      this.onAnswerProblem(problem.problemId, parsed);
-      ui.toast(`自动作答完成: ${String(problem.body || '').slice(0, 30)}...`, 3000);
-      showAutoAnswerPopup(problem, typeof aiAnswer === 'string' ? aiAnswer : JSON.stringify(aiAnswer, null, 2));
-    } catch (e) {
-      console.error('[AutoAnswer] failed', e);
-      ui.toast(`自动作答失败: ${e.message}`, 3000);
-    }
+    return handleAutoAnswerInternal(problem);
   },
 
   // 定时器驱动（由 index.js 安装）
@@ -166,7 +171,7 @@ export const actions = {
         window.GM_saveTab(tab);
       });
     }
-  // 载入“本课”的历史课件
+  // 载入"本课"的历史课件
     repo.loadStoredPresentations();
   },
 };

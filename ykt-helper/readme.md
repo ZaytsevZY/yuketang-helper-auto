@@ -22,9 +22,9 @@ npm run dev          # 开发模式（监听文件变化）
 src/
 ├── index.js                    # 主入口
 ├── ai/                         # AI 服务
-│   ├── deepseek.js            # DeepSeek API 调用
-│   ├── gpt.ts                 # GPT API（未实现）
-│   └── kimi.ts                # Kimi API（未实现）
+│   ├── kimi.js                # Kimi API 调用（主要AI服务）
+│   ├── deepseek.js            # DeepSeek API（备用）
+│   └── gpt.ts                 # GPT API（未实现）
 ├── capture/
 │   └── screenshoot.js         # 截图功能
 ├── core/                      # 核心配置
@@ -104,11 +104,20 @@ export const ui = {
 }
 ```
 
-### ai/deepseek.js - AI 服务
+### ai/kimi.js - AI 服务（主要）
+```javascript
+export function queryKimi(question, aiCfg)
+// 参数: question(题目), aiCfg(配置)
+// 返回: Promise<string> AI回答
+// 使用 Kimi (Moonshot AI) 提供智能答题服务
+```
+
+### ai/deepseek.js - AI 服务（备用）
 ```javascript
 export function queryDeepSeek(question, aiCfg)
 // 参数: question(题目), aiCfg(配置)
 // 返回: Promise<string> AI回答
+// 备用 AI 服务
 ```
 
 ### tsm/answer.js - 答题接口
@@ -130,13 +139,23 @@ export class StorageManager {
 
 ## 面板组件
 
-- `settings`: 配置 API Key、自动答题参数
-- `ai`: AI 问答交互
+- `settings`: 配置 Kimi API Key、自动答题参数
+- `ai`: AI 问答交互（基于 Kimi）
 - `presentation`: 课件浏览与下载
 - `problem-list`: 题目历史记录
 - `active-problems`: 当前活跃题目
 - `tutorial`: 使用教程
 - `auto-answer-popup`: 自动答题结果弹窗
+
+## AI 服务配置
+
+### Kimi API 配置
+1. 访问 [Kimi开放平台](https://platform.moonshot.cn/) 申请 API Key
+2. 在设置面板中配置 Kimi API Key
+3. 系统将使用 `kimi-k2-0905-preview` 模型进行智能答题
+
+### API 兼容性
+项目使用 OpenAI 兼容的 API 格式，便于后续扩展其他AI服务。
 
 ## 配置文件
 
@@ -153,3 +172,5 @@ export class StorageManager {
 3. 样式统一在 `styles.css` 中定义
 4. 网络请求通过拦截器统一处理
 5. 状态管理集中在 `repo` 和 `actions` 中
+6. AI 服务采用 Kimi 作为主要服务，DeepSeek 作为备用选项
+7. 所有AI API调用都遵循OpenAI兼容格式，便于扩展
