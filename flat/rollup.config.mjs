@@ -6,7 +6,7 @@ import terser from '@rollup/plugin-terser';
 import { meta } from './userscript.meta.js';
 
 /** 产物文件名 */
-const OUT_FILE = 'dist/ykt-helper-1170.user.js';
+const OUT_FILE = 'dist/ykt-helper-1168.user.js';
 
 export default {
   input: 'src/index.js',
@@ -15,21 +15,14 @@ export default {
     format: 'iife',         // Userscript 友好
     sourcemap: false,
     // ✅ 把 Userscript 头部固定注入到产物顶部
-    banner: () => meta,
-    // ✅ 强制禁用代码分割，将所有代码打包到一个文件
-    inlineDynamicImports: true
+    banner: () => meta
   },
   plugins: [
     // 允许 import 模板与样式为字符串（与现有用法一致）
     string({ include: ['**/*.html', '**/*.css'] }),
 
     // 解析依赖 / CJS 转 ESM
-    resolve({ 
-      browser: true, 
-      preferBuiltins: false,
-      // ✅ 确保所有依赖都被内联
-      exportConditions: ['browser']
-    }),
+    resolve({ browser: true, preferBuiltins: false }),
     commonjs(),
 
     // 编译期替换（可保留你已有变量）
@@ -41,7 +34,7 @@ export default {
       }
     }),
 
-    // ✅ 仅做"美化 + 保留注释"，禁止激进压缩/混淆
+    // ✅ 仅做“美化 + 保留注释”，禁止激进压缩/混淆
     terser({
       mangle: false,                 // 不混淆，便于阅读/调试
       compress: {
@@ -55,13 +48,5 @@ export default {
         comments: 'all'              // ✅ 保留全部注释（尤其是 Userscript 头）
       }
     })
-  ],
-  
-  // ✅ 关键配置：禁用代码分割相关功能
-  external: [],  // 不外部化任何模块
-  
-  // ✅ 如果有 treeshaking 问题，可以适当调整
-  treeshake: {
-    moduleSideEffects: true  // 保持模块副作用，避免过度摇树
-  }
+  ]
 };

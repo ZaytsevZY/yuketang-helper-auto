@@ -8,7 +8,6 @@ import { submitAnswer, retryAnswer } from '../tsm/answer.js';
 import { formatProblemForAI, formatProblemForDisplay, parseAIAnswer } from '../tsm/ai-format.js';
 import { queryKimi } from '../ai/kimi.js';
 import { showAutoAnswerPopup } from '../ui/panels/auto-answer-popup.js';
-import { captureProblemForVision } from '../capture/screenshoot.js';
 
 let _autoLoopStarted = false;
 
@@ -19,30 +18,9 @@ async function handleAutoAnswerInternal(problem) {
   if (Date.now() >= status.endTime) return;
 
   try {
-    let aiAnswer, parsed;
-    
-    // 优先使用文本模式，如果没有题干则使用Vision模式
-    if (problem.body && problem.body.trim()) {
-      const q = formatProblemForAI(problem, PROBLEM_TYPE_MAP);
-      aiAnswer = await queryKimi(q, ui.config.ai);
-      parsed = parseAIAnswer(problem, aiAnswer);
-    }
-    
-    // 如果文本模式失败或没有题干，尝试Vision模式
-    if (!parsed) {
-      const { captureProblemForVision } = await import('../capture/screenshoot.js');
-      const { queryKimiVision } = await import('../ai/kimi.js');
-      
-      const imageBase64 = await captureProblemForVision();
-      if (imageBase64) {
-        const textPrompt = problem.body ? 
-          `请结合题目信息分析图片：\n${formatProblemForAI(problem, PROBLEM_TYPE_MAP)}` :
-          '请分析图片中的题目并给出答案';
-        aiAnswer = await queryKimiVision(imageBase64, textPrompt, ui.config.ai);
-        parsed = parseAIAnswer(problem, aiAnswer);
-      }
-    }
-    
+    const q = formatProblemForAI(problem, PROBLEM_TYPE_MAP);
+    const aiAnswer = await queryKimi(q, ui.config.ai);
+    const parsed = parseAIAnswer(problem, aiAnswer);
     if (!parsed) return ui.toast('无法解析AI答案，跳过自动作答', 2000);
 
     await submitAnswer(problem, parsed);

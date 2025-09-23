@@ -13,12 +13,10 @@ export const DEFAULT_CONFIG = {
   autoAnswerDelay: 3000,
   autoAnswerRandomDelay: 2000,
   ai: {
-    provider: 'kimi', // ✅ 改为 kimi
-    kimiApiKey: '', // ✅ 添加 kimi 专用字段
-    apiKey: '', // 保持兼容
-    endpoint: 'https://api.moonshot.cn/v1/chat/completions', // ✅ Kimi API 端点
-    model: 'moonshot-v1-8k', // ✅ 文本模型
-    visionModel: 'moonshot-v1-8k-vision-preview', // ✅ 添加 Vision 模型配置
+    provider: 'deepseek',
+    apiKey: '',
+    endpoint: 'https://api.deepseek.com/v1/chat/completions',
+    model: 'deepseek-chat',
     temperature: 0.3,
     maxTokens: 1000,
   },
