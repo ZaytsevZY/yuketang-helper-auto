@@ -6,7 +6,12 @@
     </span>
   </div>
   <div class="panel-body">
-    <div id="ykt-ai-question" class="ai-question">正在思考中...</div>
+    <div class="ai-question-wrap">
+      <textarea id="ykt-ai-question-input" class="ai-question" placeholder="在此编辑要询问 AI 的题目…"></textarea>
+      <div class="ai-question-hint" style="font-size:12px;color:#666;margin-top:6px;">
+        提示：可直接编辑上面的题面再点击“向 AI 询问当前题目”或启用自动分析。
+      </div>
+    </div>
     <div id="ykt-ai-loading" class="ai-loading" style="display: none;">
       <i class="fas fa-spinner fa-spin"></i> AI正在分析...
     </div>

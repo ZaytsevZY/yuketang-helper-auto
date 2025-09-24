@@ -1,18 +1,25 @@
 <div id="ykt-ai-answer-panel" class="ykt-panel">
   <div class="panel-header">
-    <h3>AI 解答</h3>
-    <span class="close-btn" id="ykt-ai-close"><i class="fas fa-times"></i></span>
+    <h3><i class="fas fa-robot"></i> AI 解答</h3>
+    <span id="ykt-ai-close" class="close-btn" title="关闭">
+      <i class="fas fa-times"></i>
+    </span>
   </div>
-
   <div class="panel-body">
-    <div id="ykt-ai-question" class="ai-question"></div>
-    <div id="ykt-ai-loading" class="ai-loading" style="display:none;">
-      <i class="fas fa-circle-notch fa-spin"></i> 正在思考中...
+    <div class="ai-question-wrap">
+      <textarea id="ykt-ai-question-input" class="ai-question" placeholder="在此编辑要询问 AI 的题目…"></textarea>
+      <div class="ai-question-hint" style="font-size:12px;color:#666;margin-top:6px;">
+        提示：可直接编辑上面的题面再点击“向 AI 询问当前题目”或启用自动分析。
+      </div>
     </div>
-    <div id="ykt-ai-error" class="ai-error" style="display:none;"></div>
+    <div id="ykt-ai-loading" class="ai-loading" style="display: none;">
+      <i class="fas fa-spinner fa-spin"></i> AI正在分析...
+    </div>
+    <div id="ykt-ai-error" class="ai-error" style="display: none;"></div>
     <div id="ykt-ai-answer" class="ai-answer"></div>
     <div class="ai-actions">
       <button id="ykt-ai-ask">向 AI 询问当前题目</button>
+      <button id="ykt-ai-ask-vision">Vision模式分析</button>
     </div>
   </div>
 </div>

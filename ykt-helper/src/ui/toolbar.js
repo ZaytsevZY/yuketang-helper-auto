@@ -43,15 +43,6 @@ export function installToolbar() {
     const isActive = btn.classList.contains('active');
     ui.showAIPanel?.(!isActive);
     btn.classList.toggle('active', !isActive);
-    
-    // 只在打开时执行AI查询
-    if (!isActive) {
-      try {
-        ui.askAIForCurrent?.();
-      } catch (e) {
-        ui.toast?.(e?.message || 'AI 请求失败');
-      }
-    }
   });
 
   bar.querySelector('#ykt-btn-auto-answer')?.addEventListener('click', () => {

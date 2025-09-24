@@ -6,7 +6,7 @@ import terser from '@rollup/plugin-terser';
 import { meta } from './userscript.meta.js';
 
 /** 产物文件名 */
-const OUT_FILE = 'dist/ykt-helper-1168.user.js';
+const OUT_FILE = 'dist/ykt-helper-1171.user.js';
 
 export default {
   input: 'src/index.js',

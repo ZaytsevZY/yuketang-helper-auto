@@ -16,11 +16,13 @@ export function mountSettingsPanel() {
   // 初始化表单
   const $api = root.querySelector('#kimi-api-key');
   const $auto = root.querySelector('#ykt-input-auto-answer');
+  const $autoAnalyze = root.querySelector('#ykt-input-ai-auto-analyze');
   const $delay = root.querySelector('#ykt-input-answer-delay');
   const $rand = root.querySelector('#ykt-input-random-delay');
 
   $api.value = ui.config.ai.kimiApiKey || '';
   $auto.checked = !!ui.config.autoAnswer;
+  $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
   $delay.value = Math.floor(ui.config.autoAnswerDelay / 1000);
   $rand.value = Math.floor(ui.config.autoAnswerRandomDelay / 1000);
 
@@ -29,6 +31,7 @@ export function mountSettingsPanel() {
   root.querySelector('#ykt-btn-settings-save').addEventListener('click', () => {
     ui.config.ai.kimiApiKey = $api.value.trim();
     ui.config.autoAnswer = !!$auto.checked;
+    ui.config.aiAutoAnalyze = !!$autoAnalyze.checked;
     ui.config.autoAnswerDelay = Math.max(1000, (+$delay.value || 0) * 1000);
     ui.config.autoAnswerRandomDelay = Math.max(0, (+$rand.value || 0) * 1000);
 
@@ -42,6 +45,7 @@ export function mountSettingsPanel() {
     if (!confirm('确定要重置为默认设置吗？')) return;
     Object.assign(ui.config, DEFAULT_CONFIG);
     ui.config.ai.kimiApiKey = '';
+    ui.config.aiAutoAnalyze = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
     storage.set('kimiApiKey', '');
     ui.saveConfig();
     ui.updateAutoAnswerBtn();
@@ -50,6 +54,7 @@ export function mountSettingsPanel() {
     $auto.checked = DEFAULT_CONFIG.autoAnswer;
     $delay.value = Math.floor(DEFAULT_CONFIG.autoAnswerDelay / 1000);
     $rand.value = Math.floor(DEFAULT_CONFIG.autoAnswerRandomDelay / 1000);
+    $autoAnalyze.checked = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
 
     ui.toast('设置已重置');
   });
