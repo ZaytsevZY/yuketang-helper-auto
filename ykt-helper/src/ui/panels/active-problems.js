@@ -29,9 +29,22 @@ export function updateActiveProblems() {
   box.innerHTML = '';
 
   const now = Date.now();
+  let hasActiveProblems = false; // ✅ 跟踪是否有活跃题目
+
   repo.problemStatus.forEach((status, pid) => {
     const p = repo.problems.get(pid);
     if (!p || p.result) return;
+
+    const remain = Math.max(0, Math.floor((status.endTime - now) / 1000));
+    
+    // ✅ 如果倒计时结束（剩余时间为0），跳过显示这个卡片
+    if (remain <= 0) {
+      console.log(`[ActiveProblems] 题目 ${pid} 倒计时已结束，移除卡片`);
+      return;
+    }
+
+    // ✅ 有至少一个活跃题目
+    hasActiveProblems = true;
 
     const card = document.createElement('div');
     card.className = 'active-problem-card';
@@ -41,7 +54,6 @@ export function updateActiveProblems() {
     title.textContent = (p.body || `题目 ${pid}`).slice(0, 80);
     card.appendChild(title);
 
-    const remain = Math.max(0, Math.floor((status.endTime - now) / 1000));
     const info = document.createElement('div');
     info.className = 'ap-info';
     info.textContent = `剩余 ${remain}s`;
@@ -63,4 +75,11 @@ export function updateActiveProblems() {
     card.appendChild(bar);
     box.appendChild(card);
   });
+
+  // ✅ 如果没有活跃题目，隐藏整个面板容器
+  if (!hasActiveProblems) {
+    root.style.display = 'none';
+  } else {
+    root.style.display = '';
+  }
 }

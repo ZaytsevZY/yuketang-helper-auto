@@ -1,9 +1,25 @@
 // src/tsm/ai-format.js
 
+// 预处理题目内容，去除题目类型标识
+function cleanProblemBody(body, problemType, TYPE_MAP) {
+  if (!body) return '';
+  
+  const typeLabel = TYPE_MAP[problemType];
+  if (!typeLabel) return body;
+  
+  // 去除题目开头的类型标识，如 "填空题：" "单选题：" 等
+  const pattern = new RegExp(`^${typeLabel}[：:\\s]+`, 'i');
+  return body.replace(pattern, '').trim();
+}
+
 // 改进的 AI prompt 格式化函数
 export function formatProblemForAI(problem, TYPE_MAP) {
   const problemType = TYPE_MAP[problem.problemType] || '题目';
-  let q = `请分析以下${problemType}并严格按照要求格式回答。\n\n题目：${problem.body || ''}`;
+  
+  // ✅ 清理题目内容
+  const cleanBody = cleanProblemBody(problem.body, problem.problemType, TYPE_MAP);
+  
+  let q = `分析以下${problemType}并按格式回答：\n\n题目：${cleanBody}`;
   
   if (problem.options?.length) {
     q += '\n选项：';
@@ -13,75 +29,43 @@ export function formatProblemForAI(problem, TYPE_MAP) {
   // 根据题目类型给出精确的格式要求
   switch (problem.problemType) {
     case 1: // 单选题
-      q += `
-
-请严格按照以下格式回答：
-答案: [单个字母，如A]
-解释: [简要解释，50字以内]
-
-重要提醒：
-- 单选题只能选择一个选项
-- 答案必须是单个大写字母（A、B、C、D等）
-- 解释要简洁明了`;
+      q += `\n\n格式要求：\n答案: [单个字母]\n解释: [简要说明]\n\n注意：只选一个选项，答案为大写字母如A`;
       break;
 
     case 2: // 多选题
-      q += `
-
-请严格按照以下格式回答：
-答案: [多个字母用顿号分开，如A、B、C]
-解释: [简要解释，80字以内]
-
-重要提醒：
-- 多选题可以选择多个选项
-- 多个答案用中文顿号（、）分开
-- 所有字母必须大写`;
+      q += `\n\n格式要求：\n答案: [多个字母用顿号分开]\n解释: [简要说明]\n\n注意：可选多个，格式如A、B、C`;
       break;
 
     case 3: // 投票题
-      q += `
-
-请严格按照以下格式回答：
-答案: [单个字母，如A]
-解释: [简要解释，50字以内]
-
-重要提醒：
-- 投票题只能选择一个选项
-- 答案必须是单个大写字母`;
+      q += `\n\n格式要求：\n答案: [单个字母]\n解释: [简要说明]\n\n注意：只选一个选项，答案为大写字母`;
       break;
 
     case 4: // 填空题
-      q += `
+      q += `\n\n这是一道填空题。
 
-请严格按照以下格式回答：
-答案: [填空内容]
-解释: [简要解释，60字以内]
+重要说明：
+- 题目内容已经去除了"填空题："等标识
+- 你只需要分析题目要求，给出需要填入的答案
+- 不要在答案中重复任何题目类型的字样
 
-重要提醒：
-- 如果有多个空，用逗号分开
-- 答案要准确简洁
-- 避免冗余词汇`;
+格式要求：
+答案: [直接给出需要填入的内容]
+解释: [简要说明]
+
+示例：
+如果题目是"光合作用的产物是___和___"
+答案: 氧气,葡萄糖
+解释: 光合作用产生氧气和葡萄糖
+
+多个填空用逗号分开`;
       break;
 
     case 5: // 主观题
-      q += `
-
-请严格按照以下格式回答：
-答案: [完整回答，100字以内，题目复杂可适当增加]
-解释: [补充说明，可选]
-
-重要提醒：
-- 主观题需要完整回答
-- 控制在100字以内，特别复杂的题目可以适当增加
-- 要点清晰，逻辑明确`;
+      q += `\n\n格式要求：\n答案: [完整回答]\n解释: [补充说明，可选]\n\n注意：直接回答问题，不要重复题目`;
       break;
 
     default:
-      q += `
-
-请严格按照以下格式回答：
-答案: [你的答案]
-解释: [详细解释]`;
+      q += `\n\n格式要求：\n答案: [你的答案]\n解释: [详细解释]`;
   }
 
   return q;
@@ -92,89 +76,60 @@ export function formatProblemForVision(problem, TYPE_MAP, hasTextInfo = false) {
   const problemType = TYPE_MAP[problem.problemType] || '题目';
   
   let basePrompt = hasTextInfo 
-    ? `请结合提供的文本信息和图片内容分析以下${problemType}，并严格按照格式要求回答。`
-    : `请仔细观察图片内容，识别并分析${problemType}，严格按照格式要求回答。`;
+    ? `结合文本信息和图片内容分析${problemType}，按格式回答：`
+    : `观察图片内容，识别${problemType}并按格式回答：`;
 
   if (hasTextInfo && problem.body) {
-    basePrompt += `\n\n【文本信息】\n题目：${problem.body}`;
+    // ✅ 清理题目内容
+    const cleanBody = cleanProblemBody(problem.body, problem.problemType, TYPE_MAP);
+    
+    basePrompt += `\n\n【文本信息】\n题目：${cleanBody}`;
     if (problem.options?.length) {
       basePrompt += '\n选项：';
       for (const o of problem.options) basePrompt += `\n${o.key}. ${o.value}`;
     }
-    basePrompt += '\n\n【要求】请结合图片内容验证并完善上述信息，如有冲突以图片为准。';
-  } else {
-    basePrompt += '\n\n【要求】请完全基于图片内容识别题目类型、题干和选项。';
+    basePrompt += '\n\n若图片内容与文本冲突，以图片为准。';
   }
 
   // 根据题目类型添加具体格式要求
   switch (problem.problemType) {
     case 1: // 单选题
-      basePrompt += `
-
-请严格按照以下格式回答：
-答案: [单个字母，如A]
-解释: [选择理由，50字以内]
-
-格式要求：
-- 必须是单个大写字母
-- 解释简洁明了`;
+      basePrompt += `\n\n格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个，如A`;
       break;
 
     case 2: // 多选题
-      basePrompt += `
-
-请严格按照以下格式回答：
-答案: [多个字母用顿号分开，如A、B、C]
-解释: [选择理由，80字以内]
-
-格式要求：
-- 多个选项用中文顿号（、）分开
-- 所有字母大写
-- 按字母顺序排列`;
+      basePrompt += `\n\n格式要求：\n答案: [多个字母用顿号分开]\n解释: [选择理由]\n\n注意：格式如A、B、C`;
       break;
 
     case 3: // 投票题
-      basePrompt += `
-
-请严格按照以下格式回答：
-答案: [单个字母，如A]
-解释: [选择理由，50字以内]
-
-格式要求：
-- 必须是单个大写字母`;
+      basePrompt += `\n\n格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个选项`;
       break;
 
     case 4: // 填空题
-      basePrompt += `
+      basePrompt += `\n\n这是一道填空题。
 
-请严格按照以下格式回答：
-答案: [填空内容]
-解释: [解题思路，60字以内]
+重要说明：
+- 题目内容已经处理，不含"填空题"等字样
+- 观察图片和文本，找出需要填入的内容
+- 答案中不要出现任何题目类型标识
 
 格式要求：
-- 多个空用逗号分开
-- 答案精确简洁`;
+答案: [直接给出填空内容]
+解释: [简要说明]
+
+示例：
+答案: 氧气,葡萄糖
+解释: 光合作用的产物
+
+多个填空用逗号分开`;
       break;
 
     case 5: // 主观题
-      basePrompt += `
-
-请严格按照以下格式回答：
-答案: [完整回答，100字以内]
-解释: [补充说明，可选]
-
-格式要求：
-- 回答完整但简洁
-- 一般控制在100字以内
-- 特别复杂的可适当增加`;
+      basePrompt += `\n\n格式要求：\n答案: [完整回答]\n解释: [补充说明]\n\n注意：直接回答，不要重复题目`;
       break;
 
     default:
-      basePrompt += `
-
-请严格按照以下格式回答：
-答案: [你的答案]
-解释: [详细解释]`;
+      basePrompt += `\n\n格式要求：\n答案: [你的答案]\n解释: [详细解释]`;
   }
 
   return basePrompt;
@@ -208,19 +163,17 @@ export function parseAIAnswer(problem, aiAnswer) {
       answerLine = lines[0]?.trim() || '';
     }
 
-    console.log('[parseAIAnswer] 题目类型:', problem.problemType, '答案行:', answerLine);
+    console.log('[parseAIAnswer] 题目类型:', problem.problemType, '原始答案行:', answerLine);
 
     switch (problem.problemType) {
       case 1: // 单选题
       case 3: { // 投票题
-        // 优先匹配常见选项字母
         let m = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/);
         if (m) {
           console.log('[parseAIAnswer] 单选/投票解析结果:', [m[0]]);
           return [m[0]];
         }
         
-        // 尝试从中文描述中提取
         const chineseMatch = answerLine.match(/选择?([ABCDEFGHIJKLMNOPQRSTUVWXYZ])/);
         if (chineseMatch) {
           console.log('[parseAIAnswer] 单选/投票中文解析结果:', [chineseMatch[1]]);
@@ -232,7 +185,6 @@ export function parseAIAnswer(problem, aiAnswer) {
       }
       
       case 2: { // 多选题
-        // 处理用顿号分开的格式：A、B、C
         if (answerLine.includes('、')) {
           const options = answerLine.split('、')
             .map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/))
@@ -245,7 +197,6 @@ export function parseAIAnswer(problem, aiAnswer) {
           }
         }
         
-        // 处理逗号分开的格式：A,B,C 或 A, B, C
         if (answerLine.includes(',') || answerLine.includes('，')) {
           const options = answerLine.split(/[,，]/)
             .map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/))
@@ -258,7 +209,6 @@ export function parseAIAnswer(problem, aiAnswer) {
           }
         }
         
-        // 处理连续字母格式：ABC 或 A B C
         const letters = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g);
         if (letters && letters.length > 1) {
           const result = [...new Set(letters)].sort();
@@ -266,7 +216,6 @@ export function parseAIAnswer(problem, aiAnswer) {
           return result;
         }
         
-        // 如果只有一个字母，也返回数组格式
         if (letters && letters.length === 1) {
           console.log('[parseAIAnswer] 多选单个解析结果:', letters);
           return letters;
@@ -277,23 +226,46 @@ export function parseAIAnswer(problem, aiAnswer) {
       }
       
       case 4: { // 填空题
-        // 移除可能的标点和多余空格
-        let cleanAnswer = answerLine.replace(/^[^\w\u4e00-\u9fa5]+/, '').replace(/[^\w\u4e00-\u9fa5]+$/, '');
+        // ✅ 更激进的清理策略
+        let cleanAnswer = answerLine
+          .replace(/^(填空题|简答题|问答题|题目|答案是?)[:：\s]*/gi, '')
+          .trim();
         
-        // 处理多个空的情况，支持逗号、分号等分隔符
-        const blanks = cleanAnswer.split(/[,，;；\s]+/).filter(Boolean);
-        if (blanks.length > 0) {
-          console.log('[parseAIAnswer] 填空解析结果:', blanks);
-          return blanks;
+        console.log('[parseAIAnswer] 清理后答案:', cleanAnswer);
+        
+        // 如果清理后还包含这些词，继续清理
+        if (/填空题|简答题|问答题|题目/i.test(cleanAnswer)) {
+          cleanAnswer = cleanAnswer.replace(/填空题|简答题|问答题|题目/gi, '').trim();
+          console.log('[parseAIAnswer] 二次清理后:', cleanAnswer);
         }
         
-        console.log('[parseAIAnswer] 填空解析失败');
+        const answerLength = cleanAnswer.length;
+        
+        if (answerLength <= 50) {
+          cleanAnswer = cleanAnswer.replace(/^[^\w\u4e00-\u9fa5]+/, '').replace(/[^\w\u4e00-\u9fa5]+$/, '');
+          
+          const blanks = cleanAnswer.split(/[,，;；\s]+/).filter(Boolean);
+          if (blanks.length > 0) {
+            console.log('[parseAIAnswer] 填空解析结果:', blanks);
+            return blanks;
+          }
+        }
+        
+        if (cleanAnswer) {
+          const result = { content: cleanAnswer, pics: [] };
+          console.log('[parseAIAnswer] 简答题解析结果:', result);
+          return result;
+        }
+        
+        console.log('[parseAIAnswer] 填空/简答解析失败');
         return null;
       }
       
       case 5: { // 主观题
-        // 主观题保留完整内容，但去除前后空白
-        const content = answerLine.trim();
+        const content = answerLine
+          .replace(/^(主观题|论述题)[:：\s]*/i, '')
+          .trim();
+          
         if (content) {
           const result = { content, pics: [] };
           console.log('[parseAIAnswer] 主观题解析结果:', result);

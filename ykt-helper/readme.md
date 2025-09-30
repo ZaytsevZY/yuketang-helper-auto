@@ -30,6 +30,7 @@ src/
 ├── core/                      # 核心配置
 │   ├── env.js                 # 环境适配器
 │   ├── storage.js             # 存储管理
+│   ├── vuex-helper.js         # vuex辅助工具，用于获取雨课堂主界面状态
 │   └── types.js               # 类型定义与常量
 ├── net/                       # 网络拦截
 │   ├── ws-interceptor.js      # WebSocket 拦截
@@ -183,7 +184,7 @@ export const ui = {
 ## AI 服务配置
 
 ### Kimi API 配置
-1. 访问 [Kimi开放平台](https://platform.moonshot.cn/) 申请 API Key
+1. 访问 Kimi开放平台 申请 API Key
 2. 在设置面板中配置 Kimi API Key
 3. 系统支持以下模型：
    - **文本模型**: `moonshot-v1-8k` - 用于纯文本分析

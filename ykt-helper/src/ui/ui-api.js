@@ -94,12 +94,12 @@ export const ui = {
   },
 
   notifyProblem(problem, slide) {
-    gm.notify({
-      title: '雨课堂习题提示',
-      text: this.getProblemDetail(problem),
-      image: slide?.thumbnail || null,
-      timeout: 5000,
-    });
+    // gm.notify({
+    //   title: '雨课堂习题提示',
+    //   text: this.getProblemDetail(problem),
+    //   image: slide?.thumbnail || null,
+    //   timeout: 5000,
+    // });
   },
 
   getProblemDetail(problem) {

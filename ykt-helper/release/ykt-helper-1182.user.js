@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI雨课堂助手（模块化构建版）
 // @namespace    https://github.com/ZaytsevZY/yuketang-helper-auto
-// @version      1.18.1-mod
+// @version      1.18.2
 // @description  课堂习题提示，AI解答习题
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
@@ -651,12 +651,23 @@
     }
   }
   // src/tsm/ai-format.js
+  // 预处理题目内容，去除题目类型标识
+    function cleanProblemBody(body, problemType, TYPE_MAP) {
+    if (!body) return "";
+    const typeLabel = TYPE_MAP[problemType];
+    if (!typeLabel) return body;
+    // 去除题目开头的类型标识，如 "填空题：" "单选题：" 等
+        const pattern = new RegExp(`^${typeLabel}[：:\\s]+`, "i");
+    return body.replace(pattern, "").trim();
+  }
   // 改进的融合模式 prompt 格式化函数
     function formatProblemForVision(problem, TYPE_MAP, hasTextInfo = false) {
     const problemType = TYPE_MAP[problem.problemType] || "题目";
     let basePrompt = hasTextInfo ? `结合文本信息和图片内容分析${problemType}，按格式回答：` : `观察图片内容，识别${problemType}并按格式回答：`;
     if (hasTextInfo && problem.body) {
-      basePrompt += `\n\n【文本信息】\n题目：${problem.body}`;
+      // ✅ 清理题目内容
+      const cleanBody = cleanProblemBody(problem.body, problem.problemType, TYPE_MAP);
+      basePrompt += `\n\n【文本信息】\n题目：${cleanBody}`;
       if (problem.options?.length) {
         basePrompt += "\n选项：";
         for (const o of problem.options) basePrompt += `\n${o.key}. ${o.value}`;
@@ -681,27 +692,19 @@
       break;
 
      case 4:
-      // 填空题（可能是填空或简答）
-      basePrompt += `\n\n请先观察图片判断实际题目类型：\n1. 如果有空白处或下划线，这是填空题，请填入空白处的具体内容\n2. 如果是完整问句需要回答，这是简答题，请给出完整答案\n\n格式要求：\n答案: [根据实际题目类型回答]\n解释: [解题思路]\n\n注意：多个填空用逗号分开；简答题要完整回答`;
+      // 填空题
+      basePrompt += `\n\n这是一道填空题。\n\n重要说明：\n- 题目内容已经处理，不含"填空题"等字样\n- 观察图片和文本，找出需要填入的内容\n- 答案中不要出现任何题目类型标识\n\n格式要求：\n答案: [直接给出填空内容]\n解释: [简要说明]\n\n示例：\n答案: 氧气,葡萄糖\n解释: 光合作用的产物\n\n多个填空用逗号分开`;
       break;
 
      case 5:
       // 主观题
-      basePrompt += `\n\n格式要求：\n答案: [完整回答]\n解释: [补充说明]\n\n注意：回答完整但简洁`;
+      basePrompt += `\n\n格式要求：\n答案: [完整回答]\n解释: [补充说明]\n\n注意：直接回答，不要重复题目`;
       break;
 
      default:
       basePrompt += `\n\n格式要求：\n答案: [你的答案]\n解释: [详细解释]`;
     }
     return basePrompt;
-  }
-  function formatProblemForDisplay(problem, TYPE_MAP) {
-    let s = `${TYPE_MAP[problem.problemType] || "题目"}：${problem.body || ""}`;
-    if (problem.options?.length) {
-      s += "\n\n选项：";
-      for (const o of problem.options) s += `\n${o.key}. ${o.value}`;
-    }
-    return s;
   }
   // 改进的答案解析函数
     function parseAIAnswer(problem, aiAnswer) {
@@ -715,21 +718,19 @@
       }
       // 如果没找到答案行，尝试第一行
             if (!answerLine) answerLine = lines[0]?.trim() || "";
-      console.log("[parseAIAnswer] 题目类型:", problem.problemType, "答案行:", answerLine);
+      console.log("[parseAIAnswer] 题目类型:", problem.problemType, "原始答案行:", answerLine);
       switch (problem.problemType) {
        case 1:
  // 单选题
                case 3:
         {
           // 投票题
-          // 优先匹配常见选项字母
           let m = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/);
           if (m) {
             console.log("[parseAIAnswer] 单选/投票解析结果:", [ m[0] ]);
             return [ m[0] ];
           }
-          // 尝试从中文描述中提取
-                    const chineseMatch = answerLine.match(/选择?([ABCDEFGHIJKLMNOPQRSTUVWXYZ])/);
+          const chineseMatch = answerLine.match(/选择?([ABCDEFGHIJKLMNOPQRSTUVWXYZ])/);
           if (chineseMatch) {
             console.log("[parseAIAnswer] 单选/投票中文解析结果:", [ chineseMatch[1] ]);
             return [ chineseMatch[1] ];
@@ -741,7 +742,6 @@
        case 2:
         {
           // 多选题
-          // 处理用顿号分开的格式：A、B、C
           if (answerLine.includes("、")) {
             const options = answerLine.split("、").map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/)).filter(m => m).map(m => m[0]);
             if (options.length > 0) {
@@ -750,8 +750,7 @@
               return result;
             }
           }
-          // 处理逗号分开的格式：A,B,C 或 A, B, C
-                    if (answerLine.includes(",") || answerLine.includes("，")) {
+          if (answerLine.includes(",") || answerLine.includes("，")) {
             const options = answerLine.split(/[,，]/).map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/)).filter(m => m).map(m => m[0]);
             if (options.length > 0) {
               const result = [ ...new Set(options) ].sort();
@@ -759,15 +758,13 @@
               return result;
             }
           }
-          // 处理连续字母格式：ABC 或 A B C
-                    const letters = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g);
+          const letters = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g);
           if (letters && letters.length > 1) {
             const result = [ ...new Set(letters) ].sort();
             console.log("[parseAIAnswer] 多选连续解析结果:", result);
             return result;
           }
-          // 如果只有一个字母，也返回数组格式
-                    if (letters && letters.length === 1) {
+          if (letters && letters.length === 1) {
             console.log("[parseAIAnswer] 多选单个解析结果:", letters);
             return letters;
           }
@@ -777,24 +774,27 @@
 
        case 4:
         {
-          // 填空题（可能是填空或简答）
-          // 先判断答案长度，短答案可能是填空，长答案可能是简答
-          const answerLength = answerLine.length;
+          // 填空题
+          // ✅ 更激进的清理策略
+          let cleanAnswer = answerLine.replace(/^(填空题|简答题|问答题|题目|答案是?)[:：\s]*/gi, "").trim();
+          console.log("[parseAIAnswer] 清理后答案:", cleanAnswer);
+          // 如果清理后还包含这些词，继续清理
+                    if (/填空题|简答题|问答题|题目/i.test(cleanAnswer)) {
+            cleanAnswer = cleanAnswer.replace(/填空题|简答题|问答题|题目/gi, "").trim();
+            console.log("[parseAIAnswer] 二次清理后:", cleanAnswer);
+          }
+          const answerLength = cleanAnswer.length;
           if (answerLength <= 50) {
-            // 可能是填空题，尝试按填空处理
-            let cleanAnswer = answerLine.replace(/^[^\w\u4e00-\u9fa5]+/, "").replace(/[^\w\u4e00-\u9fa5]+$/, "");
-            // 处理多个空的情况，支持逗号、分号等分隔符
-                        const blanks = cleanAnswer.split(/[,，;；\s]+/).filter(Boolean);
+            cleanAnswer = cleanAnswer.replace(/^[^\w\u4e00-\u9fa5]+/, "").replace(/[^\w\u4e00-\u9fa5]+$/, "");
+            const blanks = cleanAnswer.split(/[,，;；\s]+/).filter(Boolean);
             if (blanks.length > 0) {
               console.log("[parseAIAnswer] 填空解析结果:", blanks);
               return blanks;
             }
           }
-          // 如果是较长的答案或填空解析失败，按简答题处理
-                    const content = answerLine.trim();
-          if (content) {
+          if (cleanAnswer) {
             const result = {
-              content: content,
+              content: cleanAnswer,
               pics: []
             };
             console.log("[parseAIAnswer] 简答题解析结果:", result);
@@ -807,8 +807,7 @@
        case 5:
         {
           // 主观题
-          // 主观题保留完整内容，但去除前后空白
-          const content = answerLine.trim();
+          const content = answerLine.replace(/^(主观题|论述题)[:：\s]*/i, "").trim();
           if (content) {
             const result = {
               content: content,
@@ -830,6 +829,85 @@
       return null;
     }
   }
+  /**
+   * Vuex 辅助工具 - 用于获取雨课堂主界面状态
+   */
+  /**
+   * 获取 Vue 根实例
+   * @returns {Vue | null}
+   */  function getVueApp() {
+    try {
+      const app = document.querySelector("#app").__vue__;
+      return app || null;
+    } catch (e) {
+      console.error("[getVueApp] 错误:", e);
+      return null;
+    }
+  }
+  /**
+   * 从 Vuex state 获取主界面当前页面的 slideId
+   * @returns {string | null}
+   */  function getCurrentMainPageSlideId() {
+    try {
+      const app = getVueApp();
+      if (!app || !app.$store) {
+        console.log("[getCurrentMainPageSlideId] 无法获取 Vue 实例或 store");
+        return null;
+      }
+      const currSlide = app.$store.state.currSlide;
+      if (!currSlide || !currSlide.sid) {
+        console.log("[getCurrentMainPageSlideId] currSlide 或 sid 未定义");
+        return null;
+      }
+      console.log("[getCurrentMainPageSlideId] 获取到 slideId:", currSlide.sid, {
+        type: currSlide.type,
+        problemID: currSlide.problemID,
+        index: currSlide.index
+      });
+      return currSlide.sid;
+    } catch (e) {
+      console.error("[getCurrentMainPageSlideId] 错误:", e);
+      return null;
+    }
+  }
+  /**
+   * 监听主界面页面切换
+   * @param {Function} callback - 回调函数 (slideId, slideInfo) => void
+   * @returns {Function} - 取消监听的函数
+   */  function watchMainPageChange(callback) {
+    const app = getVueApp();
+    if (!app || !app.$store) {
+      console.error("[watchMainPageChange] 无法获取 Vue 实例");
+      return () => {};
+    }
+    const unwatch = app.$store.watch(state => state.currSlide, (newSlide, oldSlide) => {
+      if (newSlide && newSlide.sid) {
+        console.log("[主界面页面切换]", {
+          oldSid: oldSlide?.sid,
+          newSid: newSlide.sid,
+          type: newSlide.type,
+          problemID: newSlide.problemID
+        });
+        callback(newSlide.sid, newSlide);
+      }
+    }, {
+      deep: false
+    });
+    console.log("✅ 已启动主界面页面切换监听");
+    return unwatch;
+  }
+  /**
+   * 等待 Vue 实例准备就绪
+   * @returns {Promise<Vue>}
+   */  function waitForVueReady() {
+    return new Promise(resolve => {
+      const check = () => {
+        const app = getVueApp();
+        if (app && app.$store) resolve(app); else setTimeout(check, 100);
+      };
+      check();
+    });
+  }
   let mounted$4 = false;
   let root$3;
   function $$4(sel) {
@@ -844,6 +922,16 @@
     $$4("#ykt-ai-close")?.addEventListener("click", () => showAIPanel(false));
     // 使用融合模式
         $$4("#ykt-ai-ask")?.addEventListener("click", askAIFusionMode);
+    // ✅ 新增：启动主界面页面切换监听
+        waitForVueReady().then(() => {
+      watchMainPageChange((slideId, slideInfo) => {
+        console.log("[AI Panel] 主界面页面切换到:", slideId);
+        // 自动更新显示
+                renderQuestion();
+      });
+    }).catch(e => {
+      console.warn("[AI Panel] Vue 实例初始化失败，将使用备用方案:", e);
+    });
     mounted$4 = true;
     return root$3;
   }
@@ -886,99 +974,122 @@
     return "";
   }
   function renderQuestion() {
-    const p = repo.currentSlideId ? repo.slides.get(repo.currentSlideId)?.problem : null;
-    const problem = p || (repo.encounteredProblems.at(-1) ? repo.problems.get(repo.encounteredProblems.at(-1).problemId) : null);
-    let displayText = "当前页面题目";
-    let hasTextInfo = false;
-    if (problem) {
-      const text = formatProblemForDisplay(problem, ui.config.TYPE_MAP || {});
-      if (problem.body && problem.body.trim()) {
-        displayText = text;
-        hasTextInfo = true;
-      } else displayText = "未检测到题目文本，将使用图像识别";
+    // ✅ 显示当前选择逻辑的状态
+    let displayText = "";
+    let hasPageSelected = false;
+    let selectionSource = "";
+    // 1. 优先检查主界面当前页面
+        const mainSlideId = getCurrentMainPageSlideId();
+    let slide = mainSlideId ? repo.slides.get(mainSlideId) : null;
+    if (slide) {
+      displayText = `主界面当前页: ${slide.title || `第 ${slide.page || slide.index || ""} 页`}`;
+      selectionSource = "主界面检测";
+      hasPageSelected = true;
+      if (slide.problem) displayText += "\n📝 此页面包含题目"; else displayText += "\n📄 此页面为普通内容页";
+    } else {
+      // 2. 检查课件面板选择
+      const presentationPanel = document.getElementById("ykt-presentation-panel");
+      const isPresentationPanelOpen = presentationPanel && presentationPanel.classList.contains("visible");
+      if (isPresentationPanelOpen && repo.currentSlideId) {
+        slide = repo.slides.get(repo.currentSlideId);
+        if (slide) {
+          displayText = `课件面板选中: ${slide.title || `第 ${slide.page || slide.index || ""} 页`}`;
+          selectionSource = "课件浏览面板";
+          hasPageSelected = true;
+          if (slide.problem) displayText += "\n📝 此页面包含题目"; else displayText += "\n📄 此页面为普通内容页";
+        }
+      } else {
+        displayText = "未检测到当前页面\n💡 请确保主界面已打开页面，或在课件浏览面板中选择页面";
+        selectionSource = "无";
+      }
     }
     const el = document.querySelector("#ykt-ai-question-display");
     if (el) el.textContent = displayText;
     const statusEl = document.querySelector("#ykt-ai-text-status");
     if (statusEl) {
-      statusEl.textContent = hasTextInfo ? "✓ 已检测到题目文本" : "⚠ 未检测到题目文本，将完全依靠图像识别";
-      statusEl.className = hasTextInfo ? "text-status success" : "text-status warning";
+      statusEl.textContent = hasPageSelected ? `✓ 已选择页面（来源：${selectionSource}），可进行图像分析` : "⚠ 请选择要分析的页面";
+      statusEl.className = hasPageSelected ? "text-status success" : "text-status warning";
     }
   }
-  // 融合模式AI询问函数（文本+图像）- 支持自定义prompt
+  // 融合模式AI询问函数（仅图像分析）- 支持自定义prompt
     async function askAIFusionMode() {
-    const slide = repo.currentSlideId ? repo.slides.get(repo.currentSlideId) : null;
-    const problem = slide?.problem || (repo.encounteredProblems.at(-1) ? repo.problems.get(repo.encounteredProblems.at(-1).problemId) : null);
     setAIError("");
     setAILoading(true);
     setAIAnswer("");
     try {
       if (!ui.config.ai.kimiApiKey) throw new Error("请先在设置中配置 Kimi API Key");
-      console.log("[AI Panel] 使用融合模式分析（文本+图像）...");
-      // 获取当前题目的slideId
-            const slideId = repo.currentSlideId || (problem ? repo.problemStatus.get(problem.problemId)?.slideId : null) || (repo.encounteredProblems.at(-1) ? repo.problemStatus.get(repo.encounteredProblems.at(-1).problemId)?.slideId : null);
-      console.log("[AI Panel] 题目所在幻灯片:", slideId);
-      // ✅ 优先使用幻灯片的cover图片，与自动作答保持一致
-            let imageBase64 = null;
-      if (slideId) {
-        console.log("[AI Panel] 尝试获取幻灯片图片...");
-        ui.toast("正在获取PPT图片...", 2e3);
-        imageBase64 = await captureSlideImage(slideId);
-        if (imageBase64) {
-          console.log("[AI Panel] ✅ 幻灯片图片获取成功");
-          ui.toast("已获取PPT图片，正在分析...", 2e3);
-        } else console.log("[AI Panel] 幻灯片图片获取失败，尝试DOM截图...");
-      }
-      // ✅ 如果获取幻灯片图片失败，回退到DOM截图
-            if (!imageBase64) {
-        console.log("[AI Panel] 使用DOM截图作为后备方案...");
-        ui.toast("正在截取页面图像...", 2e3);
-        imageBase64 = await captureProblemForVision();
-        if (imageBase64) {
-          console.log("[AI Panel] ✅ DOM截图成功");
-          ui.toast("已截取页面图像，正在分析...", 2e3);
+      // ✅ 智能选择当前页面：优先主界面当前页，其次课件面板选择
+            let currentSlideId = null;
+      let slide = null;
+      let selectionSource = "";
+      // 1. 优先获取主界面当前页面（从 Vuex state）
+            const mainSlideId = getCurrentMainPageSlideId();
+      if (mainSlideId) {
+        currentSlideId = mainSlideId;
+        slide = repo.slides.get(currentSlideId);
+        selectionSource = "主界面当前页面";
+        console.log("[AI Panel] 使用主界面当前页面:", currentSlideId);
+      } else {
+        // 2. 如果主界面获取失败，检查课件面板选择
+        const presentationPanel = document.getElementById("ykt-presentation-panel");
+        const isPresentationPanelOpen = presentationPanel && presentationPanel.classList.contains("visible");
+        if (isPresentationPanelOpen && repo.currentSlideId) {
+          currentSlideId = repo.currentSlideId;
+          slide = repo.slides.get(currentSlideId);
+          selectionSource = "课件浏览面板";
+          console.log("[AI Panel] 使用课件面板选中的页面:", currentSlideId);
         }
       }
-      if (!imageBase64) throw new Error("无法获取题目图像，请确保页面内容已加载完成");
-      console.log("[AI Panel] 图像获取完成，大小:", Math.round(imageBase64.length / 1024), "KB");
-      // 使用新的 formatProblemForVision 函数构建基础提示
-            const hasTextInfo = problem && problem.body && problem.body.trim();
-      let textPrompt = formatProblemForVision(problem, ui.config.TYPE_MAP || {}, hasTextInfo);
+      // 3. 检查是否成功获取到页面
+            if (!currentSlideId || !slide) throw new Error("无法确定要分析的页面。请在主界面打开一个页面，或在课件浏览中选择页面。");
+      console.log("[AI Panel] 页面选择来源:", selectionSource);
+      console.log("[AI Panel] 分析页面ID:", currentSlideId);
+      console.log("[AI Panel] 页面信息:", slide);
+      // ✅ 直接使用选中页面的图片
+            console.log("[AI Panel] 获取页面图片...");
+      ui.toast(`正在获取${selectionSource}图片...`, 2e3);
+      const imageBase64 = await captureSlideImage(currentSlideId);
+      if (!imageBase64) throw new Error("无法获取页面图片，请确保页面已加载完成");
+      console.log("[AI Panel] ✅ 页面图片获取成功");
+      console.log("[AI Panel] 图像大小:", Math.round(imageBase64.length / 1024), "KB");
+      // ✅ 构建纯图像分析提示（不使用题目文本）
+            let textPrompt = `请仔细观察图片内容，识别并分析其中的题目：\n\n1. 请先判断题目类型（单选题、多选题、填空题、主观题等）\n2. 识别题干内容和选项（如果有）\n3. 根据题目类型给出答案\n\n答案格式要求：\n- 单选题：答案: A\n- 多选题：答案: A、B、C\n- 填空题：答案: [填空内容]\n- 主观题：答案: [完整回答]\n\n请严格按照格式回答。`;
       // 获取用户自定义prompt并追加
             const customPrompt = getCustomPrompt();
       if (customPrompt) {
         textPrompt += `\n\n【用户自定义要求】\n${customPrompt}`;
         console.log("[AI Panel] 用户添加了自定义prompt:", customPrompt);
       }
-      ui.toast("正在使用融合模式分析...", 3e3);
+      ui.toast(`正在分析${selectionSource}内容...`, 3e3);
       console.log("[AI Panel] 调用Vision API...");
-      console.log("[AI Panel] 最终使用的提示:", textPrompt);
+      console.log("[AI Panel] 使用的提示:", textPrompt);
       const aiContent = await queryKimiVision(imageBase64, textPrompt, ui.config.ai);
       setAILoading(false);
-      console.log("[AI Panel] 融合模式API调用成功");
+      console.log("[AI Panel] Vision API调用成功");
       console.log("[AI Panel] AI回答:", aiContent);
-      // 尝试解析答案
+      // ✅ 尝试解析答案（如果当前页面有题目的话）
             let parsed = null;
+      const problem = slide?.problem;
       if (problem) {
         parsed = parseAIAnswer(problem, aiContent);
         console.log("[AI Panel] 解析结果:", parsed);
       }
-      // 构建显示内容，包含自定义prompt信息
-            let displayContent = `融合模式分析结果：\n${aiContent}`;
-      if (customPrompt) displayContent = `融合模式分析结果（包含自定义要求）：\n${aiContent}`;
-      if (parsed) {
+      // 构建显示内容
+            let displayContent = `${selectionSource}图像分析结果：\n${aiContent}`;
+      if (customPrompt) displayContent = `${selectionSource}图像分析结果（包含自定义要求）：\n${aiContent}`;
+      if (parsed && problem) {
         setAIAnswer(`${displayContent}\n\nAI 建议答案：${JSON.stringify(parsed)}`);
-        const submitBtn = document.createElement("button");
+        // ✅ 只有当前页面有题目时才显示提交按钮
+                const submitBtn = document.createElement("button");
         submitBtn.textContent = "提交答案";
         submitBtn.className = "ykt-btn ykt-btn-primary";
         submitBtn.onclick = async () => {
           try {
             if (!problem || !problem.problemId) {
-              ui.toast("题目信息丢失，请刷新页面重试");
+              ui.toast("当前页面没有可提交的题目");
               return;
             }
-            // ✅ 添加详细日志
-                        console.log("[AI Panel] 准备提交答案");
+            console.log("[AI Panel] 准备提交答案");
             console.log("[AI Panel] Problem:", problem);
             console.log("[AI Panel] Parsed:", parsed);
             await submitAnswer(problem, parsed);
@@ -991,15 +1102,58 @@
         };
         $$4("#ykt-ai-answer").appendChild(document.createElement("br"));
         $$4("#ykt-ai-answer").appendChild(submitBtn);
-      } else setAIAnswer(`${displayContent}\n\n⚠️ 无法自动解析答案格式，请检查AI回答是否符合要求格式。`);
+      } else {
+        // ✅ 如果当前页面没有题目，只显示分析结果
+        if (!problem) displayContent += "\n\n💡 当前页面不是题目页面，仅显示内容分析结果。"; else displayContent += "\n\n⚠️ 无法自动解析答案格式，请检查AI回答是否符合要求格式。";
+        setAIAnswer(displayContent);
+      }
     } catch (e) {
       setAILoading(false);
-      console.error("[AI Panel] 融合模式失败:", e);
-      let errorMsg = `融合模式分析失败: ${e.message}`;
+      console.error("[AI Panel] 页面分析失败:", e);
+      let errorMsg = `页面分析失败: ${e.message}`;
       if (e.message.includes("400")) errorMsg += "\n\n可能的解决方案：\n1. 检查 API Key 是否正确\n2. 尝试刷新页面后重试\n3. 确保页面已完全加载";
       setAIError(errorMsg);
     }
   }
+  /**
+   * 获取主界面当前显示的页面ID
+   * @returns {string|null} 当前页面的slideId
+   */
+  // function getCurrentMainPageSlideId() {
+  //   try {
+  //     // 方法1：从当前最近遇到的问题获取（最可能是当前页面）
+  //     if (repo.encounteredProblems.length > 0) {
+  //       const latestProblem = repo.encounteredProblems.at(-1);
+  //       const problemStatus = repo.problemStatus.get(latestProblem.problemId);
+  //       if (problemStatus && problemStatus.slideId) {
+  //         console.log('[getCurrentMainPageSlideId] 从最近问题获取:', problemStatus.slideId);
+  //         return problemStatus.slideId;
+  //       }
+  //     }
+  //     // 方法2：从DOM结构尝试获取（雨课堂可能的DOM结构）
+  //     const slideElements = [
+  //       document.querySelector('[data-slide-id]'),
+  //       document.querySelector('.slide-wrapper.active'),
+  //       document.querySelector('.ppt-slide.active'),
+  //       document.querySelector('.current-slide')
+  //     ];
+  //     for (const el of slideElements) {
+  //       if (el) {
+  //         const slideId = el.dataset?.slideId || el.getAttribute('data-slide-id');
+  //         if (slideId) {
+  //           console.log('[getCurrentMainPageSlideId] 从DOM获取:', slideId);
+  //           return slideId;
+  //         }
+  //       }
+  //     }
+  //     // 方法3：如果没有找到，返回null
+  //     console.log('[getCurrentMainPageSlideId] 无法获取主界面当前页面');
+  //     return null;
+  //   } catch (e) {
+  //     console.error('[getCurrentMainPageSlideId] 获取失败:', e);
+  //     return null;
+  //   }
+  // }
   // 保留其他函数以向后兼容，但现在都指向融合模式
     async function askAIForCurrent() {
     return askAIFusionMode();
@@ -1724,12 +1878,12 @@
       window.addEventListener("ykt:open-ai", () => this.showAIPanel(true));
     },
     notifyProblem(problem, slide) {
-      gm.notify({
-        title: "雨课堂习题提示",
-        text: this.getProblemDetail(problem),
-        image: slide?.thumbnail || null,
-        timeout: 5e3
-      });
+      // gm.notify({
+      //   title: '雨课堂习题提示',
+      //   text: this.getProblemDetail(problem),
+      //   image: slide?.thumbnail || null,
+      //   timeout: 5000,
+      // });
     },
     getProblemDetail(problem) {
       if (!problem) return "题目未找到";

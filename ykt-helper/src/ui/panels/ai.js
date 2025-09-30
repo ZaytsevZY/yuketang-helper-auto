@@ -4,8 +4,9 @@ import { repo } from '../../state/repo.js';
 import { queryKimi, queryKimiVision } from '../../ai/kimi.js';
 import { submitAnswer } from '../../tsm/answer.js';
 import { showAutoAnswerPopup } from '../panels/auto-answer-popup.js';
-import { captureProblemForVision } from '../../capture/screenshoot.js';
+import { captureProblemForVision, captureSlideImage } from '../../capture/screenshoot.js';
 import { formatProblemForAI, formatProblemForDisplay, formatProblemForVision, parseAIAnswer } from '../../tsm/ai-format.js';
+import { getCurrentMainPageSlideId, waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
 
 let mounted = false;
 let root;
@@ -24,6 +25,17 @@ export function mountAIPanel() {
   $('#ykt-ai-close')?.addEventListener('click', () => showAIPanel(false));
   // 使用融合模式
   $('#ykt-ai-ask')?.addEventListener('click', askAIFusionMode);
+
+  // ✅ 新增：启动主界面页面切换监听
+  waitForVueReady().then(() => {
+    watchMainPageChange((slideId, slideInfo) => {
+      console.log('[AI Panel] 主界面页面切换到:', slideId);
+      // 自动更新显示
+      renderQuestion();
+    });
+  }).catch(e => {
+    console.warn('[AI Panel] Vue 实例初始化失败，将使用备用方案:', e);
+  });
 
   mounted = true;
   return root;
@@ -76,19 +88,46 @@ function getCustomPrompt() {
 }
 
 function renderQuestion() {
-  const p = repo.currentSlideId ? repo.slides.get(repo.currentSlideId)?.problem : null;
-  const problem = p || (repo.encounteredProblems.at(-1) ? repo.problems.get(repo.encounteredProblems.at(-1).problemId) : null);
+  // ✅ 显示当前选择逻辑的状态
+  let displayText = '';
+  let hasPageSelected = false;
+  let selectionSource = '';
   
-  let displayText = '当前页面题目';
-  let hasTextInfo = false;
+  // 1. 优先检查主界面当前页面
+  const mainSlideId = getCurrentMainPageSlideId();
+  let slide = mainSlideId ? repo.slides.get(mainSlideId) : null;
   
-  if (problem) {
-    const text = formatProblemForDisplay(problem, ui.config.TYPE_MAP || {});
-    if (problem.body && problem.body.trim()) {
-      displayText = text;
-      hasTextInfo = true;
+  if (slide) {
+    displayText = `主界面当前页: ${slide.title || `第 ${slide.page || slide.index || ''} 页`}`;
+    selectionSource = '主界面检测';
+    hasPageSelected = true;
+    
+    if (slide.problem) {
+      displayText += '\n📝 此页面包含题目';
     } else {
-      displayText = '未检测到题目文本，将使用图像识别';
+      displayText += '\n📄 此页面为普通内容页';
+    }
+  } else {
+    // 2. 检查课件面板选择
+    const presentationPanel = document.getElementById('ykt-presentation-panel');
+    const isPresentationPanelOpen = presentationPanel && presentationPanel.classList.contains('visible');
+    
+    if (isPresentationPanelOpen && repo.currentSlideId) {
+      slide = repo.slides.get(repo.currentSlideId);
+      if (slide) {
+        displayText = `课件面板选中: ${slide.title || `第 ${slide.page || slide.index || ''} 页`}`;
+        selectionSource = '课件浏览面板';
+        hasPageSelected = true;
+        
+        if (slide.problem) {
+          displayText += '\n📝 此页面包含题目';
+        } else {
+          displayText += '\n📄 此页面为普通内容页';
+        }
+      }
+    } else {
+      displayText = '未检测到当前页面\n💡 请确保主界面已打开页面，或在课件浏览面板中选择页面';
+      selectionSource = '无';
     }
   }
 
@@ -99,16 +138,15 @@ function renderQuestion() {
   
   const statusEl = document.querySelector('#ykt-ai-text-status');
   if (statusEl) {
-    statusEl.textContent = hasTextInfo ? '✓ 已检测到题目文本' : '⚠ 未检测到题目文本，将完全依靠图像识别';
-    statusEl.className = hasTextInfo ? 'text-status success' : 'text-status warning';
+    statusEl.textContent = hasPageSelected 
+      ? `✓ 已选择页面（来源：${selectionSource}），可进行图像分析` 
+      : '⚠ 请选择要分析的页面';
+    statusEl.className = hasPageSelected ? 'text-status success' : 'text-status warning';
   }
 }
 
-// 融合模式AI询问函数（文本+图像）- 支持自定义prompt
+// 融合模式AI询问函数（仅图像分析）- 支持自定义prompt
 export async function askAIFusionMode() {
-  const slide = repo.currentSlideId ? repo.slides.get(repo.currentSlideId) : null;
-  const problem = slide?.problem || (repo.encounteredProblems.at(-1) ? repo.problems.get(repo.encounteredProblems.at(-1).problemId) : null);
-
   setAIError('');
   setAILoading(true);
   setAIAnswer('');
@@ -118,19 +156,67 @@ export async function askAIFusionMode() {
       throw new Error('请先在设置中配置 Kimi API Key');
     }
 
-    ui.toast('正在截取页面图像...', 2000);
-    console.log('[AI Panel] 使用融合模式分析（文本+图像）...');
+    // ✅ 智能选择当前页面：优先主界面当前页，其次课件面板选择
+    let currentSlideId = null;
+    let slide = null;
+    let selectionSource = '';
+
+    // 1. 优先获取主界面当前页面（从 Vuex state）
+    const mainSlideId = getCurrentMainPageSlideId();
+    if (mainSlideId) {
+      currentSlideId = mainSlideId;
+      slide = repo.slides.get(currentSlideId);
+      selectionSource = '主界面当前页面';
+      console.log('[AI Panel] 使用主界面当前页面:', currentSlideId);
+    } else {
+      // 2. 如果主界面获取失败，检查课件面板选择
+      const presentationPanel = document.getElementById('ykt-presentation-panel');
+      const isPresentationPanelOpen = presentationPanel && presentationPanel.classList.contains('visible');
+      
+      if (isPresentationPanelOpen && repo.currentSlideId) {
+        currentSlideId = repo.currentSlideId;
+        slide = repo.slides.get(currentSlideId);
+        selectionSource = '课件浏览面板';
+        console.log('[AI Panel] 使用课件面板选中的页面:', currentSlideId);
+      }
+    }
+
+    // 3. 检查是否成功获取到页面
+    if (!currentSlideId || !slide) {
+      throw new Error('无法确定要分析的页面。请在主界面打开一个页面，或在课件浏览中选择页面。');
+    }
+
+    console.log('[AI Panel] 页面选择来源:', selectionSource);
+    console.log('[AI Panel] 分析页面ID:', currentSlideId);
+    console.log('[AI Panel] 页面信息:', slide);
+
+    // ✅ 直接使用选中页面的图片
+    console.log('[AI Panel] 获取页面图片...');
+    ui.toast(`正在获取${selectionSource}图片...`, 2000);
     
-    const imageBase64 = await captureProblemForVision();
+    const imageBase64 = await captureSlideImage(currentSlideId);
+    
     if (!imageBase64) {
-      throw new Error('无法截取页面图像，请确保页面内容已加载完成');
+      throw new Error('无法获取页面图片，请确保页面已加载完成');
     }
     
-    console.log('[AI Panel] 截图完成，图像大小:', imageBase64.length);
+    console.log('[AI Panel] ✅ 页面图片获取成功');
+    console.log('[AI Panel] 图像大小:', Math.round(imageBase64.length / 1024), 'KB');
 
-    // 使用新的 formatProblemForVision 函数构建基础提示
-    const hasTextInfo = problem && problem.body && problem.body.trim();
-    let textPrompt = formatProblemForVision(problem, ui.config.TYPE_MAP || {}, hasTextInfo);
+    // ✅ 构建纯图像分析提示（不使用题目文本）
+    let textPrompt = `请仔细观察图片内容，识别并分析其中的题目：
+
+1. 请先判断题目类型（单选题、多选题、填空题、主观题等）
+2. 识别题干内容和选项（如果有）
+3. 根据题目类型给出答案
+
+答案格式要求：
+- 单选题：答案: A
+- 多选题：答案: A、B、C
+- 填空题：答案: [填空内容]
+- 主观题：答案: [完整回答]
+
+请严格按照格式回答。`;
 
     // 获取用户自定义prompt并追加
     const customPrompt = getCustomPrompt();
@@ -139,43 +225,44 @@ export async function askAIFusionMode() {
       console.log('[AI Panel] 用户添加了自定义prompt:', customPrompt);
     }
 
-    ui.toast('正在使用融合模式分析...', 3000);
+    ui.toast(`正在分析${selectionSource}内容...`, 3000);
     console.log('[AI Panel] 调用Vision API...');
-    console.log('[AI Panel] 最终使用的提示:', textPrompt);
+    console.log('[AI Panel] 使用的提示:', textPrompt);
     
     const aiContent = await queryKimiVision(imageBase64, textPrompt, ui.config.ai);
     
     setAILoading(false);
-    console.log('[AI Panel] 融合模式API调用成功');
+    console.log('[AI Panel] Vision API调用成功');
     console.log('[AI Panel] AI回答:', aiContent);
 
-    // 尝试解析答案
+    // ✅ 尝试解析答案（如果当前页面有题目的话）
     let parsed = null;
+    const problem = slide?.problem;
     if (problem) {
       parsed = parseAIAnswer(problem, aiContent);
       console.log('[AI Panel] 解析结果:', parsed);
     }
 
-    // 构建显示内容，包含自定义prompt信息
-    let displayContent = `融合模式分析结果：\n${aiContent}`;
+    // 构建显示内容
+    let displayContent = `${selectionSource}图像分析结果：\n${aiContent}`;
     if (customPrompt) {
-      displayContent = `融合模式分析结果（包含自定义要求）：\n${aiContent}`;
+      displayContent = `${selectionSource}图像分析结果（包含自定义要求）：\n${aiContent}`;
     }
 
-    if (parsed) {
+    if (parsed && problem) {
       setAIAnswer(`${displayContent}\n\nAI 建议答案：${JSON.stringify(parsed)}`);
       
+      // ✅ 只有当前页面有题目时才显示提交按钮
       const submitBtn = document.createElement('button');
       submitBtn.textContent = '提交答案';
       submitBtn.className = 'ykt-btn ykt-btn-primary';
       submitBtn.onclick = async () => {
         try {
           if (!problem || !problem.problemId) {
-            ui.toast('题目信息丢失，请刷新页面重试');
+            ui.toast('当前页面没有可提交的题目');
             return;
           }
           
-          // ✅ 添加详细日志
           console.log('[AI Panel] 准备提交答案');
           console.log('[AI Panel] Problem:', problem);
           console.log('[AI Panel] Parsed:', parsed);
@@ -191,14 +278,20 @@ export async function askAIFusionMode() {
       $('#ykt-ai-answer').appendChild(document.createElement('br'));
       $('#ykt-ai-answer').appendChild(submitBtn);
     } else {
-      setAIAnswer(`${displayContent}\n\n⚠️ 无法自动解析答案格式，请检查AI回答是否符合要求格式。`);
+      // ✅ 如果当前页面没有题目，只显示分析结果
+      if (!problem) {
+        displayContent += '\n\n💡 当前页面不是题目页面，仅显示内容分析结果。';
+      } else {
+        displayContent += '\n\n⚠️ 无法自动解析答案格式，请检查AI回答是否符合要求格式。';
+      }
+      setAIAnswer(displayContent);
     }
 
   } catch (e) {
     setAILoading(false);
-    console.error('[AI Panel] 融合模式失败:', e);
+    console.error('[AI Panel] 页面分析失败:', e);
     
-    let errorMsg = `融合模式分析失败: ${e.message}`;
+    let errorMsg = `页面分析失败: ${e.message}`;
     if (e.message.includes('400')) {
       errorMsg += '\n\n可能的解决方案：\n1. 检查 API Key 是否正确\n2. 尝试刷新页面后重试\n3. 确保页面已完全加载';
     }
@@ -206,6 +299,50 @@ export async function askAIFusionMode() {
     setAIError(errorMsg);
   }
 }
+
+/**
+ * 获取主界面当前显示的页面ID
+ * @returns {string|null} 当前页面的slideId
+ */
+// function getCurrentMainPageSlideId() {
+//   try {
+//     // 方法1：从当前最近遇到的问题获取（最可能是当前页面）
+//     if (repo.encounteredProblems.length > 0) {
+//       const latestProblem = repo.encounteredProblems.at(-1);
+//       const problemStatus = repo.problemStatus.get(latestProblem.problemId);
+//       if (problemStatus && problemStatus.slideId) {
+//         console.log('[getCurrentMainPageSlideId] 从最近问题获取:', problemStatus.slideId);
+//         return problemStatus.slideId;
+//       }
+//     }
+
+//     // 方法2：从DOM结构尝试获取（雨课堂可能的DOM结构）
+//     const slideElements = [
+//       document.querySelector('[data-slide-id]'),
+//       document.querySelector('.slide-wrapper.active'),
+//       document.querySelector('.ppt-slide.active'),
+//       document.querySelector('.current-slide')
+//     ];
+
+//     for (const el of slideElements) {
+//       if (el) {
+//         const slideId = el.dataset?.slideId || el.getAttribute('data-slide-id');
+//         if (slideId) {
+//           console.log('[getCurrentMainPageSlideId] 从DOM获取:', slideId);
+//           return slideId;
+//         }
+//       }
+//     }
+
+//     // 方法3：如果没有找到，返回null
+//     console.log('[getCurrentMainPageSlideId] 无法获取主界面当前页面');
+//     return null;
+    
+//   } catch (e) {
+//     console.error('[getCurrentMainPageSlideId] 获取失败:', e);
+//     return null;
+//   }
+// }
 
 // 保留其他函数以向后兼容，但现在都指向融合模式
 export async function askAIForCurrent() {
