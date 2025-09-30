@@ -1,11 +1,11 @@
 import tpl from './ai.html';
 import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
-import { formatProblemForAI, formatProblemForDisplay, parseAIAnswer } from '../../tsm/ai-format.js';
 import { queryKimi, queryKimiVision } from '../../ai/kimi.js';
 import { submitAnswer } from '../../tsm/answer.js';
 import { showAutoAnswerPopup } from '../panels/auto-answer-popup.js';
-import { captureProblemForVision } from '../../capture/screenshoot.js'; // ✅ 静态导入
+import { captureProblemForVision } from '../../capture/screenshoot.js';
+import { formatProblemForAI, formatProblemForDisplay, formatProblemForVision, parseAIAnswer } from '../../tsm/ai-format.js';
 
 let mounted = false;
 let root;
@@ -21,19 +21,16 @@ export function mountAIPanel() {
   document.body.appendChild(host.firstElementChild);
   root = document.getElementById('ykt-ai-answer-panel');
 
-  // 关闭面板
   $('#ykt-ai-close')?.addEventListener('click', () => showAIPanel(false));
-  // 手动点击按钮触发 AI 分析
-  $('#ykt-ai-ask')?.addEventListener('click', askAIForCurrent);
-  // Vision 模式按钮
-  $('#ykt-ai-ask-vision')?.addEventListener('click', askAIVisionForCurrent);
+  // 使用融合模式
+  $('#ykt-ai-ask')?.addEventListener('click', askAIFusionMode);
 
   mounted = true;
   return root;
 }
 
 window.addEventListener('ykt:open-ai', () => {
-  showAIPanel(true);          // 打开面板
+  showAIPanel(true);
 });
 
 export function showAIPanel(visible = true) {
@@ -42,17 +39,14 @@ export function showAIPanel(visible = true) {
 
   if (visible) {
     renderQuestion();
-    // 自动分析：只有开关打开时才调用
     if (ui.config.aiAutoAnalyze) {
-      queueMicrotask(() => { askAIForCurrent(); });
+      queueMicrotask(() => { askAIFusionMode(); });
     }
   }
 
-  // 同步工具栏按钮状态
   const aiBtn = document.getElementById('ykt-btn-ai');
   if (aiBtn) aiBtn.classList.toggle('active', !!visible);
 }
-
 
 export function setAILoading(v) {
   mountAIPanel();
@@ -74,24 +68,34 @@ export function setAIAnswer(content = '') {
 function renderQuestion() {
   const p = repo.currentSlideId ? repo.slides.get(repo.currentSlideId)?.problem : null;
   const problem = p || (repo.encounteredProblems.at(-1) ? repo.problems.get(repo.encounteredProblems.at(-1).problemId) : null);
-  const text = problem ? formatProblemForDisplay(problem, ui.config.TYPE_MAP || {}) : '未选择题目';
+  
+  let displayText = '当前页面题目';
+  let hasTextInfo = false;
+  
+  if (problem) {
+    const text = formatProblemForDisplay(problem, ui.config.TYPE_MAP || {});
+    if (problem.body && problem.body.trim()) {
+      displayText = text;
+      hasTextInfo = true;
+    } else {
+      displayText = '未检测到题目文本，将使用图像识别';
+    }
+  }
 
-  const el = document.querySelector('#ykt-ai-question-input');
+  const el = document.querySelector('#ykt-ai-question-display');
   if (el) {
-    // 若用户已经编辑过则不覆盖；首次为空时才灌入默认题面
-    if (!el.value.trim()) el.value = text;
+    el.textContent = displayText;
+  }
+  
+  const statusEl = document.querySelector('#ykt-ai-text-status');
+  if (statusEl) {
+    statusEl.textContent = hasTextInfo ? '✓ 已检测到题目文本' : '⚠ 未检测到题目文本，将完全依靠图像识别';
+    statusEl.className = hasTextInfo ? 'text-status success' : 'text-status warning';
   }
 }
 
-function getEditedQuestion() {
-  const el = document.querySelector('#ykt-ai-question-input');
-  const v = el ? el.value.trim() : '';
-  return v;
-}
-
-// 新增：使用Vision模式询问AI
-// 在 askAIVisionForCurrent 函数中添加更多调试信息
-export async function askAIVisionForCurrent() {
+// 融合模式AI询问函数（文本+图像）
+export async function askAIFusionMode() {
   const slide = repo.currentSlideId ? repo.slides.get(repo.currentSlideId) : null;
   const problem = slide?.problem || (repo.encounteredProblems.at(-1) ? repo.problems.get(repo.encounteredProblems.at(-1).problemId) : null);
 
@@ -100,92 +104,91 @@ export async function askAIVisionForCurrent() {
   setAIAnswer('');
 
   try {
-    // 1. 检查 API Key
     if (!ui.config.ai.kimiApiKey) {
       throw new Error('请先在设置中配置 Kimi API Key');
     }
 
-    // 2. 截取当前页面图像
     ui.toast('正在截取页面图像...', 2000);
-    console.log('[Vision] 开始截图...');
+    console.log('[AI Panel] 使用融合模式分析（文本+图像）...');
     
     const imageBase64 = await captureProblemForVision();
     if (!imageBase64) {
       throw new Error('无法截取页面图像，请确保页面内容已加载完成');
     }
     
-    console.log('[Vision] 截图完成，图像大小:', imageBase64.length);
+    console.log('[AI Panel] 截图完成，图像大小:', imageBase64.length);
 
-    // 3. 准备文本提示
-    const edited = getEditedQuestion();
-    let textPrompt = edited && edited.length > 0
-      ? `请分析图片并结合以下用户输入的题目信息作答。用户输入的题目信息是：\n\n${edited}\n\n请按“答案/解释”的格式返回。`
-      : '请分析图片中的题目并给出答案。按照以下格式回答：\n答案: [你的答案]\n解释: [详细解释]';
+    // 使用新的 formatProblemForVision 函数构建提示
+    const hasTextInfo = problem && problem.body && problem.body.trim();
+    const textPrompt = formatProblemForVision(problem, ui.config.TYPE_MAP || {}, hasTextInfo);
 
-    if (!edited && problem && problem.body) {
-      const problemText = formatProblemForAI(problem, ui.config.TYPE_MAP || {});
-      textPrompt = `请结合以下题目信息分析图片：\n\n${problemText}\n\n请仔细观察图片内容，给出准确答案。`;
-    }
-
-    // 4. 调用Vision API
-    ui.toast('正在使用Vision模式分析...', 3000);
-    console.log('[Vision] 调用API...');
+    ui.toast('正在使用融合模式分析...', 3000);
+    console.log('[AI Panel] 调用Vision API...');
+    console.log('[AI Panel] 使用的提示:', textPrompt);
     
     const aiContent = await queryKimiVision(imageBase64, textPrompt, ui.config.ai);
     
     setAILoading(false);
-    console.log('[Vision] API调用成功');
-    setAIAnswer(`Vision模式回答：\n${aiContent}`);
+    console.log('[AI Panel] 融合模式API调用成功');
+    console.log('[AI Panel] AI回答:', aiContent);
 
-    // 5. 如果有题目对象，尝试解析答案并提供提交按钮
+    // 尝试解析答案
+    let parsed = null;
     if (problem) {
-      const parsed = parseAIAnswer(problem, aiContent);
-      if (parsed) {
-        setAIAnswer(`Vision模式回答：\n${aiContent}\n\nAI 建议答案：${JSON.stringify(parsed)}`);
-        
-        const submitBtn = document.createElement('button');
-        submitBtn.textContent = '提交答案';
-        submitBtn.onclick = async () => {
-          try {
-            await submitAnswer(problem, parsed);
-            ui.toast('提交成功');
-            showAutoAnswerPopup(problem, aiContent);
-          } catch (e) {
-            ui.toast(`提交失败: ${e.message}`);
-          }
-        };
-        $('#ykt-ai-answer').appendChild(document.createElement('br'));
-        $('#ykt-ai-answer').appendChild(submitBtn);
-      } else {
-        setAIAnswer(`Vision模式回答：\n${aiContent}\n\n注意：无法自动解析答案格式，请手动查看上述回答。`);
-      }
+      parsed = parseAIAnswer(problem, aiContent);
+      console.log('[AI Panel] 解析结果:', parsed);
+    }
+
+    if (parsed) {
+      setAIAnswer(`融合模式分析结果：\n${aiContent}\n\nAI 建议答案：${JSON.stringify(parsed)}`);
+      
+      const submitBtn = document.createElement('button');
+      submitBtn.textContent = '提交答案';
+      submitBtn.className = 'ykt-btn ykt-btn-primary';
+      submitBtn.onclick = async () => {
+        try {
+          await submitAnswer(problem, parsed);
+          ui.toast('提交成功');
+          showAutoAnswerPopup(problem, aiContent);
+        } catch (e) {
+          ui.toast(`提交失败: ${e.message}`);
+        }
+      };
+      $('#ykt-ai-answer').appendChild(document.createElement('br'));
+      $('#ykt-ai-answer').appendChild(submitBtn);
+    } else {
+      setAIAnswer(`融合模式分析结果：\n${aiContent}\n\n⚠️ 无法自动解析答案格式，请检查AI回答是否符合要求格式。`);
     }
 
   } catch (e) {
     setAILoading(false);
-    console.error('[Vision] 完整错误信息:', e);
+    console.error('[AI Panel] 融合模式失败:', e);
     
-    // ✅ 提供降级建议
-    let errorMsg = `Vision模式失败: ${e.message}`;
+    let errorMsg = `融合模式分析失败: ${e.message}`;
     if (e.message.includes('400')) {
-      errorMsg += '\n\n可能的解决方案：\n1. 检查 API Key 是否正确\n2. 尝试刷新页面后重试\n3. 使用普通文本模式';
+      errorMsg += '\n\n可能的解决方案：\n1. 检查 API Key 是否正确\n2. 尝试刷新页面后重试\n3. 确保页面已完全加载';
     }
     
     setAIError(errorMsg);
   }
 }
 
-// 修改原有的askAIForCurrent，保持兼容
+// 保留其他函数以向后兼容，但现在都指向融合模式
 export async function askAIForCurrent() {
+  return askAIFusionMode();
+}
+
+export async function askAIVisionForCurrent() {
+  return askAIFusionMode();
+}
+
+// 保留纯文本模式函数但不在UI中使用
+export async function askAITextOnly() {
   const slide = repo.currentSlideId ? repo.slides.get(repo.currentSlideId) : null;
   const problem = slide?.problem || (repo.encounteredProblems.at(-1) ? repo.problems.get(repo.encounteredProblems.at(-1).problemId) : null);
 
-  const edited = getEditedQuestion(); // ← 读取用户编辑内容
-
-  // 若没有题面文本（用户也没编辑）且无法拿到 problem，则自动切到 Vision 模式
-  if (!edited && (!problem || !problem.body)) {
-    ui.toast('未检测到题目文本，自动使用Vision模式', 2000);
-    return askAIVisionForCurrent();
+  if (!problem || !problem.body) {
+    throw new Error('文本模式需要题目文本');
   }
 
   setAIError('');
@@ -193,38 +196,21 @@ export async function askAIForCurrent() {
   setAIAnswer('');
 
   try {
-    // 1) 构造要问 AI 的文本：优先使用“用户编辑”的题面
-    const q = edited || formatProblemForAI(problem, ui.config.TYPE_MAP || {});
-    // 2) 请求
+    const q = formatProblemForAI(problem, ui.config.TYPE_MAP || {});
     const aiContent = await queryKimi(q, ui.config.ai);
 
-    // 3) 若有 problem，尝试解析并提供“提交答案”
     let parsed = null;
     if (problem) parsed = parseAIAnswer(problem, aiContent);
 
     setAILoading(false);
 
     if (parsed) {
-      setAIAnswer(`AI 建议答案：${JSON.stringify(parsed)}`);
-      const submitBtn = document.createElement('button');
-      submitBtn.textContent = '提交答案';
-      submitBtn.onclick = async () => {
-        try {
-          await submitAnswer(problem, parsed);
-          ui.toast('提交成功');
-          showAutoAnswerPopup(problem, typeof aiContent === 'string' ? aiContent : JSON.stringify(aiContent, null, 2));
-        } catch (e) {
-          ui.toast(`提交失败: ${e.message}`);
-        }
-      };
-      document.querySelector('#ykt-ai-answer').appendChild(document.createElement('br'));
-      document.querySelector('#ykt-ai-answer').appendChild(submitBtn);
+      setAIAnswer(`文本模式回答：\n${aiContent}\n\nAI 建议答案：${JSON.stringify(parsed)}`);
     } else {
-      // 无法解析就直接把原文显示给用户
-      setAIAnswer(typeof aiContent === 'string' ? aiContent : JSON.stringify(aiContent, null, 2));
+      setAIAnswer(`文本模式回答：\n${aiContent}`);
     }
   } catch (e) {
     setAILoading(false);
-    setAIError(e.message);
+    setAIError(`文本模式失败: ${e.message}`);
   }
 }

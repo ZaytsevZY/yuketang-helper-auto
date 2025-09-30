@@ -266,3 +266,38 @@
     position: static;
   }
 }
+
+/* 在现有样式基础上添加 */
+
+.text-status {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin: 4px 0;
+  display: inline-block;
+}
+
+.text-status.success {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.text-status.warning {
+  background-color: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeaa7;
+}
+
+.ykt-question-display {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 8px;
+  margin: 4px 0;
+  max-height: 150px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.4;
+}

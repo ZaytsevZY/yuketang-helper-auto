@@ -5,53 +5,52 @@ import { randInt } from '../core/env.js';
 import { repo } from './repo.js';
 import { ui } from '../ui/ui-api.js';
 import { submitAnswer, retryAnswer } from '../tsm/answer.js';
-import { formatProblemForAI, formatProblemForDisplay, parseAIAnswer } from '../tsm/ai-format.js';
-import { queryKimi } from '../ai/kimi.js';
+import { queryKimi, queryKimiVision } from '../ai/kimi.js';
 import { showAutoAnswerPopup } from '../ui/panels/auto-answer-popup.js';
 import { captureProblemForVision } from '../capture/screenshoot.js';
+import { formatProblemForAI, formatProblemForDisplay, formatProblemForVision, parseAIAnswer } from '../tsm/ai-format.js';
 
 let _autoLoopStarted = false;
 
-// 内部自动答题处理函数
+// 内部自动答题处理函数 - 融合模式（文本+图像）
 async function handleAutoAnswerInternal(problem) {
   const status = repo.problemStatus.get(problem.problemId);
   if (!status || status.answering || problem.result) return;
   if (Date.now() >= status.endTime) return;
 
   try {
-    let aiAnswer, parsed;
+    console.log('[AutoAnswer] 使用融合模式分析（文本+图像）...');
     
-    // 优先使用文本模式，如果没有题干则使用Vision模式
-    if (problem.body && problem.body.trim()) {
-      const q = formatProblemForAI(problem, PROBLEM_TYPE_MAP);
-      aiAnswer = await queryKimi(q, ui.config.ai);
-      parsed = parseAIAnswer(problem, aiAnswer);
+    // 截图
+    const imageBase64 = await captureProblemForVision();
+    if (!imageBase64) {
+      return ui.toast('无法截取页面图像，跳过自动作答', 3000);
     }
     
-    // 如果文本模式失败或没有题干，尝试Vision模式
+    // 使用新的 formatProblemForVision 函数构建提示
+    const hasTextInfo = problem.body && problem.body.trim();
+    const textPrompt = formatProblemForVision(problem, PROBLEM_TYPE_MAP, hasTextInfo);
+    
+    console.log('[AutoAnswer] 使用的提示:', textPrompt);
+    
+    const aiAnswer = await queryKimiVision(imageBase64, textPrompt, ui.config.ai);
+    console.log('[AutoAnswer] AI回答:', aiAnswer);
+    
+    const parsed = parseAIAnswer(problem, aiAnswer);
+    console.log('[AutoAnswer] 解析结果:', parsed);
+    
     if (!parsed) {
-      const { captureProblemForVision } = await import('../capture/screenshoot.js');
-      const { queryKimiVision } = await import('../ai/kimi.js');
-      
-      const imageBase64 = await captureProblemForVision();
-      if (imageBase64) {
-        const textPrompt = problem.body ? 
-          `请结合题目信息分析图片：\n${formatProblemForAI(problem, PROBLEM_TYPE_MAP)}` :
-          '请分析图片中的题目并给出答案';
-        aiAnswer = await queryKimiVision(imageBase64, textPrompt, ui.config.ai);
-        parsed = parseAIAnswer(problem, aiAnswer);
-      }
+      return ui.toast('融合模式无法解析答案，跳过自动作答', 3000);
     }
-    
-    if (!parsed) return ui.toast('无法解析AI答案，跳过自动作答', 2000);
 
     await submitAnswer(problem, parsed);
     actions.onAnswerProblem(problem.problemId, parsed);
-    ui.toast(`自动作答完成: ${String(problem.body || '').slice(0, 30)}...`, 3000);
-    showAutoAnswerPopup(problem, typeof aiAnswer === 'string' ? aiAnswer : JSON.stringify(aiAnswer, null, 2));
+    ui.toast(`融合模式自动作答完成: ${String(problem.body || '').slice(0, 30)}...`, 3000);
+    showAutoAnswerPopup(problem, aiAnswer);
+    
   } catch (e) {
-    console.error('[AutoAnswer] failed', e);
-    ui.toast(`自动作答失败: ${e.message}`, 3000);
+    console.error('[AutoAnswer] 融合模式失败', e);
+    ui.toast(`融合模式自动作答失败: ${e.message}`, 3000);
   }
 }
 
@@ -65,8 +64,8 @@ export function startAutoAnswerLoop() {
       if (status.autoAnswerTime !== null && now >= status.autoAnswerTime) {
         const problem = repo.problems.get(pid);
         if (problem && !problem.result) {
-          status.autoAnswerTime = null;      // 防重入
-          handleAutoAnswerInternal(problem); // 使用内部函数
+          status.autoAnswerTime = null;
+          handleAutoAnswerInternal(problem);
         }
       }
     });
@@ -109,14 +108,12 @@ export const actions = {
 
     if (Date.now() > status.endTime || problem.result) return;
 
-    // toast + 通知
     if (ui.config.notifyProblems) ui.notifyProblem(problem, slide);
 
-    // 自动作答
     if (ui.config.autoAnswer) {
       const delay = ui.config.autoAnswerDelay + randInt(0, ui.config.autoAnswerRandomDelay);
       status.autoAnswerTime = Date.now() + delay;
-      ui.toast(`将在 ${Math.floor(delay / 1000)} 秒后自动作答本题`, 3000);
+      ui.toast(`将在 ${Math.floor(delay / 1000)} 秒后使用融合模式自动作答`, 3000);
     }
     ui.updateActiveProblems();
   },
@@ -139,7 +136,6 @@ export const actions = {
     return handleAutoAnswerInternal(problem);
   },
 
-  // 定时器驱动（由 index.js 安装）
   tickAutoAnswer() {
     const now = Date.now();
     for (const [pid, status] of repo.problemStatus) {
@@ -175,9 +171,7 @@ export const actions = {
     ui.showPresentationPanel(true);
   },
 
-  //1.16.4: 进入课堂：设置 lessonId +（可选）写入 Tab 信息 + 载入本课已存课件
   launchLessonHelper() {
-    // 从 URL 提取 lessonId（/lesson/fullscreen/v3/<lessonId>/...）
     const path = window.location.pathname;
     const m = path.match(/\/lesson\/fullscreen\/v3\/([^/]+)/);
     repo.currentLessonId = m ? m[1] : null;
@@ -185,7 +179,6 @@ export const actions = {
       console.log(`[雨课堂助手] 检测到课堂页面 lessonId: ${repo.currentLessonId}`);
     }
 
-    // GM_* Tab 状态（存在才用，向后兼容）
     if (typeof window.GM_getTab === 'function' && typeof window.GM_saveTab === 'function' && repo.currentLessonId) {
       window.GM_getTab((tab) => {
         tab.type = 'lesson';
@@ -193,7 +186,6 @@ export const actions = {
         window.GM_saveTab(tab);
       });
     }
-  // 载入"本课"的历史课件
     repo.loadStoredPresentations();
   },
 };

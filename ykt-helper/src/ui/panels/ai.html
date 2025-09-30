@@ -1,25 +1,31 @@
 <div id="ykt-ai-answer-panel" class="ykt-panel">
-  <div class="panel-header">
-    <h3><i class="fas fa-robot"></i> AI 解答</h3>
-    <span id="ykt-ai-close" class="close-btn" title="关闭">
-      <i class="fas fa-times"></i>
-    </span>
+  <div class="ykt-panel-header">
+    <h3><i class="fas fa-robot"></i> AI 融合分析</h3>
+    <button id="ykt-ai-close" class="ykt-btn-close">&times;</button>
   </div>
-  <div class="panel-body">
-    <div class="ai-question-wrap">
-      <textarea id="ykt-ai-question-input" class="ai-question" placeholder="在此编辑要询问 AI 的题目…"></textarea>
-      <div class="ai-question-hint" style="font-size:12px;color:#666;margin-top:6px;">
-        提示：可直接编辑上面的题面再点击“向 AI 询问当前题目”或启用自动分析。
-      </div>
+  <div class="ykt-panel-content">
+    <div class="ykt-form-group">
+      <label>当前题目：</label>
+      <div id="ykt-ai-question-display" class="ykt-question-display">系统将自动识别当前页面的题目</div>
+      <div id="ykt-ai-text-status" class="text-status">正在检测题目信息...</div>
+      <small>提示：系统使用融合模式，同时分析题目文本信息和页面图像，提供最准确的答案。</small>
     </div>
-    <div id="ykt-ai-loading" class="ai-loading" style="display: none;">
-      <i class="fas fa-spinner fa-spin"></i> AI正在分析...
+    
+    <div class="ykt-form-group">
+      <button id="ykt-ai-ask" class="ykt-btn ykt-btn-primary">
+        <i class="fas fa-brain"></i> 融合模式分析（文本+图像）
+      </button>
     </div>
-    <div id="ykt-ai-error" class="ai-error" style="display: none;"></div>
-    <div id="ykt-ai-answer" class="ai-answer"></div>
-    <div class="ai-actions">
-      <button id="ykt-ai-ask">向 AI 询问当前题目</button>
-      <button id="ykt-ai-ask-vision">Vision模式分析</button>
+
+    <div id="ykt-ai-loading" class="ykt-loading" style="display: none;">
+      <i class="fas fa-spinner fa-spin"></i> AI正在使用融合模式分析...
+    </div>
+    
+    <div id="ykt-ai-error" class="ykt-error" style="display: none;"></div>
+    
+    <div class="ykt-form-group">
+      <label>AI 分析结果：</label>
+      <div id="ykt-ai-answer" class="ykt-ai-answer"></div>
     </div>
   </div>
 </div>
