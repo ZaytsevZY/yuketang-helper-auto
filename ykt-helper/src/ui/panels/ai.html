@@ -11,6 +11,18 @@
       <small>提示：系统使用融合模式，同时分析题目文本信息和页面图像，提供最准确的答案。</small>
     </div>
     
+    <!-- 新增：自定义prompt输入框 -->
+    <div class="ykt-form-group">
+      <label>自定义提示（可选）：</label>
+      <textarea 
+        id="ykt-ai-custom-prompt" 
+        class="ykt-input ykt-custom-prompt" 
+        placeholder="默认为空，可输入自定义prompt"
+        rows="3"
+      ></textarea>
+      <small>提示：此内容将追加到系统生成的prompt后面，可用于补充特殊要求或背景信息。</small>
+    </div>
+    
     <div class="ykt-form-group">
       <button id="ykt-ai-ask" class="ykt-btn ykt-btn-primary">
         <i class="fas fa-brain"></i> 融合模式分析（文本+图像）

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI雨课堂助手（模块化构建版）
 // @namespace    https://github.com/ZaytsevZY/yuketang-helper-auto
-// @version      1.18.0-mod
+// @version      1.18.1-mod
 // @description  课堂习题提示，AI解答习题
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
@@ -492,6 +492,164 @@
       resp: resp
     };
   }
+  // src/ui/panels/auto-answer-popup.js
+  // 简单 HTML 转义
+    function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[c]));
+  }
+  /**
+   * 显示自动作答成功弹窗
+   * @param {object} problem - 题目对象（保留参数以兼容现有调用）
+   * @param {string} aiAnswer - AI 回答文本
+   * @param {object} [cfg] - 可选配置
+   */  function showAutoAnswerPopup(problem, aiAnswer, cfg = {}) {
+    // 避免重复
+    const existed = document.getElementById("ykt-auto-answer-popup");
+    if (existed) existed.remove();
+    const popup = document.createElement("div");
+    popup.id = "ykt-auto-answer-popup";
+    popup.className = "auto-answer-popup";
+    popup.innerHTML = `\n    <div class="popup-content">\n      <div class="popup-header">\n        <h4><i class="fas fa-robot"></i> AI自动作答成功</h4>\n        <span class="close-btn" title="关闭"><i class="fas fa-times"></i></span>\n      </div>\n      <div class="popup-body">\n        <div class="popup-row popup-answer">\n          <div class="label">AI分析结果：</div>\n          <div class="content">${esc(aiAnswer || "无AI回答").replace(/\n/g, "<br>")}</div>\n        </div>\n      </div>\n    </div>\n  `;
+    document.body.appendChild(popup);
+    // 关闭按钮
+        popup.querySelector(".close-btn")?.addEventListener("click", () => popup.remove());
+    // 点击遮罩关闭
+        popup.addEventListener("click", e => {
+      if (e.target === popup) popup.remove();
+    });
+    // 自动关闭
+        const ac = ui.config?.autoAnswerPopup || {};
+    const autoClose = cfg.autoClose ?? ac.autoClose ?? true;
+    const autoDelay = cfg.autoCloseDelay ?? ac.autoCloseDelay ?? 4e3;
+    if (autoClose) setTimeout(() => {
+      if (popup.parentNode) popup.remove();
+    }, autoDelay);
+    // 入场动画
+        requestAnimationFrame(() => popup.classList.add("visible"));
+  }
+  // src/capture/screenshot.js
+    async function captureProblemScreenshot() {
+    try {
+      const html2canvas = await ensureHtml2Canvas();
+      const el = document.querySelector(".ques-title") || document.querySelector(".problem-body") || document.querySelector(".ppt-inner") || document.querySelector(".ppt-courseware-inner") || document.body;
+      return await html2canvas(el, {
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: "#ffffff",
+        scale: 1,
+        width: Math.min(el.scrollWidth, 1200),
+        height: Math.min(el.scrollHeight, 800)
+      });
+    } catch (e) {
+      console.error("[captureProblemScreenshot] failed", e);
+      return null;
+    }
+  }
+  /**
+   * ✅ 新方法：获取指定幻灯片的截图
+   * @param {string} slideId - 幻灯片ID
+   * @returns {Promise<string|null>} base64图片数据
+   */  async function captureSlideImage(slideId) {
+    try {
+      console.log("[captureSlideImage] 获取幻灯片图片:", slideId);
+      const slide = repo.slides.get(slideId);
+      if (!slide) {
+        console.error("[captureSlideImage] 找不到幻灯片:", slideId);
+        return null;
+      }
+      // ✅ 使用 cover 或 coverAlt 图片URL
+            const imageUrl = slide.coverAlt || slide.cover;
+      if (!imageUrl) {
+        console.error("[captureSlideImage] 幻灯片没有图片URL");
+        return null;
+      }
+      console.log("[captureSlideImage] 图片URL:", imageUrl);
+      // ✅ 下载图片并转换为base64
+            const base64 = await downloadImageAsBase64(imageUrl);
+      if (!base64) {
+        console.error("[captureSlideImage] 下载图片失败");
+        return null;
+      }
+      console.log("[captureSlideImage] ✅ 成功获取图片, 大小:", Math.round(base64.length / 1024), "KB");
+      return base64;
+    } catch (e) {
+      console.error("[captureSlideImage] 失败:", e);
+      return null;
+    }
+  }
+  /**
+   * ✅ 下载图片并转换为base64
+   * @param {string} url - 图片URL
+   * @returns {Promise<string|null>}
+   */  async function downloadImageAsBase64(url) {
+    return new Promise(resolve => {
+      try {
+        const img = new Image;
+        img.crossOrigin = "anonymous";
+ // ✅ 允许跨域
+                img.onload = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            // ✅ 转换为JPEG格式，压缩质量0.8
+                        const base64 = canvas.toDataURL("image/jpeg", .8).split(",")[1];
+            // ✅ 如果图片太大，进一步压缩
+                        if (base64.length > 1e6) {
+              // 1MB
+              console.log("[downloadImageAsBase64] 图片过大，进行压缩...");
+              const compressed = canvas.toDataURL("image/jpeg", .5).split(",")[1];
+              console.log("[downloadImageAsBase64] 压缩后大小:", Math.round(compressed.length / 1024), "KB");
+              resolve(compressed);
+            } else resolve(base64);
+          } catch (e) {
+            console.error("[downloadImageAsBase64] Canvas处理失败:", e);
+            resolve(null);
+          }
+        };
+        img.onerror = e => {
+          console.error("[downloadImageAsBase64] 图片加载失败:", e);
+          resolve(null);
+        };
+        img.src = url;
+      } catch (e) {
+        console.error("[downloadImageAsBase64] 失败:", e);
+        resolve(null);
+      }
+    });
+  }
+  // 原有的 captureProblemForVision 保留作为后备方案
+    async function captureProblemForVision() {
+    try {
+      console.log("[captureProblemForVision] 开始截图...");
+      const canvas = await captureProblemScreenshot();
+      if (!canvas) {
+        console.error("[captureProblemForVision] 截图失败");
+        return null;
+      }
+      console.log("[captureProblemForVision] 截图成功，转换为base64...");
+      const base64 = canvas.toDataURL("image/jpeg", .8).split(",")[1];
+      console.log("[captureProblemForVision] base64 长度:", base64.length);
+      if (base64.length > 1e6) {
+        console.log("[captureProblemForVision] 图片过大，进行压缩...");
+        const smallerBase64 = canvas.toDataURL("image/jpeg", .5).split(",")[1];
+        console.log("[captureProblemForVision] 压缩后长度:", smallerBase64.length);
+        return smallerBase64;
+      }
+      return base64;
+    } catch (e) {
+      console.error("[captureProblemForVision] failed", e);
+      return null;
+    }
+  }
   // src/tsm/ai-format.js
   // 改进的融合模式 prompt 格式化函数
     function formatProblemForVision(problem, TYPE_MAP, hasTextInfo = false) {
@@ -655,99 +813,6 @@
       }
     } catch (e) {
       console.error("[parseAIAnswer] 解析失败", e);
-      return null;
-    }
-  }
-  // src/ui/auto-answer-popup.js
-  // 简单 HTML 转义，避免把题目中的 <> 等插入为标签
-    function esc(s) {
-    return String(s).replace(/[&<>"']/g, c => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    }[c]));
-  }
-  /**
-   * 显示自动作答成功弹窗
-   * @param {object} problem - 题目对象
-   * @param {string} aiAnswer - 原始 AI 文本（未解析前）
-   * @param {object} [cfg] - 可选配置（用于局部覆写）
-   */  function showAutoAnswerPopup(problem, aiAnswer, cfg = {}) {
-    // 避免重复
-    const existed = document.getElementById("ykt-auto-answer-popup");
-    if (existed) existed.remove();
-    const popup = document.createElement("div");
-    popup.id = "ykt-auto-answer-popup";
-    popup.className = "auto-answer-popup";
-    // 模块版签名：需要传 TYPE_MAP
-        const questionText = formatProblemForDisplay(problem, ui.config && ui.config.TYPE_MAP || {});
-    // 采用“全屏遮罩 + 内部卡片”的结构，外层用于点击关闭
-        popup.innerHTML = `\n    <div class="popup-content">\n      <div class="popup-header">\n        <h4><i class="fas fa-robot"></i> AI自动作答成功</h4>\n        <span class="close-btn" title="关闭"><i class="fas fa-times"></i></span>\n      </div>\n      <div class="popup-body">\n        <div class="popup-row popup-question">\n          <div class="label">题目：</div>\n          <div class="content">${esc(questionText).replace(/\n/g, "<br>")}</div>\n        </div>\n        <div class="popup-row popup-answer">\n          <div class="label">AI回答：</div>\n          <div class="content">${esc(aiAnswer || "").replace(/\n/g, "<br>")}</div>\n        </div>\n      </div>\n    </div>\n  `;
-    document.body.appendChild(popup);
-    // 关闭按钮
-        popup.querySelector(".close-btn")?.addEventListener("click", () => popup.remove());
-    // 点击遮罩关闭（只在点击外层时才关闭）
-        popup.addEventListener("click", e => {
-      if (e.target === popup) popup.remove();
-    });
-    // 自动关闭
-        const ac = ui.config && ui.config.autoAnswerPopup || {};
-    const autoClose = cfg.autoClose ?? ac.autoClose ?? true;
-    const autoDelay = cfg.autoCloseDelay ?? ac.autoCloseDelay ?? 4e3;
-    if (autoClose) setTimeout(() => {
-      if (popup.parentNode) popup.remove();
-    }, autoDelay);
-    // 入场动画
-        requestAnimationFrame(() => popup.classList.add("visible"));
-  }
-  // src/capture/screenshot.js
-    async function captureProblemScreenshot() {
-    try {
-      const html2canvas = await ensureHtml2Canvas();
-      const el = document.querySelector(".ques-title") || document.querySelector(".problem-body") || document.querySelector(".ppt-inner") || document.querySelector(".ppt-courseware-inner") || document.body;
-      return await html2canvas(el, {
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: "#ffffff",
-        // ✅ 设置背景色
-        scale: 1,
-        // ✅ 设置缩放比例
-        width: Math.min(el.scrollWidth, 1200),
-        // ✅ 限制宽度
-        height: Math.min(el.scrollHeight, 800)
-      });
-    } catch (e) {
-      console.error("[captureProblemScreenshot] failed", e);
-      return null;
-    }
-  }
-  // 新增：获取问题页面截图的base64数据，供Vision API使用
-    async function captureProblemForVision() {
-    try {
-      console.log("[captureProblemForVision] 开始截图...");
-      const canvas = await captureProblemScreenshot();
-      if (!canvas) {
-        console.error("[captureProblemForVision] 截图失败");
-        return null;
-      }
-      console.log("[captureProblemForVision] 截图成功，转换为base64...");
-      // ✅ 转换为 JPEG 格式以减小文件大小
-            const base64 = canvas.toDataURL("image/jpeg", .8).split(",")[1];
-      console.log("[captureProblemForVision] base64 长度:", base64.length);
-      // ✅ 检查图片大小，如果太大则压缩
-            if (base64.length > 1e6) {
-        // 1MB
-        console.log("[captureProblemForVision] 图片过大，进行压缩...");
-        // 重新生成更小的图片
-                const smallerBase64 = canvas.toDataURL("image/jpeg", .5).split(",")[1];
-        console.log("[captureProblemForVision] 压缩后长度:", smallerBase64.length);
-        return smallerBase64;
-      }
-      return base64;
-    } catch (e) {
-      console.error("[captureProblemForVision] failed", e);
       return null;
     }
   }
@@ -1524,7 +1589,7 @@
       box.appendChild(card);
     });
   }
-  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>雨课堂助手使用教程</h3>\n    <h5>1.17.1<h5>\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\n  </div>\n\n  <div class="panel-body">\n    <div class="tutorial-content">\n      <h4>功能介绍</h4>\n      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>\n      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-ai" target="_blank" rel="noopener">GitHub</a></p>\n      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai雨课堂助手" target="_blank" rel="noopener">GreasyFork</a></p>\n\n      <h4>工具栏按钮说明</h4>\n      <ul>\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>\n        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面。</li>\n        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\n        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>\n        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>\n      </ul>\n\n      <h4>自动作答</h4>\n      <ul>\n        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>\n        <li>需要配置 <del>DeepSeek API</del> Kimi API 密钥。</li>\n        <li>答案来自 AI，结果仅供参考。</li>\n      </ul>\n\n      <h4>AI 解答</h4>\n      <ol>\n        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>\n        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>\n      </ol>\n\n      <h4>注意事项</h4>\n      <p>1) 仅供学习参考，请独立思考；</p>\n      <p>2) 合理使用 API 额度；</p>\n      <p>3) 答案不保证 100% 正确；</p>\n      <p>4) 自动作答有一定风险，谨慎开启。</p>\n\n      <h4>联系方式</h4>\n      <ul>\n        <li>请在Github issue提出问题</li>\n      </ul>\n    </div>\n  </div>\n</div>\n';
+  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>雨课堂助手使用教程</h3>\n    <h5>1.18.1</h5>\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\n  </div>\n\n  <div class="panel-body">\n    <div class="tutorial-content">\n      <h4>功能介绍</h4>\n      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>\n      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">GitHub</a></p>\n      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B-%E6%A8%A1%E5%9D%97%E5%8C%96%E6%9E%84%E5%BB%BA%E7%89%88" target="_blank" rel="noopener">GreasyFork</a></p>\n\n      <h4>工具栏按钮说明</h4>\n      <ul>\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>\n        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面。</li>\n        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\n        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>\n        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>\n      </ul>\n\n      <h4>自动作答</h4>\n      <ul>\n        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>\n        <li>需要配置 <del>DeepSeek API</del> Kimi API 密钥。</li>\n        <li>答案来自 AI，结果仅供参考。</li>\n      </ul>\n\n      <h4>AI 解答</h4>\n      <ol>\n        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>\n        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>\n      </ol>\n\n      <h4>注意事项</h4>\n      <p>1) 仅供学习参考，请独立思考；</p>\n      <p>2) 合理使用 API 额度；</p>\n      <p>3) 答案不保证 100% 正确；</p>\n      <p>4) 自动作答有一定风险，谨慎开启。</p>\n\n      <h4>联系方式</h4>\n      <ul>\n        <li>请在Github issue提出问题</li>\n      </ul>\n    </div>\n  </div>\n</div>\n';
   let mounted = false;
   let root;
   function $(sel) {
@@ -1662,24 +1727,32 @@
       console.log("[AutoAnswer] 跳过：已超时");
       return;
     }
-    // ✅ 标记为正在作答
-        status.answering = true;
+    status.answering = true;
     try {
       console.log("[AutoAnswer] =================================");
       console.log("[AutoAnswer] 开始自动答题");
       console.log("[AutoAnswer] 题目ID:", problem.problemId);
       console.log("[AutoAnswer] 题目类型:", PROBLEM_TYPE_MAP[problem.problemType]);
       console.log("[AutoAnswer] 题目内容:", problem.body?.slice(0, 50) + "...");
+      const slideId = status.slideId;
+      console.log("[AutoAnswer] 题目所在幻灯片:", slideId);
       console.log("[AutoAnswer] =================================");
-      // ✅ 直接截图当前页面（因为题目解锁时页面应该已经显示了这道题）
-            console.log("[AutoAnswer] 使用融合模式分析（文本+图像）...");
-      const imageBase64 = await captureProblemForVision();
-      if (!imageBase64) {
-        status.answering = false;
-        console.error("[AutoAnswer] 截图失败");
-        return ui.toast("无法截取页面图像，跳过自动作答", 3e3);
-      }
-      console.log("[AutoAnswer] ✅ 截图完成，大小:", Math.round(imageBase64.length / 1024), "KB");
+      // ✅ 关键修复：直接使用幻灯片的cover图片，而不是截图DOM
+            console.log("[AutoAnswer] 使用融合模式分析（文本+幻灯片图片）...");
+      const imageBase64 = await captureSlideImage(slideId);
+      // ✅ 如果获取幻灯片图片失败，回退到DOM截图
+            if (!imageBase64) {
+        console.log("[AutoAnswer] 无法获取幻灯片图片，尝试使用DOM截图...");
+        const fallbackImage = await captureProblemForVision();
+        if (!fallbackImage) {
+          status.answering = false;
+          console.error("[AutoAnswer] 所有截图方法都失败");
+          return ui.toast("无法获取题目图像，跳过自动作答", 3e3);
+        }
+        imageBase64 = fallbackImage;
+        console.log("[AutoAnswer] ✅ DOM截图成功");
+      } else console.log("[AutoAnswer] ✅ 幻灯片图片获取成功");
+      console.log("[AutoAnswer] 图片大小:", Math.round(imageBase64.length / 1024), "KB");
       // 构建提示
             const hasTextInfo = problem.body && problem.body.trim();
       const textPrompt = formatProblemForVision(problem, PROBLEM_TYPE_MAP, hasTextInfo);

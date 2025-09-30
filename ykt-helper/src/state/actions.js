@@ -7,50 +7,111 @@ import { ui } from '../ui/ui-api.js';
 import { submitAnswer, retryAnswer } from '../tsm/answer.js';
 import { queryKimi, queryKimiVision } from '../ai/kimi.js';
 import { showAutoAnswerPopup } from '../ui/panels/auto-answer-popup.js';
-import { captureProblemForVision } from '../capture/screenshoot.js';
 import { formatProblemForAI, formatProblemForDisplay, formatProblemForVision, parseAIAnswer } from '../tsm/ai-format.js';
+import { captureSlideImage, captureProblemForVision } from '../capture/screenshoot.js';  // ✅ 添加 captureSlideImage
 
 let _autoLoopStarted = false;
 
 // 内部自动答题处理函数 - 融合模式（文本+图像）
 async function handleAutoAnswerInternal(problem) {
   const status = repo.problemStatus.get(problem.problemId);
-  if (!status || status.answering || problem.result) return;
-  if (Date.now() >= status.endTime) return;
+  if (!status || status.answering || problem.result) {
+    console.log('[AutoAnswer] 跳过：', {
+      hasStatus: !!status,
+      answering: status?.answering,
+      hasResult: !!problem.result
+    });
+    return;
+  }
+  
+  if (Date.now() >= status.endTime) {
+    console.log('[AutoAnswer] 跳过：已超时');
+    return;
+  }
+
+  status.answering = true;
 
   try {
-    console.log('[AutoAnswer] 使用融合模式分析（文本+图像）...');
+    console.log('[AutoAnswer] =================================');
+    console.log('[AutoAnswer] 开始自动答题');
+    console.log('[AutoAnswer] 题目ID:', problem.problemId);
+    console.log('[AutoAnswer] 题目类型:', PROBLEM_TYPE_MAP[problem.problemType]);
+    console.log('[AutoAnswer] 题目内容:', problem.body?.slice(0, 50) + '...');
     
-    // 截图
-    const imageBase64 = await captureProblemForVision();
+    const slideId = status.slideId;
+    console.log('[AutoAnswer] 题目所在幻灯片:', slideId);
+    console.log('[AutoAnswer] =================================');
+    
+    // ✅ 关键修复：直接使用幻灯片的cover图片，而不是截图DOM
+    console.log('[AutoAnswer] 使用融合模式分析（文本+幻灯片图片）...');
+    
+    const imageBase64 = await captureSlideImage(slideId);
+    
+    // ✅ 如果获取幻灯片图片失败，回退到DOM截图
     if (!imageBase64) {
-      return ui.toast('无法截取页面图像，跳过自动作答', 3000);
+      console.log('[AutoAnswer] 无法获取幻灯片图片，尝试使用DOM截图...');
+      const fallbackImage = await captureProblemForVision();
+      
+      if (!fallbackImage) {
+        status.answering = false;
+        console.error('[AutoAnswer] 所有截图方法都失败');
+        return ui.toast('无法获取题目图像，跳过自动作答', 3000);
+      }
+      
+      imageBase64 = fallbackImage;
+      console.log('[AutoAnswer] ✅ DOM截图成功');
+    } else {
+      console.log('[AutoAnswer] ✅ 幻灯片图片获取成功');
     }
     
-    // 使用新的 formatProblemForVision 函数构建提示
+    console.log('[AutoAnswer] 图片大小:', Math.round(imageBase64.length / 1024), 'KB');
+    
+    // 构建提示
     const hasTextInfo = problem.body && problem.body.trim();
     const textPrompt = formatProblemForVision(problem, PROBLEM_TYPE_MAP, hasTextInfo);
     
-    console.log('[AutoAnswer] 使用的提示:', textPrompt);
+    console.log('[AutoAnswer] 文本信息:', hasTextInfo ? '有' : '无');
+    console.log('[AutoAnswer] 提示长度:', textPrompt.length);
     
+    // 调用 AI
+    ui.toast('AI 正在分析题目...', 2000);
     const aiAnswer = await queryKimiVision(imageBase64, textPrompt, ui.config.ai);
-    console.log('[AutoAnswer] AI回答:', aiAnswer);
+    console.log('[AutoAnswer] ✅ AI回答:', aiAnswer);
     
+    // 解析答案
     const parsed = parseAIAnswer(problem, aiAnswer);
     console.log('[AutoAnswer] 解析结果:', parsed);
     
     if (!parsed) {
-      return ui.toast('融合模式无法解析答案，跳过自动作答', 3000);
+      status.answering = false;
+      console.error('[AutoAnswer] 解析失败，AI回答格式不正确');
+      return ui.toast('无法解析AI答案，请检查格式', 3000);
     }
 
-    await submitAnswer(problem, parsed);
+    console.log('[AutoAnswer] ✅ 准备提交答案:', JSON.stringify(parsed));
+    
+    // 提交答案
+    await submitAnswer(problem, parsed, {
+      startTime: status.startTime,
+      endTime: status.endTime,
+      forceRetry: false
+    });
+    
+    console.log('[AutoAnswer] ✅ 提交成功');
+    
+    // 更新状态
     actions.onAnswerProblem(problem.problemId, parsed);
-    ui.toast(`融合模式自动作答完成: ${String(problem.body || '').slice(0, 30)}...`, 3000);
+    status.done = true;
+    status.answering = false;
+    
+    ui.toast(`✅ 自动作答完成`, 3000);
     showAutoAnswerPopup(problem, aiAnswer);
     
   } catch (e) {
-    console.error('[AutoAnswer] 融合模式失败', e);
-    ui.toast(`融合模式自动作答失败: ${e.message}`, 3000);
+    console.error('[AutoAnswer] ❌ 失败:', e);
+    console.error('[AutoAnswer] 错误堆栈:', e.stack);
+    status.answering = false;
+    ui.toast(`自动作答失败: ${e.message}`, 4000);
   }
 }
 
@@ -93,7 +154,15 @@ export const actions = {
   onUnlockProblem(data) {
     const problem = repo.problems.get(data.prob);
     const slide = repo.slides.get(data.sid);
-    if (!problem || !slide) return;
+    if (!problem || !slide) {
+      console.log('[onUnlockProblem] 题目或幻灯片不存在');
+      return;
+    }
+
+    console.log('[onUnlockProblem] 题目解锁');
+    console.log('[onUnlockProblem] 题目ID:', data.prob);
+    console.log('[onUnlockProblem] 幻灯片ID:', data.sid);
+    console.log('[onUnlockProblem] 课件ID:', data.pres);
 
     const status = {
       presentationId: data.pres,
@@ -106,15 +175,23 @@ export const actions = {
     };
     repo.problemStatus.set(data.prob, status);
 
-    if (Date.now() > status.endTime || problem.result) return;
+    if (Date.now() > status.endTime || problem.result) {
+      console.log('[onUnlockProblem] 题目已过期或已作答，跳过');
+      return;
+    }
 
-    if (ui.config.notifyProblems) ui.notifyProblem(problem, slide);
+    if (ui.config.notifyProblems) {
+      ui.notifyProblem(problem, slide);
+    }
 
     if (ui.config.autoAnswer) {
       const delay = ui.config.autoAnswerDelay + randInt(0, ui.config.autoAnswerRandomDelay);
       status.autoAnswerTime = Date.now() + delay;
+      
+      console.log(`[onUnlockProblem] 将在 ${Math.floor(delay / 1000)} 秒后自动作答`);
       ui.toast(`将在 ${Math.floor(delay / 1000)} 秒后使用融合模式自动作答`, 3000);
     }
+    
     ui.updateActiveProblems();
   },
 
@@ -187,5 +264,23 @@ export const actions = {
       });
     }
     repo.loadStoredPresentations();
+  },
+  
+    startAutoAnswerLoop() {
+    if (_autoLoopStarted) return;
+    _autoLoopStarted = true;
+
+    setInterval(() => {
+      const now = Date.now();
+      repo.problemStatus.forEach((status, pid) => {
+        if (status.autoAnswerTime !== null && now >= status.autoAnswerTime) {
+          const problem = repo.problems.get(pid);
+          if (problem && !problem.result) {
+            status.autoAnswerTime = null;
+            handleAutoAnswerInternal(problem);
+          }
+        }
+      });
+    }, 500);
   },
 };

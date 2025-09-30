@@ -65,6 +65,16 @@ export function setAIAnswer(content = '') {
   $('#ykt-ai-answer').textContent = content || '';
 }
 
+// 新增：获取用户自定义prompt
+function getCustomPrompt() {
+  const customPromptEl = $('#ykt-ai-custom-prompt');
+  if (customPromptEl) {
+    const customText = customPromptEl.value.trim();
+    return customText || '';
+  }
+  return '';
+}
+
 function renderQuestion() {
   const p = repo.currentSlideId ? repo.slides.get(repo.currentSlideId)?.problem : null;
   const problem = p || (repo.encounteredProblems.at(-1) ? repo.problems.get(repo.encounteredProblems.at(-1).problemId) : null);
@@ -94,7 +104,7 @@ function renderQuestion() {
   }
 }
 
-// 融合模式AI询问函数（文本+图像）
+// 融合模式AI询问函数（文本+图像）- 支持自定义prompt
 export async function askAIFusionMode() {
   const slide = repo.currentSlideId ? repo.slides.get(repo.currentSlideId) : null;
   const problem = slide?.problem || (repo.encounteredProblems.at(-1) ? repo.problems.get(repo.encounteredProblems.at(-1).problemId) : null);
@@ -118,13 +128,20 @@ export async function askAIFusionMode() {
     
     console.log('[AI Panel] 截图完成，图像大小:', imageBase64.length);
 
-    // 使用新的 formatProblemForVision 函数构建提示
+    // 使用新的 formatProblemForVision 函数构建基础提示
     const hasTextInfo = problem && problem.body && problem.body.trim();
-    const textPrompt = formatProblemForVision(problem, ui.config.TYPE_MAP || {}, hasTextInfo);
+    let textPrompt = formatProblemForVision(problem, ui.config.TYPE_MAP || {}, hasTextInfo);
+
+    // 获取用户自定义prompt并追加
+    const customPrompt = getCustomPrompt();
+    if (customPrompt) {
+      textPrompt += `\n\n【用户自定义要求】\n${customPrompt}`;
+      console.log('[AI Panel] 用户添加了自定义prompt:', customPrompt);
+    }
 
     ui.toast('正在使用融合模式分析...', 3000);
     console.log('[AI Panel] 调用Vision API...');
-    console.log('[AI Panel] 使用的提示:', textPrompt);
+    console.log('[AI Panel] 最终使用的提示:', textPrompt);
     
     const aiContent = await queryKimiVision(imageBase64, textPrompt, ui.config.ai);
     
@@ -139,25 +156,42 @@ export async function askAIFusionMode() {
       console.log('[AI Panel] 解析结果:', parsed);
     }
 
+    // 构建显示内容，包含自定义prompt信息
+    let displayContent = `融合模式分析结果：\n${aiContent}`;
+    if (customPrompt) {
+      displayContent = `融合模式分析结果（包含自定义要求）：\n${aiContent}`;
+    }
+
     if (parsed) {
-      setAIAnswer(`融合模式分析结果：\n${aiContent}\n\nAI 建议答案：${JSON.stringify(parsed)}`);
+      setAIAnswer(`${displayContent}\n\nAI 建议答案：${JSON.stringify(parsed)}`);
       
       const submitBtn = document.createElement('button');
       submitBtn.textContent = '提交答案';
       submitBtn.className = 'ykt-btn ykt-btn-primary';
       submitBtn.onclick = async () => {
         try {
+          if (!problem || !problem.problemId) {
+            ui.toast('题目信息丢失，请刷新页面重试');
+            return;
+          }
+          
+          // ✅ 添加详细日志
+          console.log('[AI Panel] 准备提交答案');
+          console.log('[AI Panel] Problem:', problem);
+          console.log('[AI Panel] Parsed:', parsed);
+          
           await submitAnswer(problem, parsed);
           ui.toast('提交成功');
           showAutoAnswerPopup(problem, aiContent);
         } catch (e) {
+          console.error('[AI Panel] 提交失败:', e);
           ui.toast(`提交失败: ${e.message}`);
         }
       };
       $('#ykt-ai-answer').appendChild(document.createElement('br'));
       $('#ykt-ai-answer').appendChild(submitBtn);
     } else {
-      setAIAnswer(`融合模式分析结果：\n${aiContent}\n\n⚠️ 无法自动解析答案格式，请检查AI回答是否符合要求格式。`);
+      setAIAnswer(`${displayContent}\n\n⚠️ 无法自动解析答案格式，请检查AI回答是否符合要求格式。`);
     }
 
   } catch (e) {

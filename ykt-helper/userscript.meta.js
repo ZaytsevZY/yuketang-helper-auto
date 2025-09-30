@@ -4,7 +4,7 @@ export const meta = `
 // ==UserScript==
 // @name         AI雨课堂助手（模块化构建版）
 // @namespace    https://github.com/ZaytsevZY/yuketang-helper-auto
-// @version      1.18.0-mod
+// @version      1.18.1-mod
 // @description  课堂习题提示，AI解答习题
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn

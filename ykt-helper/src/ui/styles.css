@@ -301,3 +301,53 @@
   font-size: 13px;
   line-height: 1.4;
 }
+
+/* 在现有样式基础上添加 */
+
+.ykt-custom-prompt {
+  width: 100%;
+  min-height: 60px;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  resize: vertical;
+  background-color: #fff;
+  transition: border-color 0.3s ease;
+}
+
+.ykt-custom-prompt:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.ykt-custom-prompt::placeholder {
+  color: #999;
+  font-style: italic;
+}
+
+.ykt-custom-prompt:empty::before {
+  content: attr(placeholder);
+  color: #999;
+  font-style: italic;
+  pointer-events: none;
+}
+
+/* 确保输入框在暗色主题下也能正常显示 */
+.ykt-panel.dark .ykt-custom-prompt {
+  background-color: #2d3748;
+  border-color: #4a5568;
+  color: #e2e8f0;
+}
+
+.ykt-panel.dark .ykt-custom-prompt::placeholder {
+  color: #a0aec0;
+}
+
+.ykt-panel.dark .ykt-custom-prompt:focus {
+  border-color: #63b3ed;
+  box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.25);
+}
