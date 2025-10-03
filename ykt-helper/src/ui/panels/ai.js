@@ -148,17 +148,24 @@ function renderQuestion() {
     else {
       // 2. 检查课件面板选择
       const presentationPanel = document.getElementById('ykt-presentation-panel');
-      slide = repo.slides.get(repo.currentSlideId);
-      if (slide) {
-        displayText = `课件面板选中: ${slide.title || `第 ${slide.page || slide.index || ''} 页`}`;
-        selectionSource = '课件浏览面板';
-        hasPageSelected = true;
+      const isPresentationPanelOpen = presentationPanel && presentationPanel.classList.contains('visible');
+      
+      if (isPresentationPanelOpen && repo.currentSlideId) {
+        slide = repo.slides.get(repo.currentSlideId);
+        if (slide) {
+          displayText = `课件面板选中: ${slide.title || `第 ${slide.page || slide.index || ''} 页`}`;
+          selectionSource = '课件浏览面板';
+          hasPageSelected = true;
           
-        if (slide.problem) {
-          displayText += '\n📝 此页面包含题目';
-        } else {
-          displayText += '\n📄 此页面为普通内容页';
+          if (slide.problem) {
+            displayText += '\n📝 此页面包含题目';
+          } else {
+            displayText += '\n📄 此页面为普通内容页';
+          }
         }
+      } else {
+        displayText = `未检测到当前页面${slide}\n💡 页面的情况是${!slide}`;
+        selectionSource = '无';
       }
     }
   }
@@ -228,14 +235,14 @@ export async function askAIFusionMode() {
       }
       else{
         const presentationPanel = document.getElementById('ykt-presentation-panel');
+        const isPresentationPanelOpen = presentationPanel && presentationPanel.classList.contains('visible');
         
-        
-
+        if (isPresentationPanelOpen && repo.currentSlideId) {
           currentSlideId = repo.currentSlideId;
           slide = repo.slides.get(currentSlideId);
           selectionSource = '课件浏览面板';
           console.log('[AI Panel] 使用课件面板选中的页面:', currentSlideId);
-
+        }
       }
     }
     else {
