@@ -207,7 +207,7 @@
       setTimeout(() => el.remove(), 500);
     }, duration);
   }
-  var tpl$5 = '<div id="ykt-settings-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>AI雨课堂助手设置</h3>\r\n    <span class="close-btn" id="ykt-settings-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="settings-content">\r\n      <div class="setting-group">\r\n        <h4>AI配置</h4>\r\n          \x3c!-- 将DeepSeek相关配置替换为Kimi --\x3e\r\n          <div class="setting-item">\r\n              <label for="kimi-api-key">Kimi API Key:</label>\r\n              <input type="password" id="kimi-api-key" placeholder="输入您的 Kimi API Key">\r\n              <small>从 <a href="https://platform.moonshot.cn/" target="_blank">Kimi开放平台</a> 获取</small>\r\n          </div>\r\n      </div>\r\n\r\n      <div class="setting-group">\r\n        <h4>自动作答设置</h4>\r\n        <div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-input-auto-answer">\r\n            <span class="checkmark"></span>\r\n            启用自动作答\r\n          </label>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\r\n            <span class="checkmark"></span>\r\n            打开 AI 页面时自动分析\r\n          </label>\r\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\r\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\r\n          <small>题目出现后等待多长时间开始作答</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\r\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\r\n          <small>在基础延迟基础上随机增加的时间范围</small>\r\n        </div>\r\n      </div>\r\n\r\n      <div class="setting-actions">\r\n        <button id="ykt-btn-settings-save">保存设置</button>\r\n        <button id="ykt-btn-settings-reset">重置为默认</button>\r\n      </div>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
+  var tpl$5 = '<div id="ykt-settings-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>AI雨课堂助手设置</h3>\r\n    <span class="close-btn" id="ykt-settings-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="settings-content">\r\n      <div class="setting-group">\r\n        <h4>AI配置</h4>\r\n          \x3c!-- 将DeepSeek相关配置替换为Kimi --\x3e\r\n          <div class="setting-item">\r\n              <label for="kimi-api-key">Kimi API Key:</label>\r\n              <input type="password" id="kimi-api-key" placeholder="输入您的 Kimi API Key">\r\n              <small>从 <a href="https://platform.moonshot.cn/" target="_blank">Kimi开放平台</a> 获取</small>\r\n          </div>\r\n      </div>\r\n\r\n      <div class="setting-group">\r\n        <h4>自动作答设置</h4>\r\n        <div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-input-auto-answer">\r\n            <span class="checkmark"></span>\r\n            启用自动作答\r\n          </label>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\r\n            <span class="checkmark"></span>\r\n            打开 AI 页面时自动分析\r\n          </label>\r\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\r\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\r\n          <small>题目出现后等待多长时间开始作答</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\r\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\r\n          <small>在基础延迟基础上随机增加的时间范围</small>\r\n        </div><div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-ai-pick-main-first">\r\n            <span class="checkmark"></span>\r\n            主界面优先（未勾选则课件浏览优先）\r\n          </label>\r\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\r\n        </div>\r\n      </div>       \r\n      <div class="setting-actions">\r\n        <button id="ykt-btn-settings-save">保存设置</button>\r\n        <button id="ykt-btn-settings-reset">重置为默认</button>\r\n      </div>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
   let mounted$5 = false;
   let root$4;
   function mountSettingsPanel() {
@@ -222,11 +222,14 @@
     const $autoAnalyze = root$4.querySelector("#ykt-input-ai-auto-analyze");
     const $delay = root$4.querySelector("#ykt-input-answer-delay");
     const $rand = root$4.querySelector("#ykt-input-random-delay");
+    const $priorityRadios = root$4.querySelector("#ykt-ai-pick-main-first");
     $api.value = ui.config.ai.kimiApiKey || "";
     $auto.checked = !!ui.config.autoAnswer;
     $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
     $delay.value = Math.floor(ui.config.autoAnswerDelay / 1e3);
     $rand.value = Math.floor(ui.config.autoAnswerRandomDelay / 1e3);
+    ui.config.aiSlidePickPriority || "main";
+    $priorityRadios.checked = ui.config.aiSlidePickMainFirst !== false;
     root$4.querySelector("#ykt-settings-close").addEventListener("click", () => showSettingsPanel(false));
     root$4.querySelector("#ykt-btn-settings-save").addEventListener("click", () => {
       ui.config.ai.kimiApiKey = $api.value.trim();
@@ -234,6 +237,7 @@
       ui.config.aiAutoAnalyze = !!$autoAnalyze.checked;
       ui.config.autoAnswerDelay = Math.max(1e3, (+$delay.value || 0) * 1e3);
       ui.config.autoAnswerRandomDelay = Math.max(0, (+$rand.value || 0) * 1e3);
+      ui.config.aiSlidePickPriority = !!$priorityRadios.checked;
       storage.set("kimiApiKey", ui.config.ai.kimiApiKey);
       ui.saveConfig();
       ui.updateAutoAnswerBtn();
@@ -244,6 +248,7 @@
       Object.assign(ui.config, DEFAULT_CONFIG);
       ui.config.ai.kimiApiKey = "";
       ui.config.aiAutoAnalyze = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
+      ui.config.aiSlidePickPriority = DEFAULT_CONFIG.aiSlidePickPriority ?? true;
       storage.set("kimiApiKey", "");
       ui.saveConfig();
       ui.updateAutoAnswerBtn();
@@ -252,6 +257,7 @@
       $delay.value = Math.floor(DEFAULT_CONFIG.autoAnswerDelay / 1e3);
       $rand.value = Math.floor(DEFAULT_CONFIG.autoAnswerRandomDelay / 1e3);
       $autoAnalyze.checked = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
+      $priorityRadios.checked = DEFAULT_CONFIG.aiSlidePickPriority ?? true;
       ui.toast("设置已重置");
     });
     mounted$5 = true;
@@ -937,17 +943,9 @@
     mounted$4 = true;
     return root$3;
   }
-  // 普通打开：若不是由 presentation “提问当前PPT”触发，则清空上一次的优先选择
-    window.addEventListener("ykt:open-ai", () => {
+  window.addEventListener("ykt:open-ai", () => {
     showAIPanel(true);
-    // 打开时即刻渲染一次，让自动脚本能读到“当前页面”的判断
-        try {
-      renderQuestion();
-    } catch (e) {
-      console.warn("[AI Panel] render on open failed:", e);
-    }
-    // 一次性消费，无论如何都重置
-    });
+  });
   // ✅ 来自 presentation 的“提问当前PPT”事件
     window.addEventListener("ykt:ask-ai-for-slide", ev => {
     const detail = ev?.detail || {};
@@ -1023,24 +1021,19 @@
     }
     // 1. 若未命中优先提示，检查主界面
         if (!slide) {
-      const mainSlideId = getCurrentMainPageSlideId();
-      slide = mainSlideId ? repo.slides.get(mainSlideId) : null;
-      if (slide) {
-        displayText = `主界面当前页: ${slide.title || `第 ${slide.page || slide.index || ""} 页`}`;
-        selectionSource = "主界面检测";
-        hasPageSelected = true;
-      }
-    }
-    if (slide && !selectionSource) {
-      // 理论上不会走到，但兜底
-      selectionSource = "未知来源";
-      hasPageSelected = true;
-      if (slide.problem) displayText += "\n📝 此页面包含题目"; else displayText += "\n📄 此页面为普通内容页";
-    } else {
-      // 2. 检查课件面板选择
-      const presentationPanel = document.getElementById("ykt-presentation-panel");
-      const isPresentationPanelOpen = presentationPanel && presentationPanel.classList.contains("visible");
-      if (isPresentationPanelOpen && repo.currentSlideId) {
+      const prio = !!(ui?.config?.aiSlidePickPriority ?? true);
+      if (prio) {
+        const mainSlideId = getCurrentMainPageSlideId();
+        slide = mainSlideId ? repo.slides.get(mainSlideId) : null;
+        if (slide) {
+          displayText = `主界面当前页: ${slide.title || `第 ${slide.page || slide.index || ""} 页`}`;
+          selectionSource = "主界面检测";
+          if (slide.problem) displayText += "\n📝 此页面包含题目"; else displayText += "\n📄 此页面为普通内容页";
+          hasPageSelected = true;
+        }
+      } else {
+        // 2. 检查课件面板选择
+        document.getElementById("ykt-presentation-panel");
         slide = repo.slides.get(repo.currentSlideId);
         if (slide) {
           displayText = `课件面板选中: ${slide.title || `第 ${slide.page || slide.index || ""} 页`}`;
@@ -1048,9 +1041,6 @@
           hasPageSelected = true;
           if (slide.problem) displayText += "\n📝 此页面包含题目"; else displayText += "\n📄 此页面为普通内容页";
         }
-      } else {
-        displayText = "未检测到当前页面\n💡 请确保主界面已打开页面，或在课件浏览面板中选择页面";
-        selectionSource = "无";
       }
     }
     const el = document.querySelector("#ykt-ai-question-display");
@@ -1090,19 +1080,17 @@
       }
       // 1) 其后：主界面当前页面
             if (!slide) {
-        const mainSlideId = getCurrentMainPageSlideId();
-        if (mainSlideId) {
-          currentSlideId = mainSlideId;
-          slide = repo.slides.get(currentSlideId);
-          selectionSource = "主界面当前页面";
-          console.log("[AI Panel] 使用主界面当前页面:", currentSlideId);
-        }
-      }
-      if (!slide) {
-        // 2. 如果主界面获取失败，检查课件面板选择
-        const presentationPanel = document.getElementById("ykt-presentation-panel");
-        const isPresentationPanelOpen = presentationPanel && presentationPanel.classList.contains("visible");
-        if (isPresentationPanelOpen && repo.currentSlideId) {
+        const prio = !!(ui?.config?.aiSlidePickPriority ?? true);
+        if (prio) {
+          const mainSlideId = getCurrentMainPageSlideId();
+          if (mainSlideId) {
+            currentSlideId = mainSlideId;
+            slide = repo.slides.get(currentSlideId);
+            selectionSource = "主界面当前页面";
+            console.log("[AI Panel] 使用主界面当前页面:", currentSlideId);
+          }
+        } else {
+          const presentationPanel = document.getElementById("ykt-presentation-panel");
           currentSlideId = repo.currentSlideId;
           slide = repo.slides.get(currentSlideId);
           selectionSource = "课件浏览面板";
@@ -1880,7 +1868,7 @@
     // ✅ 如果没有活跃题目，隐藏整个面板容器
         if (!hasActiveProblems) root$1.style.display = "none"; else root$1.style.display = "";
   }
-  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>雨课堂助手使用教程</h3>\r\n    <h5>1.18.4</h5>\r\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="tutorial-content">\r\n      <h4>功能介绍</h4>\r\n      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>\r\n      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">GitHub</a></p>\r\n      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B-%E6%A8%A1%E5%9D%97%E5%8C%96%E6%9E%84%E5%BB%BA%E7%89%88" target="_blank" rel="noopener">GreasyFork</a></p>\r\n\r\n      <h4>工具栏按钮说明</h4>\r\n      <ul>\r\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>\r\n        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面。</li>\r\n        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>\r\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\r\n        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>\r\n        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>\r\n      </ul>\r\n\r\n      <h4>自动作答</h4>\r\n      <ul>\r\n        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>\r\n        <li>需要配置 <del>DeepSeek API</del> Kimi API 密钥。</li>\r\n        <li>答案来自 AI，结果仅供参考。</li>\r\n      </ul>\r\n\r\n      <h4>AI 解答</h4>\r\n      <ol>\r\n        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>\r\n        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>\r\n      </ol>\r\n\r\n      <h4>注意事项</h4>\r\n      <p>1) 仅供学习参考，请独立思考；</p>\r\n      <p>2) 合理使用 API 额度；</p>\r\n      <p>3) 答案不保证 100% 正确；</p>\r\n      <p>4) 自动作答有一定风险，谨慎开启。</p>\r\n\r\n      <h4>联系方式</h4>\r\n      <ul>\r\n        <li>请在Github issue提出问题</li>\r\n      </ul>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
+  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>雨课堂助手使用教程</h3>\r\n    <h5>1.18.4</h5>\r\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="tutorial-content">\r\n      <h4>功能介绍</h4>\r\n      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>\r\n      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">GitHub</a></p>\r\n      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B-%E6%A8%A1%E5%9D%97%E5%8C%96%E6%9E%84%E5%BB%BA%E7%89%88" target="_blank" rel="noopener">GreasyFork</a></p>\r\n\r\n      <h4>工具栏按钮说明</h4>\r\n      <ul>\r\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>\r\n        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面，提问可见内容。</li>\r\n        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>\r\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\r\n        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>\r\n        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>\r\n      </ul>\r\n\r\n      <h4>自动作答</h4>\r\n      <ul>\r\n        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>\r\n        <li>需要配置 <del>DeepSeek API</del> Kimi API 密钥。</li>\r\n        <li>答案来自 AI，结果仅供参考。</li>\r\n      </ul>\r\n\r\n      <h4>AI 解答</h4>\r\n      <ol>\r\n        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>\r\n        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>\r\n      </ol>\r\n\r\n      <h4>注意事项</h4>\r\n      <p>1) 仅供学习参考，请独立思考；</p>\r\n      <p>2) 合理使用 API 额度；</p>\r\n      <p>3) 答案不保证 100% 正确；</p>\r\n      <p>4) 自动作答有一定风险，谨慎开启。</p>\r\n\r\n      <h4>联系方式</h4>\r\n      <ul>\r\n        <li>请在Github issue提出问题</li>\r\n      </ul>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
   let mounted = false;
   let root;
   function $(sel) {
