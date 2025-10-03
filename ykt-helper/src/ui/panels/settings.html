@@ -42,9 +42,15 @@
           <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>
           <input type="number" id="ykt-input-random-delay" min="0" max="30">
           <small>在基础延迟基础上随机增加的时间范围</small>
+        </div><div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-ai-pick-main-first">
+            <span class="checkmark"></span>
+            主界面优先（未勾选则课件浏览优先）
+          </label>
+          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>
         </div>
-      </div>
-
+      </div>       
       <div class="setting-actions">
         <button id="ykt-btn-settings-save">保存设置</button>
         <button id="ykt-btn-settings-reset">重置为默认</button>

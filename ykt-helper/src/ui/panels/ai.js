@@ -12,6 +12,7 @@ let mounted = false;
 let root;
 // 来自 presentation 的优先提示（一次性优先使用）
 let preferredSlideFromPresentation = null;
+const getPickPriority = () => (ui?.config?.aiSlidePickPriority || 'main'); // 'main' | 'presentation'
 
 function $(sel) {
   return document.querySelector(sel);
@@ -43,12 +44,8 @@ export function mountAIPanel() {
   return root;
 }
 
-// 普通打开：若不是由 presentation “提问当前PPT”触发，则清空上一次的优先选择
 window.addEventListener('ykt:open-ai', () => {
   showAIPanel(true);
-  // 打开时即刻渲染一次，让自动脚本能读到“当前页面”的判断
-  try { renderQuestion(); } catch (e) { console.warn('[AI Panel] render on open failed:', e); }
-  // 一次性消费，无论如何都重置
 });
 
 // ✅ 来自 presentation 的“提问当前PPT”事件
@@ -130,49 +127,39 @@ function renderQuestion() {
       hasPageSelected = true;
     }
   }
-
   // 1. 若未命中优先提示，检查主界面
   if (!slide) {
-    const mainSlideId = getCurrentMainPageSlideId();
-    slide = mainSlideId ? repo.slides.get(mainSlideId) : null;
-    if (slide) {
-      displayText = `主界面当前页: ${slide.title || `第 ${slide.page || slide.index || ''} 页`}`;
-      selectionSource = '主界面检测';
-      hasPageSelected = true;
+    const prio = !!(ui?.config?.aiSlidePickPriority ?? true);
+    if(prio){
+      const mainSlideId = getCurrentMainPageSlideId();
+      slide = mainSlideId ? repo.slides.get(mainSlideId) : null;
+      if (slide) {
+        displayText = `主界面当前页: ${slide.title || `第 ${slide.page || slide.index || ''} 页`}`;
+        selectionSource = '主界面检测';
+        if (slide.problem) {
+          displayText += '\n📝 此页面包含题目';
+        } else {
+          displayText += '\n📄 此页面为普通内容页';
+        }
+        hasPageSelected = true;
+      }
     }
-  }
-  
-  if (slide && !selectionSource) {
-    // 理论上不会走到，但兜底
-    selectionSource = '未知来源';
-    hasPageSelected = true;
     
-    if (slide.problem) {
-      displayText += '\n📝 此页面包含题目';
-    } else {
-      displayText += '\n📄 此页面为普通内容页';
-    }
-  } else {
-    // 2. 检查课件面板选择
-    const presentationPanel = document.getElementById('ykt-presentation-panel');
-    const isPresentationPanelOpen = presentationPanel && presentationPanel.classList.contains('visible');
-    
-    if (isPresentationPanelOpen && repo.currentSlideId) {
+    else {
+      // 2. 检查课件面板选择
+      const presentationPanel = document.getElementById('ykt-presentation-panel');
       slide = repo.slides.get(repo.currentSlideId);
       if (slide) {
         displayText = `课件面板选中: ${slide.title || `第 ${slide.page || slide.index || ''} 页`}`;
         selectionSource = '课件浏览面板';
         hasPageSelected = true;
-        
+          
         if (slide.problem) {
           displayText += '\n📝 此页面包含题目';
         } else {
           displayText += '\n📄 此页面为普通内容页';
         }
       }
-    } else {
-      displayText = '未检测到当前页面\n💡 请确保主界面已打开页面，或在课件浏览面板中选择页面';
-      selectionSource = '无';
     }
   }
 
@@ -229,29 +216,30 @@ export async function askAIFusionMode() {
 
     // 1) 其后：主界面当前页面
     if (!slide) {
-      const mainSlideId = getCurrentMainPageSlideId();
-      if (mainSlideId) {
-      currentSlideId = mainSlideId;
-      slide = repo.slides.get(currentSlideId);
-      selectionSource = '主界面当前页面';
-      console.log('[AI Panel] 使用主界面当前页面:', currentSlideId);
+      const prio = !!(ui?.config?.aiSlidePickPriority ?? true);
+      if(prio){
+        const mainSlideId = getCurrentMainPageSlideId();
+        if (mainSlideId) {
+        currentSlideId = mainSlideId;
+        slide = repo.slides.get(currentSlideId);
+        selectionSource = '主界面当前页面';
+        console.log('[AI Panel] 使用主界面当前页面:', currentSlideId);
+        }
+      }
+      else{
+        const presentationPanel = document.getElementById('ykt-presentation-panel');
+        
+        
+
+          currentSlideId = repo.currentSlideId;
+          slide = repo.slides.get(currentSlideId);
+          selectionSource = '课件浏览面板';
+          console.log('[AI Panel] 使用课件面板选中的页面:', currentSlideId);
+
       }
     }
     else {
       // no-op: 已通过 presentation 选择
-    }
-
-    if (!slide) {
-      // 2. 如果主界面获取失败，检查课件面板选择
-      const presentationPanel = document.getElementById('ykt-presentation-panel');
-      const isPresentationPanelOpen = presentationPanel && presentationPanel.classList.contains('visible');
-      
-      if (isPresentationPanelOpen && repo.currentSlideId) {
-        currentSlideId = repo.currentSlideId;
-        slide = repo.slides.get(currentSlideId);
-        selectionSource = '课件浏览面板';
-        console.log('[AI Panel] 使用课件面板选中的页面:', currentSlideId);
-      }
     }
 
     // 3. 检查是否成功获取到页面
