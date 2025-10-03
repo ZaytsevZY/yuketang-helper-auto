@@ -10,6 +10,8 @@ import { getCurrentMainPageSlideId, waitForVueReady, watchMainPageChange } from 
 
 let mounted = false;
 let root;
+// 来自 presentation 的优先提示（一次性优先使用）
+let preferredSlideFromPresentation = null;
 
 function $(sel) {
   return document.querySelector(sel);
@@ -41,8 +43,33 @@ export function mountAIPanel() {
   return root;
 }
 
+// 普通打开：若不是由 presentation “提问当前PPT”触发，则清空上一次的优先选择
 window.addEventListener('ykt:open-ai', () => {
   showAIPanel(true);
+  // 打开时即刻渲染一次，让自动脚本能读到“当前页面”的判断
+  try { renderQuestion(); } catch (e) { console.warn('[AI Panel] render on open failed:', e); }
+  // 一次性消费，无论如何都重置
+});
+
+// ✅ 来自 presentation 的“提问当前PPT”事件
+window.addEventListener('ykt:ask-ai-for-slide', (ev) => {
+  const detail = ev?.detail || {};
+  const { slideId, imageUrl } = detail;
+  if (slideId) {
+    preferredSlideFromPresentation = { slideId, imageUrl };
+    // 若有 URL，直接覆盖 repo 内该页的 image，确保后续 capture 使用该 URL
+    const s = repo.slides.get(slideId);
+    if (s && imageUrl) s.image = imageUrl;
+  }
+  // 打开并刷新 UI + 预览
+  showAIPanel(true);
+  renderQuestion();
+  const img = document.getElementById('ykt-ai-selected-thumb');
+  const box = document.getElementById('ykt-ai-selected');
+  if (img && box) {
+    img.src = preferredSlideFromPresentation?.imageUrl || '';
+    box.style.display = preferredSlideFromPresentation?.imageUrl ? '' : 'none';
+  }
 });
 
 export function showAIPanel(visible = true) {
@@ -93,13 +120,31 @@ function renderQuestion() {
   let hasPageSelected = false;
   let selectionSource = '';
   
-  // 1. 优先检查主界面当前页面
-  const mainSlideId = getCurrentMainPageSlideId();
-  let slide = mainSlideId ? repo.slides.get(mainSlideId) : null;
+  // 0. 若来自 presentation 的优先提示存在，则最高优先
+  let slide = null;
+  if (preferredSlideFromPresentation?.slideId) {
+    slide = repo.slides.get(preferredSlideFromPresentation.slideId);
+    if (slide) {
+      displayText = `来自课件面板：${slide.title || `第 ${slide.page || slide.index || ''} 页`}`;
+      selectionSource = '课件浏览（传入）';
+      hasPageSelected = true;
+    }
+  }
+
+  // 1. 若未命中优先提示，检查主界面
+  if (!slide) {
+    const mainSlideId = getCurrentMainPageSlideId();
+    slide = mainSlideId ? repo.slides.get(mainSlideId) : null;
+    if (slide) {
+      displayText = `主界面当前页: ${slide.title || `第 ${slide.page || slide.index || ''} 页`}`;
+      selectionSource = '主界面检测';
+      hasPageSelected = true;
+    }
+  }
   
-  if (slide) {
-    displayText = `主界面当前页: ${slide.title || `第 ${slide.page || slide.index || ''} 页`}`;
-    selectionSource = '主界面检测';
+  if (slide && !selectionSource) {
+    // 理论上不会走到，但兜底
+    selectionSource = '未知来源';
     hasPageSelected = true;
     
     if (slide.problem) {
@@ -135,7 +180,17 @@ function renderQuestion() {
   if (el) {
     el.textContent = displayText;
   }
-  
+  // 同步预览块显示
+  const img = document.getElementById('ykt-ai-selected-thumb');
+  const box = document.getElementById('ykt-ai-selected');
+  if (img && box) {
+    if (preferredSlideFromPresentation?.imageUrl) {
+      img.src = preferredSlideFromPresentation.imageUrl;
+      box.style.display = '';
+    } else {
+      box.style.display = 'none';
+    }
+  }
   const statusEl = document.querySelector('#ykt-ai-text-status');
   if (statusEl) {
     statusEl.textContent = hasPageSelected 
@@ -156,19 +211,37 @@ export async function askAIFusionMode() {
       throw new Error('请先在设置中配置 Kimi API Key');
     }
 
-    // ✅ 智能选择当前页面：优先主界面当前页，其次课件面板选择
+    // ✅ 智能选择当前页面：优先“presentation 传入”，其后主界面、最后课件面板
     let currentSlideId = null;
     let slide = null;
     let selectionSource = '';
 
-    // 1. 优先获取主界面当前页面（从 Vuex state）
-    const mainSlideId = getCurrentMainPageSlideId();
-    if (mainSlideId) {
+    let forcedImageUrl = null;
+
+    // 0) 优先使用 presentation 传入的 slide
+    if (preferredSlideFromPresentation?.slideId) {
+      currentSlideId = preferredSlideFromPresentation.slideId;
+      slide = repo.slides.get(currentSlideId);
+      forcedImageUrl = preferredSlideFromPresentation.imageUrl || null;
+      selectionSource = '课件浏览（传入）';
+      console.log('[AI Panel] 使用presentation传入的页面:', currentSlideId);
+    }
+
+    // 1) 其后：主界面当前页面
+    if (!slide) {
+      const mainSlideId = getCurrentMainPageSlideId();
+      if (mainSlideId) {
       currentSlideId = mainSlideId;
       slide = repo.slides.get(currentSlideId);
       selectionSource = '主界面当前页面';
       console.log('[AI Panel] 使用主界面当前页面:', currentSlideId);
-    } else {
+      }
+    }
+    else {
+      // no-op: 已通过 presentation 选择
+    }
+
+    if (!slide) {
       // 2. 如果主界面获取失败，检查课件面板选择
       const presentationPanel = document.getElementById('ykt-presentation-panel');
       const isPresentationPanelOpen = presentationPanel && presentationPanel.classList.contains('visible');
@@ -194,7 +267,14 @@ export async function askAIFusionMode() {
     console.log('[AI Panel] 获取页面图片...');
     ui.toast(`正在获取${selectionSource}图片...`, 2000);
     
-    const imageBase64 = await captureSlideImage(currentSlideId);
+    let imageBase64 = null;
+
+    // 若 presentation 传入了 URL，则优先用该 URL（captureSlideImage 会读 slide.image）
+    if (forcedImageUrl) {
+      // 确保 slide.image 是这张图，captureSlideImage 将基于 slideId 取图
+      if (slide) slide.image = forcedImageUrl;
+    }
+    imageBase64 = await captureSlideImage(currentSlideId);
     
     if (!imageBase64) {
       throw new Error('无法获取页面图片，请确保页面已加载完成');
@@ -290,7 +370,7 @@ export async function askAIFusionMode() {
   } catch (e) {
     setAILoading(false);
     console.error('[AI Panel] 页面分析失败:', e);
-    
+    // 失败后不清除 preferred，便于用户修正后重试
     let errorMsg = `页面分析失败: ${e.message}`;
     if (e.message.includes('400')) {
       errorMsg += '\n\n可能的解决方案：\n1. 检查 API Key 是否正确\n2. 尝试刷新页面后重试\n3. 确保页面已完全加载';

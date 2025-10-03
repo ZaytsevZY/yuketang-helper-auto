@@ -18,7 +18,18 @@
         提示：系统使用融合模式，同时分析题目文本信息和页面图像，提供最准确的答案。
       </div>
     </div>
-
+    <!-- 当前要提问的PPT预览（来自presentation传入时显示） -->
+    <div id="ykt-ai-selected" style="display:none; margin: 10px 0;">
+      <strong>已选PPT预览：</strong>
+      <div style="font-size: 12px; color: #666; margin: 4px 0;">
+        下方小图为即将用于分析的PPT页面截图
+      </div>
+      <div style="border: 1px solid var(--ykt-border-strong); padding: 6px; border-radius: 6px; display: inline-block;">
+        <img id="ykt-ai-selected-thumb"
+             alt="已选PPT预览"
+             style="max-width: 180px; max-height: 120px; display:block;" />
+      </div>
+    </div>
     <div style="margin-bottom: 10px;">
       <strong>自定义提示（可选）：</strong>
       <div style="font-size: 12px; color: #666; margin: 4px 0;">
