@@ -12,6 +12,24 @@ import { captureSlideImage, captureProblemForVision } from '../capture/screensho
 
 let _autoLoopStarted = false;
 
+// 1.18.5: 本地默认答案生成（无 API Key 时使用，保持 AutoAnswer 流程通畅）
+function makeDefaultAnswer(problem) {
+  switch (problem.problemType) {
+    case 1: // 单选
+    case 2: // 多选
+    case 3: // 投票
+      return ['A'];
+    case 4: // 填空
+      // 按需求示例返回 [" 1"]（保留前导空格）
+      return [' 1'];
+    case 5: // 主观/问答
+      return { content: '略', pics: [] };
+    default:
+      // 兜底：按单选处理
+      return ['A'];
+  }
+}
+
 // 内部自动答题处理函数 - 融合模式（文本+图像）
 async function handleAutoAnswerInternal(problem) {
   const status = repo.problemStatus.get(problem.problemId);
@@ -38,6 +56,31 @@ async function handleAutoAnswerInternal(problem) {
     console.log('[AutoAnswer] 题目类型:', PROBLEM_TYPE_MAP[problem.problemType]);
     console.log('[AutoAnswer] 题目内容:', problem.body?.slice(0, 50) + '...');
     
+    if (!ui.config.ai.kimiApiKey) {
+    // ✅ 无 API Key：使用本地默认答案直接提交，确保流程不中断
+    // 
+      const parsed = makeDefaultAnswer(problem);
+      console.log('[AutoAnswer] 无 API Key，使用本地默认答案:', JSON.stringify(parsed));
+
+      // 提交答案（根据时限自动选择 answer/retry 逻辑）
+      await submitAnswer(problem, parsed, {
+        startTime: status.startTime,
+        endTime: status.endTime,
+        forceRetry: false,
+      });
+
+      // 更新状态与UI
+      actions.onAnswerProblem(problem.problemId, parsed);
+      status.done = true;
+      status.answering = false;
+
+      ui.toast('✅ 使用默认答案完成作答（未配置 API Key）', 3000);
+      showAutoAnswerPopup(problem, '（本地默认答案：无 API Key）');
+
+      console.log('[AutoAnswer] ✅ 默认答案提交流程结束');
+      return; // 提前返回，避免继续走图像+AI流程
+    }
+
     const slideId = status.slideId;
     console.log('[AutoAnswer] 题目所在幻灯片:', slideId);
     console.log('[AutoAnswer] =================================');

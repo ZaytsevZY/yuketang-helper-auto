@@ -327,31 +327,89 @@ export async function askAIFusionMode() {
     if (parsed && problem) {
       setAIAnswer(`${displayContent}\n\nAI 建议答案：${JSON.stringify(parsed)}`);
       
-      // ✅ 只有当前页面有题目时才显示提交按钮
-      const submitBtn = document.createElement('button');
-      submitBtn.textContent = '提交答案';
-      submitBtn.className = 'ykt-btn ykt-btn-primary';
-      submitBtn.onclick = async () => {
-        try {
-          if (!problem || !problem.problemId) {
-            ui.toast('当前页面没有可提交的题目');
-            return;
+      // // ✅ 只有当前页面有题目时才显示提交按钮
+      // const submitBtn = document.createElement('button');
+      // submitBtn.textContent = '提交答案';
+      // submitBtn.className = 'ykt-btn ykt-btn-primary';
+      // submitBtn.onclick = async () => {
+      //   try {
+      //     if (!problem || !problem.problemId) {
+      //       ui.toast('当前页面没有可提交的题目');
+      //       return;
+      //     }
+          
+      //     console.log('[AI Panel] 准备提交答案');
+      //     console.log('[AI Panel] Problem:', problem);
+      //     console.log('[AI Panel] Parsed:', parsed);
+          
+      //     await submitAnswer(problem, parsed);
+      //     ui.toast('提交成功');
+      //     showAutoAnswerPopup(problem, aiContent);
+      //   } catch (e) {
+      //     console.error('[AI Panel] 提交失败:', e);
+      //     ui.toast(`提交失败: ${e.message}`);
+      //   }
+      // };
+      // $('#ykt-ai-answer').appendChild(document.createElement('br'));
+      // $('#ykt-ai-answer').appendChild(submitBtn);
+
+      // ✅ 改为：显示“可编辑答案区”，预填 parsed，并提供“提交编辑后的答案”
+      const editBox = $('#ykt-ai-answer-edit');
+      const editSec = $('#ykt-ai-edit-section');
+      const submitBtn = $('#ykt-ai-submit');
+      const resetBtn = $('#ykt-ai-reset-edit');
+      const validEl = $('#ykt-ai-validate');
+      if (editBox && editSec && submitBtn && resetBtn) {
+        editSec.style.display = '';
+        const aiSuggested = JSON.stringify(parsed);
+        editBox.value = aiSuggested;
+        validEl.textContent = '已载入 AI 建议答案，可编辑后提交。';
+
+        // 变化时做一次轻量校验提示
+        editBox.oninput = () => {
+          try {
+            // 尝试 JSON；失败也不报红，交由 coerceEditedAnswer 兜底
+            JSON.parse(editBox.value);
+            validEl.textContent = '解析正常（JSON）。';
+            validEl.style.color = '#2a6';
+          } catch {
+            validEl.textContent = '非 JSON，将按题型做容错解析。';
+            validEl.style.color = '#666';
           }
-          
-          console.log('[AI Panel] 准备提交答案');
-          console.log('[AI Panel] Problem:', problem);
-          console.log('[AI Panel] Parsed:', parsed);
-          
-          await submitAnswer(problem, parsed);
-          ui.toast('提交成功');
-          showAutoAnswerPopup(problem, aiContent);
-        } catch (e) {
-          console.error('[AI Panel] 提交失败:', e);
-          ui.toast(`提交失败: ${e.message}`);
-        }
-      };
-      $('#ykt-ai-answer').appendChild(document.createElement('br'));
-      $('#ykt-ai-answer').appendChild(submitBtn);
+        };
+
+        submitBtn.onclick = async () => {
+          try {
+            if (!problem?.problemId) {
+              ui.toast('当前页面没有可提交的题目');
+              return;
+            }
+            // ✅ 关键修复：先尝试把文本解析为 JSON；失败则回退到 parsed（结构化对象/数组）
+            const raw = (editBox.value || '').trim();
+            let payload = null;
+            try {
+              payload = raw ? JSON.parse(raw) : null;
+            } catch {
+              payload = null;
+            }
+            if (payload == null) payload = parsed;  // 回退
+
+            console.log('[AI Panel] 准备提交（编辑后）:', payload);
+            await submitAnswer(problem, payload);
+            ui.toast('提交成功');
+            showAutoAnswerPopup(problem, aiContent);
+          } catch (e) {
+            console.error('[AI Panel] 提交失败:', e);
+            ui.toast(`提交失败: ${e.message}`);
+          }
+        };
+
+        resetBtn.onclick = () => {
+          editBox.value = aiSuggested;          
+          validEl.textContent = '已重置为 AI 建议答案。';
+          validEl.style.color = '#666';
+        };
+      }
     } else {
       // ✅ 如果当前页面没有题目，只显示分析结果
       if (!problem) {

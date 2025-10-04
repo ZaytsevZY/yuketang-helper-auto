@@ -54,5 +54,24 @@
       <strong>AI 分析结果：</strong>
       <div id="ykt-ai-answer" class="ai-answer"></div>
     </div>
+    <!-- ✅ 新增：可编辑答案区（默认隐藏；当检测到题目并成功解析parsed时显示） -->
+    <div id="ykt-ai-edit-section" style="display:none; margin-top:12px;">
+      <strong>提交前可编辑答案：</strong>
+      <div style="font-size: 12px; color: #666; margin: 4px 0;">
+        提示：这里是将要提交的“结构化答案”。可直接编辑。支持：
+        <br>• 选择题/投票：填写 <code>["A"]</code> 或 <code>A,B</code>
+        <br>• 填空题：填写 <code>[" 1"]</code> 或 直接写 <code> 1</code>（自动包成数组）
+        <br>• 主观题：可填 JSON（如 <code>{"content":"略","pics":[]}</code>）或直接输入文本
+      </div>
+      <textarea id="ykt-ai-answer-edit"
+        style="width:100%; min-height:88px; border:1px solid var(--ykt-border-strong); border-radius:6px; padding:6px; font-family:monospace;"></textarea>
+      <div id="ykt-ai-validate" style="font-size:12px; color:#666; margin-top:6px;"></div>
+      <div style="margin-top:8px; display:flex; gap:8px;">
+        <button id="ykt-ai-submit" class="ykt-btn ykt-btn-primary" style="flex:0 0 auto;">
+          提交编辑后的答案
+        </button>
+        <button id="ykt-ai-reset-edit" class="ykt-btn" style="flex:0 0 auto;">重置为 AI 建议</button>
+      </div>
+    </div>
   </div>
 </div>
