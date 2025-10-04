@@ -154,6 +154,7 @@
     currentPresentationId: null,
     currentSlideId: null,
     currentLessonId: null,
+    currentSelectedUrl: null,
     // 1.16.4:按课程分组存储课件（presentations-<lessonId>）
     setPresentation(id, data) {
       this.presentations.set(id, {
@@ -1033,13 +1034,19 @@
         }
       } else {
         // 2. 检查课件面板选择
-        document.getElementById("ykt-presentation-panel");
-        slide = repo.slides.get(repo.currentSlideId);
-        if (slide) {
-          displayText = `课件面板选中: ${slide.title || `第 ${slide.page || slide.index || ""} 页`}`;
-          selectionSource = "课件浏览面板";
-          hasPageSelected = true;
-          if (slide.problem) displayText += "\n📝 此页面包含题目"; else displayText += "\n📄 此页面为普通内容页";
+        const presentationPanel = document.getElementById("ykt-presentation-panel");
+        const isPresentationPanelOpen = presentationPanel && presentationPanel.classList.contains("visible");
+        if (isPresentationPanelOpen && repo.currentSlideId) {
+          slide = repo.slides.get(repo.currentSlideId);
+          if (slide) {
+            displayText = `课件面板选中: ${slide.title || `第 ${slide.page || slide.index || ""} 页`}`;
+            selectionSource = "课件浏览面板";
+            hasPageSelected = true;
+            if (slide.problem) displayText += "\n📝 此页面包含题目"; else displayText += "\n📄 此页面为普通内容页";
+          }
+        } else {
+          displayText = `未检测到当前页面${presentationPanel}\n💡 请在课件面板（非侧边栏）中选择页面。`;
+          selectionSource = "无";
         }
       }
     }
@@ -1091,10 +1098,13 @@
           }
         } else {
           const presentationPanel = document.getElementById("ykt-presentation-panel");
-          currentSlideId = repo.currentSlideId;
-          slide = repo.slides.get(currentSlideId);
-          selectionSource = "课件浏览面板";
-          console.log("[AI Panel] 使用课件面板选中的页面:", currentSlideId);
+          const isPresentationPanelOpen = presentationPanel && presentationPanel.classList.contains("visible");
+          if (isPresentationPanelOpen && repo.currentSlideId) {
+            currentSlideId = repo.currentSlideId;
+            slide = repo.slides.get(currentSlideId);
+            selectionSource = "课件浏览面板";
+            console.log("[AI Panel] 使用课件面板选中的页面:", currentSlideId);
+          }
         }
       }
       // 3. 检查是否成功获取到页面
@@ -2300,6 +2310,33 @@
 
            default:
             console.log("[雨课堂助手] 未知WebSocket操作:", message.op, message);
+          }
+          // 监听后端传递的url
+                    const url = function findUrl(obj) {
+            if (!obj || typeof obj !== "object") return null;
+            if (typeof obj.url === "string") return obj.url;
+            if (Array.isArray(obj)) for (const it of obj) {
+              const u = findUrl(it);
+              if (u) return u;
+            } else for (const k in obj) {
+              const v = obj[k];
+              if (v && typeof v === "object") {
+                const u = findUrl(v);
+                if (u) return u;
+              }
+            }
+            return null;
+          }(message);
+          if (url) {
+            window.dispatchEvent(new CustomEvent("ykt:url-change", {
+              detail: {
+                url: url,
+                raw: message
+              }
+            }));
+            // 如需持久化到 repo，请取消下一行注释（确保已在 repo 定义该字段）
+                        repo.currentSelectedUrl = url;
+            console.debug("[雨课堂助手] 当前选择 URL:", url);
           }
         } catch (e) {
           console.debug("[雨课堂助手] 解析WebSocket消息失败", e, message);

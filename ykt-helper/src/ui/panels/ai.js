@@ -164,7 +164,7 @@ function renderQuestion() {
           }
         }
       } else {
-        displayText = `未检测到当前页面${slide}\n💡 页面的情况是${!slide}`;
+        displayText = `未检测到当前页面${presentationPanel}\n💡 请在课件面板（非侧边栏）中选择页面。`;
         selectionSource = '无';
       }
     }

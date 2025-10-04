@@ -11,6 +11,7 @@ export const repo = {
   currentPresentationId: null,
   currentSlideId: null,
   currentLessonId: null,
+  currentSelectedUrl: null,
 
   // 1.16.4:按课程分组存储课件（presentations-<lessonId>）
   setPresentation(id, data) {
