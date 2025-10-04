@@ -23,6 +23,20 @@ export function mountPresentationPanel() {
     showPresentationPanel(false);
     window.dispatchEvent(new CustomEvent('ykt:open-problem-list'));
   });
+  // 1.18.4: 提问当前PPT：把当前 slide 信息传给 AI 面板
+  $('#ykt-ask-current')?.addEventListener('click', () => {
+    if (!repo.currentSlideId) {
+      return ui.toast('请先在左侧选择一页PPT', 2500);
+    }
+    const slide = repo.slides.get(repo.currentSlideId);
+    const imageUrl = slide?.image || slide?.thumbnail || '';
+    // 通知 AI 面板：优先使用传入的 slide 和 URL
+    window.dispatchEvent(new CustomEvent('ykt:ask-ai-for-slide', {
+      detail: { slideId: repo.currentSlideId, imageUrl }
+    }));
+    // 打开 AI 面板
+    window.dispatchEvent(new CustomEvent('ykt:open-ai'));
+  });
   $('#ykt-download-current')?.addEventListener('click', downloadCurrentSlide);
   $('#ykt-download-pdf')?.addEventListener('click', downloadPresentationPDF);
 

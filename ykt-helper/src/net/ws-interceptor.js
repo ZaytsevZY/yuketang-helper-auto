@@ -1,6 +1,7 @@
 // src/net/ws-interceptor.js
 import { gm } from '../core/env.js';
 import { actions } from '../state/actions.js';
+import { repo } from '../state/repo.js';
 
 export function installWSInterceptor() {
 
@@ -90,6 +91,20 @@ MyWebSocket.addHandler((ws, url) => {
           default:
             console.log('[雨课堂助手] 未知WebSocket操作:', message.op, message);
         }
+        // 监听后端传递的url
+        const url = (function findUrl(obj){
+        if (!obj || typeof obj !== 'object') return null;
+        if (typeof obj.url === 'string') return obj.url;
+        if (Array.isArray(obj)) { for (const it of obj){ const u = findUrl(it); if (u) return u; } }
+        else { for (const k in obj){ const v = obj[k]; if (v && typeof v==='object'){ const u = findUrl(v); if (u) return u; } } }
+        return null;
+      })(message);
+      if (url) {
+        window.dispatchEvent(new CustomEvent('ykt:url-change', { detail: { url, raw: message } }));
+        // 如需持久化到 repo，请取消下一行注释（确保已在 repo 定义该字段）
+        repo.currentSelectedUrl = url;
+        console.debug('[雨课堂助手] 当前选择 URL:', url);
+      }
       } catch (e) {
         console.debug('[雨课堂助手] 解析WebSocket消息失败', e, message);
       }
