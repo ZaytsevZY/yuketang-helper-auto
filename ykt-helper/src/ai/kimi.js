@@ -81,6 +81,8 @@ export async function queryKimiVision(imageBase64, textPrompt, aiCfg) {
 
     // ✅ 确保 base64 数据格式正确
     const cleanBase64 = imageBase64.replace(/^data:image\/[^;]+;base64,/, '');
+
+    const systemPrompt = '你将分析一张PPT。请尝试分析PPT上显示的问题，同时你需要考虑用户提出的问题。用户提出的问题是：'
     
     // ✅ 按照文档要求构建消息格式
     const messages = [
@@ -99,7 +101,7 @@ export async function queryKimiVision(imageBase64, textPrompt, aiCfg) {
                 },
                 {
                     type: 'text',
-                    text: textPrompt || '请分析图片中的题目并给出答案'
+                    text: systemPrompt + (textPrompt || '')
                 }
             ]
         }
