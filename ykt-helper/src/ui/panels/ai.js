@@ -279,9 +279,7 @@ export async function askAIFusionMode() {
     console.log('[AI Panel] 图像大小:', Math.round(imageBase64.length / 1024), 'KB');
 
     // ✅ 构建纯图像分析提示（不使用题目文本）
-    let textPrompt = `【页面说明】当前页面可能不是题目页；若未识别到明确题目，请输出：
-STATE: NO_QUESTION
-SUMMARY: <一句话描述>`;
+    let textPrompt = `【页面说明】当前页面可能不是题目页；请结合用户提示作答。`;
 
     // 获取用户自定义prompt并追加
     const customPrompt = getCustomPrompt();
