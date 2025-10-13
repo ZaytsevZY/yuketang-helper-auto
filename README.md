@@ -7,8 +7,6 @@
   </a>
 </a>
 
-> 最后更新时间：2025.10.11
-> 项目灵感来自于：[雨课堂助手](https://github.com/hotwords123/yuketang-helper.git)，本项目已兼容ykt-helper v1.5.1。
 
 <html>
     <h1 align="center">
@@ -19,21 +17,26 @@
     </h3>
 </html>
 
+> 最后更新时间：2025.10.13
+>
+> 项目灵感来自于：[雨课堂助手](https://github.com/hotwords123/yuketang-helper.git)，本项目已兼容ykt-helper v1.5.1。
+
+
 ## 安装方法
 
-- 本工具基于npm构建，可以在chrome浏览器或edge浏览器上配合篡改猴插件使用。
+- 本工具基于npm构建，可以在chrome浏览器或edge浏览器上配合篡改猴(Tampermonkey)插件使用；
 
-- 首先确保浏览器已安装[Tampermonkey](https://www.tampermonkey.net/)插件
+- 首先确保浏览器已安装[篡改猴(Tampermonkey)](https://www.tampermonkey.net/)插件；
 
-- 可以[一键安装](https://update.greasyfork.org/scripts/531469/AI%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B.user.js)本项目。
+- 在安装对应插件后，可以[一键安装](https://update.greasyfork.org/scripts/531469/AI%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B.user.js)本项目的稳定版本；
 
-- 或手动创建新脚本，复制```yuketang-helper-ai-<版本号>.js```到油猴新建脚本中。
+- 或手动创建新脚本，复制```yuketang-helper-ai-<版本号>.js```到篡改猴新建脚本中。
 
 ## 源代码
 
-- 我们重构的代码放在`../ykt-helper`文件夹中，建议在此处加入新功能或进行修改。
+- 我们重构的代码放在`../ykt-helper/src`文件夹中，建议在此处加入新功能或进行修改；
 
-- 代码的组装方法请参考[npm构建方法](../yuketang-helper/ykt-helper/readme.md)
+- 关于代码的开发和组装方法，请参考[脚本的开发和npm组装](../yuketang-helper/ykt-helper/readme.md)。
 
 ## 功能介绍
 
@@ -102,13 +105,13 @@
 ### 2. 设置AI功能
 
 - 点击设置按钮（齿轮图标）
-- 输入你的Kimi API密钥（需要自行申请）[Kimi 开放平台](https://platform.moonshot.cn/)
+- 输入你的Kimi API密钥（需要自行申请）
 - 设置完成后即可使用AI解答功能
 
 ### 3. AI解答使用方法
 
 - 在课堂页面点击AI解答按钮（机器人图标）
-- 如果未打开问题列表，会默认解答最后一道题目（你可以在设置中调整）
+- 如果未打开问题列表，会默认解答最新的题目（你可以在设置中调整）
 - 如果已打开问题列表并选择了某个问题，会解答选中的问题
 - 目前暂时不支持从左侧边栏中选择要回答的问题
 
@@ -137,19 +140,19 @@
 
 ---
 
-- 1.18.6：修改提示词
+- 1.18.6: 修改提示词
 
-- 1.18.5： 增加了无AI环境的随机答题模式，增加了修改AI答案
+- 1.18.5: 增加了无AI环境的随机答题模式，增加了修改AI答案
 
-- 1.18.4：优化提问逻辑，兼容原版1.5.1
+- 1.18.4: 优化提问逻辑，兼容原版1.5.1
 
-- 1.18.3：优化了ui，弹窗自动消失
+- 1.18.3: 优化了ui，弹窗自动消失
 
-- 1.18.1：题目图片改为了ppt，而不是截图
+- 1.18.1: 题目图片改为了ppt，而不是截图
 
-- 1.18.0：所有询问均改成了视觉+文本的询问
+- 1.18.0: 所有询问均改成了视觉+文本的询问
 
-- 1.17.0：加入了kimi vision模型，更好的识别课件内容
+- 1.17.0: 加入了kimi vision模型，更好的识别课件内容
 
 - 1.16.8: 将模型改为kimi
 

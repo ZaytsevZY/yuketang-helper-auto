@@ -2,9 +2,24 @@
 
 ## 2.0版本大修
 
-**大型修改：改成图像识别**
-py包的ocr好像不行，可以尝试一下百度ocr
-kimi的vlm证实可行，正在优化（已完成）
+**大型修改：图像识别系统**
+
+- 图像识别方案：是单Agent还是多Agent？
+
+    - 单Agent方案：现行方案，使用1个VLM进行图像识别$\longrightarrow$ 高token消耗
+
+    - 双Agent方案：先进行OCR，再使用LLM进行作答$\longrightarrow$ 对图像PPT效果不好
+
+- API方案
+
+    - 支持在setting中存储多个apikey，支持用户存储`apikey-平台-model`映射
+    - 将queryKimi/queryKimiVision替换为通用LLM/VLM调用函数
+    - 将url拼接和query构造完全移到`src/ai`目录下对应API平台/模型的文件
+    - 支持区分LLM和VLM
+    - 支持在API Quota耗尽/异常连接时切换其他API进行重试
+    - 支持将超过1张的PPT进行输入
+    - 支持多轮对话，至少支持对错误回答的带反馈ReAct/ReGeneration
+
 
 ## 显示
 
