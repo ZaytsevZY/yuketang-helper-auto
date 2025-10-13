@@ -279,19 +279,7 @@ export async function askAIFusionMode() {
     console.log('[AI Panel] 图像大小:', Math.round(imageBase64.length / 1024), 'KB');
 
     // ✅ 构建纯图像分析提示（不使用题目文本）
-    let textPrompt = `请仔细观察图片内容，识别并分析其中的题目：
-
-1. 请先判断题目类型（单选题、多选题、填空题、主观题等）
-2. 识别题干内容和选项（如果有）
-3. 根据题目类型给出答案
-
-答案格式要求：
-- 单选题：答案: A
-- 多选题：答案: A、B、C
-- 填空题：答案: [填空内容]
-- 主观题：答案: [完整回答]
-
-请严格按照格式回答。`;
+    let textPrompt = `【页面说明】当前页面可能不是题目页；请结合用户提示作答。`;
 
     // 获取用户自定义prompt并追加
     const customPrompt = getCustomPrompt();
@@ -411,9 +399,9 @@ export async function askAIFusionMode() {
         };
       }
     } else {
-      // ✅ 如果当前页面没有题目，只显示分析结果
+      // ✅ 如果当前页面没有题目，告知用户
       if (!problem) {
-        displayContent += '\n\n💡 当前页面不是题目页面，仅显示内容分析结果。';
+        displayContent += '\n\n💡 当前页面不是题目页面（或未识别到题目）。若要提问，请在上方输入框中补充你的问题（已被最高优先级处理）。';
       } else {
         displayContent += '\n\n⚠️ 无法自动解析答案格式，请检查AI回答是否符合要求格式。';
       }

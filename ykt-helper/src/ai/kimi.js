@@ -1,6 +1,33 @@
 // src/ai/kimi.js
 import { gm } from '../core/env.js';
 
+// -----------------------------------------------
+// Unified Prompt blocks for Text & Vision
+// -----------------------------------------------
+const BASE_SYSTEM_PROMPT = [
+ '你是 Kimi，由 Moonshot AI 提供的人工智能助手。你需要在以下规则下工作：',
+  '1) 任何时候优先遵循【用户输入（优先级最高）】中的明确要求；',
+  '2) 当输入是课件页面（PPT）图像或题干文本时，先判断是否存在“明确题目”；',
+  '3) 若存在明确题目，则输出以下格式的内容：',
+  '   单选：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个，如A',
+  '   多选：格式要求：\n答案: [多个字母用顿号分开]\n解释: [选择理由]\n\n注意：格式如A、B、C',
+  '   投票：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个选项',
+  '   填空/主观题: 格式要求：答案: [直接给出答案内容]，解释: [简要说明]',
+  '4) 若识别不到明确题目，直接使用回答用户输入的问题',
+  '3) 如果PROMPT格式不正确，或者你只接收了图片，输出：',
+  '   STATE: NO_PROMPT',
+  '   SUMMARY: <介绍页面/上下文的主要内容>',
+].join('\n');
+
+// Vision 补充：识别题型与版面元素的步骤说明
+const VISION_GUIDE = [
+  '【视觉识别要求】',
+  'A. 先判断是否为题目页面（是否有题干/选项/空格/问句等）',
+  'B. 若是题目，尝试提取题干、选项与关键信息；',
+  'C. 否则参考用户输入回答',
+].join('\n');
+
+
 /**
  * 调用 Kimi 文本模型
  * @param {string} question 题目内容
@@ -26,11 +53,21 @@ export async function queryKimi(question, aiCfg) {
                 messages: [
                     {
                         role: 'system',
-                        content: '你是 Kimi，由 Moonshot AI 提供的人工智能助手。请简洁准确地回答用户的问题，特别是选择题请直接给出答案选项。'
+                        content: BASE_SYSTEM_PROMPT
                     },
                     {
                         role: 'user',
-                        content: question
+                        // 将用户输入高亮到专门段落
+                        content: [
+                          {
+                            type: 'text',
+                            text: [
+                              '【文本模式说明】可能为题目文本，也可能为普通问答。请先执行决策闸，再回答。',
+                              '【用户输入（优先级最高）】',
+                              question || '（无）'
+                            ].join('\n')
+                          }
+                        ]
                     }
                 ],
                 temperature: 0.6
@@ -81,12 +118,18 @@ export async function queryKimiVision(imageBase64, textPrompt, aiCfg) {
 
     // ✅ 确保 base64 数据格式正确
     const cleanBase64 = imageBase64.replace(/^data:image\/[^;]+;base64,/, '');
+
+    // 统一化：使用 BASE_SYSTEM_PROMPT + VISION_GUIDE，并要求先做“是否有题目”的决策
+    const visionTextHeader = [
+      '【融合模式说明】你将看到一张课件/PPT截图与可选的附加文本。',
+      VISION_GUIDE
+    ].join('\n');
     
     // ✅ 按照文档要求构建消息格式
     const messages = [
         {
             role: 'system',
-            content: '你是 Kimi，由 Moonshot AI 提供的人工智能助手，你更擅长中文和英文的对话。你会为用户提供安全，有帮助，准确的回答。同时，你会拒绝一切涉及恐怖主义，种族歧视，黄色暴力等问题的回答。Moonshot AI 为专有名词，不可翻译成其他语言。'
+            content: BASE_SYSTEM_PROMPT,
         },
         {
             role: 'user',
@@ -99,7 +142,11 @@ export async function queryKimiVision(imageBase64, textPrompt, aiCfg) {
                 },
                 {
                     type: 'text',
-                    text: textPrompt || '请分析图片中的题目并给出答案'
+                    text: [
+                     visionTextHeader,
+                      '【用户输入（优先级最高）】',
+                      textPrompt || '（无）'
+                    ].join('\n')
                 }
             ]
         }
