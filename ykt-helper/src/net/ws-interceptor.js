@@ -113,3 +113,60 @@ MyWebSocket.addHandler((ws, url) => {
 
   gm.uw.WebSocket = MyWebSocket;
 }
+
+// ===== 主动为某个课堂建立/复用 WebSocket 连接 =====
+export function connectOrAttachLessonWS({ lessonId, auth }) {
+  if (!lessonId || !auth) {
+    console.warn('[雨课堂助手][AutoJoin] 缺少 lessonId 或 auth，放弃建链');
+    return null;
+  }
+  if (repo.isLessonConnected(lessonId)) {
+    return repo.lessonSockets.get(lessonId);
+  }
+
+  // 根据当前域名选择 ws 地址（标准/荷塘）
+  const host = location.hostname === 'pro.yuketang.cn'
+    ? 'wss://pro.yuketang.cn/wsapp/'
+    : 'wss://www.yuketang.cn/wsapp/';
+
+  const ws = new WebSocket(host);
+
+  ws.addEventListener('open', () => {
+    try {
+      const hello = {
+        op: 'hello',
+        // userid 可选：尽力获取，获取不到也不阻断流程
+        userid: getUserIdSafe(),
+        role: 'student',
+        auth,              // 关键：lessonToken
+        lessonid: lessonId // 关键：目标课堂
+      };
+      ws.send(JSON.stringify(hello));
+      console.log('[雨课堂助手][AutoJoin] 已发送 hello 握手:', hello);
+    } catch (e) {
+      console.error('[雨课堂助手][AutoJoin] 发送 hello 失败:', e);
+    }
+  });
+
+  ws.addEventListener('close', () => {
+    console.log('[雨课堂助手][AutoJoin] 课堂 WS 关闭:', lessonId);
+  });
+  ws.addEventListener('error', (e) => {
+    console.error('[雨课堂助手][AutoJoin] 课堂 WS 错误:', lessonId, e);
+  });
+
+  repo.markLessonConnected(lessonId, ws, auth);
+  return ws;
+}
+
+function getUserIdSafe() {
+  try {
+    // 常见挂载点（不同环境可能不同）
+    if (window?.YktUser?.id) return window.YktUser.id;
+    if (window?.__INITIAL_STATE__?.user?.userId) return window.__INITIAL_STATE__.user.userId;
+    // 兜底：从本地存储或 cookie 中猜
+    const m = document.cookie.match(/(?:^|;\s*)user_id=(\d+)/);
+    if (m) return Number(m[1]);
+  } catch {}
+  return undefined;
+}

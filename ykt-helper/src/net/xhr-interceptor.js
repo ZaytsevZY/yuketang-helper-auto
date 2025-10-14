@@ -87,4 +87,37 @@ export function installXHRInterceptor() {
   });
 
   gm.uw.XMLHttpRequest = MyXHR;
+
+}
+
+// ===== 自动进入课堂所需的最小 API 封装 =====
+// 说明：使用 fetch，浏览器自动带上 cookie；与拦截器互不影响
+
+/** 拉取“正在上课”的课堂列表 */
+export async function getOnLesson() {
+  const url = '/api/v3/classroom/on-lesson';
+  const resp = await fetch(url, { credentials: 'include' });
+  if (!resp.ok) throw new Error(`getOnLesson HTTP ${resp.status}`);
+  const data = await resp.json();
+  // 常见返回结构：{ code:0, data:{ onLessonClassrooms:[{ lessonId, status, ... }] } }
+  const list = data?.data?.onLessonClassrooms || data?.result || [];
+  return Array.isArray(list) ? list : [];
+}
+
+/** 课堂 checkin，返回 { token, setAuth } */
+export async function checkinClass(lessonId) {
+  const url = '/api/v3/lesson/checkin';
+  const resp = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ lessonId })
+  });
+  if (!resp.ok) throw new Error(`checkinClass HTTP ${resp.status}`);
+  // 读取响应体（包含 lessonToken）与响应头（Set-Auth）
+  const data = await resp.json();
+  const token = data?.data?.lessonToken || data?.result?.lessonToken || data?.lessonToken;
+  // Set-Auth 可能用于后续接口的 Authorization: Bearer <Set-Auth>（可选）
+  const setAuth = resp.headers.get('Set-Auth') || resp.headers.get('set-auth') || null;
+  return { token, setAuth, raw: data };
 }

@@ -383,7 +383,10 @@ export async function askAIFusionMode() {
             if (payload == null) payload = parsed;  // 回退
 
             console.log('[AI Panel] 准备提交（编辑后）:', payload);
-            await submitAnswer(problem, payload);
+            await submitAnswer(problem, payload,{
+              lessonId: repo.currentLessonId,
+              autoGate: false  // 手动提交：不触发自动等待/判定
+            });
             ui.toast('提交成功');
             showAutoAnswerPopup(problem, aiContent);
           } catch (e) {

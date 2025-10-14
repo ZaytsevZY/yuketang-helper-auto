@@ -9,6 +9,8 @@ import { queryKimi, queryKimiVision } from '../ai/kimi.js';
 import { showAutoAnswerPopup } from '../ui/panels/auto-answer-popup.js';
 import { formatProblemForAI, formatProblemForDisplay, formatProblemForVision, parseAIAnswer } from '../tsm/ai-format.js';
 import { captureSlideImage, captureProblemForVision } from '../capture/screenshoot.js';  // ✅ 添加 captureSlideImage
+import { getOnLesson, checkinClass } from '../net/xhr-interceptor.js';
+import { connectOrAttachLessonWS } from '../net/ws-interceptor.js';
 
 let _autoLoopStarted = false;
 
@@ -67,6 +69,7 @@ async function handleAutoAnswerInternal(problem) {
         startTime: status.startTime,
         endTime: status.endTime,
         forceRetry: false,
+        lessonId: repo.currentLessonId,
       });
 
       // 更新状态与UI
@@ -137,7 +140,8 @@ async function handleAutoAnswerInternal(problem) {
     await submitAnswer(problem, parsed, {
       startTime: status.startTime,
       endTime: status.endTime,
-      forceRetry: false
+      forceRetry: false,
+      lessonId: repo.currentLessonId
     });
     
     console.log('[AutoAnswer] ✅ 提交成功');
@@ -271,7 +275,10 @@ export const actions = {
 
   async submit(problem, content) {
     const result = this.parseManual(problem.problemType, content);
-    await submitAnswer(problem, result);
+    await submitAnswer(problem, result,{
+      lessonId: repo.currentLessonId,
+      autoGate: false  // 手动提交：保持旧行为，不触发自动等待/判定
+    });
     this.onAnswerProblem(problem.problemId, result);
   },
 
@@ -307,6 +314,9 @@ export const actions = {
       });
     }
     repo.loadStoredPresentations();
+     if (ui.config.autoJoinEnabled) {
+      this.startAutoJoinLoop();
+    }
   },
   
     startAutoAnswerLoop() {
@@ -325,5 +335,56 @@ export const actions = {
         }
       });
     }, 500);
+  },
+
+  // ===== 自动进入课堂：轮询“正在上课”并为每个课堂独立建链 =====
+  startAutoJoinLoop() {
+    if (_autoJoinStarted) return;
+    _autoJoinStarted = true;
+    repo.autoJoinRunning = true;
+
+    const loop = async () => {
+      if (!repo.autoJoinRunning) return;
+      try {
+        const list = await getOnLesson();
+        // 期望结构：每项至少含 { lessonId, status }，其中 status==1 表示正在上课
+        for (const it of list) {
+          const lessonId = it.lessonId || it.lesson_id || it.id;
+          const status = it.status;
+          if (!lessonId || status !== 1) continue;
+          if (repo.isLessonConnected(lessonId)) continue; // 已有连接
+
+          console.log('[AutoJoin] 检测到正在上课的课堂，准备进入:', lessonId);
+          try {
+            const { token, setAuth } = await checkinClass(lessonId);
+            if (!token) {
+              console.warn('[AutoJoin] 未获取到 lessonToken，跳过:', lessonId);
+              continue;
+            }
+            // 建立 WS 并发送 hello（消息会走 ws-interceptor 统一分发）
+            connectOrAttachLessonWS({ lessonId, auth: token });
+            // 标记该课堂为“自动进入”
+            repo.markLessonAutoJoined(lessonId, true);
+            // 若设置为“自动进入课堂默认自动答题”，为该课放开自动答题判定
+            if (ui.config.autoAnswerOnAutoJoin) {
+              repo.forceAutoAnswerLessons.add(lessonId);
+              // 说明：该标记只作为“shouldAutoAnswer”判定的一个加项，不直接改全局 autoAnswer
+            }
+          } catch (e) {
+            console.error('[AutoJoin] 进入课堂失败:', lessonId, e);
+          }
+        }
+      } catch (e) {
+          console.error('[AutoJoin] 拉取正在上课失败:', e);
+      } finally {
+        // 5 秒一轮，保证多课堂时彼此独立、互不阻塞
+        setTimeout(loop, 5000);
+      }
+    };
+    loop();
+  },
+
+  stopAutoJoinLoop() {
+    repo.autoJoinRunning = false;
   },
 };

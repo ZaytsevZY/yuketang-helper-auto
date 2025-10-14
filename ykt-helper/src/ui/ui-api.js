@@ -15,6 +15,8 @@ import { PROBLEM_TYPE_MAP } from '../core/types.js'
 const _config = Object.assign({}, DEFAULT_CONFIG, storage.get('config', {}));
 _config.ai.kimiApiKey = storage.get('kimiApiKey', _config.ai.kimiApiKey);
 _config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
+if (typeof _config.autoJoinEnabled === 'undefined') _config.autoJoinEnabled = true;
+if (typeof _config.autoAnswerOnAutoJoin === 'undefined') _config.autoAnswerOnAutoJoin = true;
 
 function saveConfig() { storage.set('config', _config); }
 
