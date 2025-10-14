@@ -12,14 +12,21 @@
     <h1 align="center">
       yuketang-helper-auto 
     </h1>
+    <h2 align="center">
+       雨课堂通用辅助工具
+    </h2>
     <h3 align="center">
-       雨课堂/荷塘雨课堂 辅助工具。
+       适用于雨课堂/荷塘雨课堂
     </h3>
 </html>
 
 > 最后更新时间：2025.10.13
->
-> 项目灵感来自于：[雨课堂助手](https://github.com/hotwords123/yuketang-helper.git)，本项目已兼容ykt-helper v1.5.1。
+
+## 项目说明
+
+- 项目灵感来自于：[雨课堂助手](https://github.com/hotwords123/yuketang-helper.git)，本项目已兼容ykt-helper v1.5.1。
+
+- 本项目正在兼容：[清华大学荷塘雨课堂助手-AI版](https://github.com/DragonAura/THU-Yuketang-Helper-AI)，但是不建议同时使用2种AI答题。
 
 
 ## 安装方法
@@ -128,11 +135,6 @@
 - 本工具仅供学习参考，建议独立思考解决问题
 - AI解答功能需要使用Kimi API，可能会产生API使用费用
 - 本项目不会线上存储用户的任何个人信息，只会将相关的题目信息上传给LLM
-
-## 项目说明
-
-- 本项目基于[github.com/hotwords123/yuketang-helper](github.com/hotwords123/yuketang-helper)开发，添加了AI解答功能。如有使用建议，欢迎在github提出。
-
 
 ## 更新记录
 
