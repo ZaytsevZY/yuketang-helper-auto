@@ -94,30 +94,175 @@ export function installXHRInterceptor() {
 // 说明：使用 fetch，浏览器自动带上 cookie；与拦截器互不影响
 
 /** 拉取“正在上课”的课堂列表 */
+/** 拉取“正在上课”的课堂列表（多端候选 + 详细日志） */
 export async function getOnLesson() {
-  const url = '/api/v3/classroom/on-lesson';
-  const resp = await fetch(url, { credentials: 'include' });
-  if (!resp.ok) throw new Error(`getOnLesson HTTP ${resp.status}`);
-  const data = await resp.json();
-  // 常见返回结构：{ code:0, data:{ onLessonClassrooms:[{ lessonId, status, ... }] } }
-  const list = data?.data?.onLessonClassrooms || data?.result || [];
-  return Array.isArray(list) ? list : [];
+  const origin = location.origin;
+  const same = (p) => new URL(p, origin).toString();
+  const candidates = [
+    same('/api/v3/classroom/on-lesson'),
+    'https://pro.yuketang.cn/api/v3/classroom/on-lesson',
+    'https://www.yuketang.cn/api/v3/classroom/on-lesson',
+    // 兼容历史/校内网关前缀（存在就命中，不存在会 404）
+    same('/mooc-api/v1/lms/classroom/on-lesson'),
+    same('/apiv3/classroom/on-lesson'),
+  ];
+
+  const tries = [];
+  let finalList = [];
+  let lastErr = null;
+
+  for (const url of candidates) {
+    const item = { url, ok: false, status: 0, note: '' };
+    try {
+      const r = await fetch(url, { credentials: 'include' });
+      item.status = r.status;
+      if (!r.ok) {
+        item.note = `HTTP ${r.status}`;
+        tries.push(item);
+        continue;
+      }
+      const text = await r.text();
+      // 打个缩略，避免把整段 JSON 打爆
+      item.bodySnippet = text.slice(0, 300);
+      let j = {};
+      try { j = JSON.parse(text); } catch (_) { item.note = 'JSON parse failed'; }
+      const list = j?.data?.onLessonClassrooms || j?.result || j?.data || [];
+      item.parsedLength = Array.isArray(list) ? list.length : -1;
+      if (Array.isArray(list) && list.length) {
+        item.ok = true;
+        tries.push(item);
+        finalList = list;
+        break;
+      } else {
+        item.note ||= 'empty list';
+        tries.push(item);
+      }
+    } catch (e) {
+      item.note = (e && e.message) || 'fetch error';
+      tries.push(item);
+      lastErr = e;
+    }
+  }
+
+  // 统一打印调试信息（折叠组，方便查看）
+  try {
+    console.groupCollapsed(
+      `%c[getOnLesson] host=%s  result=%s  candidates=%d`,
+      'color:#09f',
+      location.hostname,
+      finalList.length ? `OK(${finalList.length})` : 'EMPTY',
+      candidates.length
+    );
+      tries.forEach((t, i) => {
+      console.log(
+        `#${i+1}`,
+        { url: t.url, ok: t.ok, status: t.status, note: t.note, parsedLength: t.parsedLength, bodySnippet: t.bodySnippet }
+      );
+    });
+    if (!finalList.length && lastErr) console.warn('[getOnLesson] last error:', lastErr);
+    console.groupEnd();
+  } catch {}
+
+  return finalList;
 }
 
-/** 课堂 checkin，返回 { token, setAuth } */
-export async function checkinClass(lessonId) {
-  const url = '/api/v3/lesson/checkin';
-  const resp = await fetch(url, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ lessonId })
-  });
-  if (!resp.ok) throw new Error(`checkinClass HTTP ${resp.status}`);
-  // 读取响应体（包含 lessonToken）与响应头（Set-Auth）
-  const data = await resp.json();
-  const token = data?.data?.lessonToken || data?.result?.lessonToken || data?.lessonToken;
-  // Set-Auth 可能用于后续接口的 Authorization: Bearer <Set-Auth>（可选）
-  const setAuth = resp.headers.get('Set-Auth') || resp.headers.get('set-auth') || null;
-  return { token, setAuth, raw: data };
+// src/net/xhr-interceptor.js
+export async function checkinClass(lessonId, opts = {}) {
+  const origin = location.origin;
+  const same = (p) => new URL(p, origin).toString();
+  const classroomId = opts?.classroomId;
+
+  const headers = {
+    'content-type': 'application/json',
+    'xtbz': 'ykt',
+  };
+
+  // 针对不同网关，使用各自的 payload 形态
+  const candidates = [
+    {
+      url: same('/api/v3/lesson/checkin'),
+      payload: { lessonId, ...(classroomId ? { classroomId } : {}) }, // v3: 驼峰
+      name: 'v3-same',
+    },
+    {
+      url: 'https://pro.yuketang.cn/api/v3/lesson/checkin',
+      payload: { lessonId, ...(classroomId ? { classroomId } : {}) },
+      name: 'v3-pro',
+    },
+    {
+      url: 'https://www.yuketang.cn/api/v3/lesson/checkin',
+      payload: { lessonId, ...(classroomId ? { classroomId } : {}) },
+      name: 'v3-www',
+    },
+    {
+      url: same('/mooc-api/v1/lms/lesson/checkin'),
+      payload: { lesson_id: lessonId, ...(classroomId ? { classroom_id: classroomId } : {}) }, // 旧网关：蛇形
+      name: 'mooc-same',
+    },
+    {
+      url: same('/apiv3/lesson/checkin'),
+      payload: { lessonId, ...(classroomId ? { classroomId } : {}) },
+      name: 'apiv3-same',
+    },
+  ];
+
+  const tries = [];
+  let lastErr;
+
+  for (const cand of candidates) {
+    const item = { url: cand.url, name: cand.name, status: 0, note: '' };
+    try {
+      const resp = await fetch(cand.url, {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify(cand.payload),
+      });
+      item.status = resp.status;
+      const text = await resp.text().catch(() => '');
+      item.bodySnippet = text.slice(0, 300);
+
+      if (!resp.ok) {
+        item.note = `HTTP ${resp.status}`;
+        // 如果 400/401/403，继续试下一条
+        tries.push(item);
+        continue;
+      }
+
+      let data = {};
+      try { data = JSON.parse(text); } catch { item.note = 'JSON parse failed'; }
+      const token =
+        data?.data?.lessonToken ||
+        data?.result?.lessonToken ||
+        data?.lessonToken;
+
+      const setAuth = resp.headers.get('Set-Auth') || resp.headers.get('set-auth') || null;
+      item.note = token ? 'OK' : 'no token in body';
+      tries.push(item);
+
+      if (token) {
+        try {
+          console.groupCollapsed('%c[checkinClass] OK %s', 'color:#0a0', cand.name);
+          console.log('payload:', cand.payload);
+          console.log('setAuth:', !!setAuth);
+          console.groupEnd();
+        } catch {}
+        return { token, setAuth, raw: data };
+      }
+    } catch (e) {
+      item.note = e.message || 'fetch error';
+      tries.push(item);
+      lastErr = e;
+    }
+  }
+
+  try {
+    console.groupCollapsed('%c[checkinClass] FAILED host=%s', 'color:#f33', location.hostname);
+    console.log('lessonId:', lessonId, 'classroomId:', classroomId);
+    tries.forEach((t, i) => console.log(`#${i + 1}`, t));
+    if (lastErr) console.warn('lastErr:', lastErr);
+    console.groupEnd();
+  } catch {}
+  // 抛给上层，由上层走“直跳 lesson 页”的兜底逻辑
+  throw new Error('checkinClass HTTP 400');
 }

@@ -1,7 +1,7 @@
 // src/state/actions.js
 import { PROBLEM_TYPE_MAP } from '../core/types.js';
 import { storage } from '../core/storage.js';
-import { randInt } from '../core/env.js';
+import { randInt, gm } from '../core/env.js'
 import { repo } from './repo.js';
 import { ui } from '../ui/ui-api.js';
 import { submitAnswer, retryAnswer } from '../tsm/answer.js';
@@ -13,6 +13,9 @@ import { getOnLesson, checkinClass } from '../net/xhr-interceptor.js';
 import { connectOrAttachLessonWS } from '../net/ws-interceptor.js';
 
 let _autoLoopStarted = false;
+let _autoJoinStarted = false;
+let _autoOnLessonClickStarted = false;
+let _autoOnLessonClickInProgress = false;
 
 // 1.18.5: 本地默认答案生成（无 API Key 时使用，保持 AutoAnswer 流程通畅）
 function makeDefaultAnswer(problem) {
@@ -91,7 +94,7 @@ async function handleAutoAnswerInternal(problem) {
     // ✅ 关键修复：直接使用幻灯片的cover图片，而不是截图DOM
     console.log('[AutoAnswer] 使用融合模式分析（文本+幻灯片图片）...');
     
-    const imageBase64 = await captureSlideImage(slideId);
+    let imageBase64 = await captureSlideImage(slideId);
     
     // ✅ 如果获取幻灯片图片失败，回退到DOM截图
     if (!imageBase64) {
@@ -316,6 +319,8 @@ export const actions = {
     repo.loadStoredPresentations();
      if (ui.config.autoJoinEnabled) {
       this.startAutoJoinLoop();
+      // 仅在非课堂页尝试：自动模拟点击“正在上课”条，触发官方路由跳转
+      this.startAutoClickOnOnLessonBar();
     }
   },
   
@@ -386,5 +391,132 @@ export const actions = {
 
   stopAutoJoinLoop() {
     repo.autoJoinRunning = false;
+  },
+
+  // ===== 自动点击“正在上课”条：无需预先拿 lesson_id，复用官方路由逻辑 =====
+  startAutoClickOnOnLessonBar() {
+    if (_autoOnLessonClickStarted) return;
+    _autoOnLessonClickStarted = true;
+
+    // 仅在非课堂页（首页/课表页等）生效
+    if (/\/lesson\//.test(location.pathname)) return;
+
+    const uw = (gm && gm.uw) ? gm.uw : (window.unsafeWindow || window);
+
+    async function tryApiJumpFirst() {
+      if (_autoOnLessonClickInProgress) return false;
+      _autoOnLessonClickInProgress = true;
+      try {
+        const list = await getOnLesson();              // ← 强化后的版本
+        const arr = Array.isArray(list) ? list : [];
+        // A) 严格：status===1
+        let on = arr.find(x => (x?.status === 1) && (x.lessonId || x.lesson_id || x.id));
+        // B) 回退：没有严格匹配，但有 lessonId 就用第一条
+        if (!on) {
+          const withId = arr.find(x => (x && (x.lessonId || x.lesson_id || x.id)));
+          if (withId) {
+            console.warn('[AutoJoin][API] 没有 status===1，但存在 lessonId，使用回退项：', {
+              status: withId.status,
+              keys: Object.keys(withId || {}),
+              sample: withId
+            });
+            on = withId;
+          }
+        }
+        if (!on) {
+          // 详细日志：环境、主机、列表长度与前 3 项
+          try {
+            console.warn('[AutoJoin][API] EMPTY on-lesson list', {
+              host: location.hostname,
+              path: location.pathname,
+              length: Array.isArray(list) ? list.length : -1,
+              sample: Array.isArray(list) ? list.slice(0, 3) : list
+            });
+          } catch {}
+          _autoOnLessonClickInProgress = false; 
+          return false;
+        }
+        const lessonId = on.lessonId || on.lesson_id || on.id;
+        const classroomId = on.classroomId || on.classroom_id;
+        // 优先尝试 checkin（带 classroomId 提高成功率）
+        try {
+          await checkinClass(lessonId, { classroomId });
+        } catch (e) {
+          // 如果 checkin 400，兜底直接跳 lesson 页面，让站内自己完成后续
+          console.warn('[AutoJoin][API] checkin 失败，兜底直跳 lesson 页：', e);
+        }
+
+        // 已在 /index 的“重复导航”告警：如果目标与当前一致就不跳
+        const target = `/v2/web/lesson/${lessonId}`;
+        if (location.pathname === target) { _autoOnLessonClickInProgress = false; return true; }
+
+        // 为了少日志，先 replace 再 assign（站内有时也会 push /index）
+        history.replaceState(null, '', location.href);
+        location.assign(target);
+        return true;
+      } catch (e) {
+        console.warn('[AutoJoin][API] 跳转失败：', e, {
+          host: location.hostname,
+          path: location.pathname
+        });
+        _autoOnLessonClickInProgress = false;
+        return false;
+      }
+    }
+
+    function attachGuardAndTrigger(root = uw.document) {
+      const bar = root.querySelector('.onlesson .jump_lesson__bar');
+      if (!bar || bar.__ykt_guard_bound__) return false;
+      if (_autoOnLessonClickInProgress) return false;
+
+      bar.__ykt_guard_bound__ = true;
+      console.log('[AutoJoin][DOM] 发现 onlesson 条，接管点击（捕获阶段）');
+
+      const handler = async (ev) => {
+        ev.preventDefault();
+        ev.stopImmediatePropagation?.();
+        ev.stopPropagation();
+        if (_autoOnLessonClickInProgress) return;
+
+        // 延时阶梯：考虑 WS 刚推完 banner 但接口还没更新
+        const delays = [0, 250, 600, 1200, 2000, 3000];
+        for (const d of delays) {
+          if (d) await new Promise(r => setTimeout(r, d));
+          if (await tryApiJumpFirst()) return;
+        }
+        console.warn('[AutoJoin][DOM] on-lesson 接口仍为空，放弃本次点击');
+        try {
+          console.group('%c[AutoJoin][DOM] on-lesson 仍为空，放弃本次点击', 'color:#f60');
+          console.log('env:', { host: location.hostname, path: location.pathname, href: location.href });
+          console.log('retryDelays(ms):', delays);
+          console.log('hint:', '可能是域/路径不匹配、会话未带上、或 WS/接口不同步导致。请展开上方 [getOnLesson] 折叠日志查看每个候选 URL 的状态与响应片段。');
+          console.groupEnd();
+        } catch {}
+      };
+
+      bar.addEventListener('click', handler, { capture: true });
+      // 触发一次我们自己的 click（优先进入捕获处理器）
+      try {
+        const W = bar.ownerDocument?.defaultView || uw;
+        const ClickEvt = W.MouseEvent || uw.MouseEvent;
+        bar.dispatchEvent(new ClickEvt('click', { bubbles: true, cancelable: true, view: W }));
+      } catch (e) {
+        // 兜底：部分环境对 MouseEvent 构造器有限制
+        try { bar.click(); } catch (_) {}
+      }
+      return true;
+    }
+
+    // A) 首选：直接 API 跳转（若此时就能拿到 on-lesson，就不必等 DOM）
+    tryApiJumpFirst().then((ok) => {
+      if (ok) return;
+      // B) DOM 渲染后接管点击
+      if (attachGuardAndTrigger()) return;
+      const mo = new uw.MutationObserver(() => {
+        if (attachGuardAndTrigger()) { mo.disconnect(); return; }
+      });
+      mo.observe(uw.document.documentElement, { childList: true, subtree: true });
+      setTimeout(() => mo.disconnect(), 10000);
+    });
   },
 };

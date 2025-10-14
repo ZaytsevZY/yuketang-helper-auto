@@ -2,7 +2,7 @@
   <a href="https://github.com/ZaytsevZY/yuketang-helper-auto/pulls">
     <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square" alt="PRs Welcome">
   </a>
-  <a href="https://github.com/ZaytsevZY/yuketang-helper-auto/LICENSE">
+  <a href="https://github.com/ZaytsevZY/yuketang-helper-auto/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="license"/>
   </a>
 </a>
