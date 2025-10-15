@@ -43,6 +43,14 @@ export const repo = {
     }
   },
 
+  // === 自动进入课堂所需的多“线程”（多课堂）状态 ===
+  listeningLessons: new Set(),      // lessonId 的集合，表示已经建立WS监听
+  lessonTokens: new Map(),          // lessonId -> lessonToken（/lesson/checkin 返回）
+  lessonSockets: new Map(),         // lessonId -> WebSocket 实例
+  autoJoinRunning: false,           // 轮询开关
+  autoJoinedLessons: new Set(),     // 被“自动进入”的课堂集合（仅标记自动进入建立的连接）
+  forceAutoAnswerLessons: new Set(),// 若需要，可以对某些课强制视为“自动答题开启”
+
   // 1.16.4:载入本课（按课程分组）在本地存储过的课件
   loadStoredPresentations() {
     if (!this.currentLessonId) return;
@@ -51,5 +59,21 @@ export const repo = {
     for (const [id, data] of stored.entries()) {
       this.setPresentation(id, data);
     }
+  },
+
+  markLessonConnected(lessonId, ws, token) {
+    if (token) this.lessonTokens.set(lessonId, token);
+    if (ws) this.lessonSockets.set(lessonId, ws);
+    this.listeningLessons.add(lessonId);
+  },
+
+  isLessonConnected(lessonId) {
+    return this.listeningLessons.has(lessonId) && this.lessonSockets.get(lessonId);
+  },
+
+  markLessonAutoJoined(lessonId, enabled = true) {
+    if (!lessonId) return;
+    if (enabled) this.autoJoinedLessons.add(lessonId);
+    else this.autoJoinedLessons.delete(lessonId);
   },
 };

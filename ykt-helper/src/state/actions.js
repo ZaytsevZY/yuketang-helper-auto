@@ -1,7 +1,7 @@
 // src/state/actions.js
 import { PROBLEM_TYPE_MAP } from '../core/types.js';
 import { storage } from '../core/storage.js';
-import { randInt } from '../core/env.js';
+import { randInt, gm } from '../core/env.js'
 import { repo } from './repo.js';
 import { ui } from '../ui/ui-api.js';
 import { submitAnswer, retryAnswer } from '../tsm/answer.js';
@@ -9,8 +9,14 @@ import { queryKimi, queryKimiVision } from '../ai/kimi.js';
 import { showAutoAnswerPopup } from '../ui/panels/auto-answer-popup.js';
 import { formatProblemForAI, formatProblemForDisplay, formatProblemForVision, parseAIAnswer } from '../tsm/ai-format.js';
 import { captureSlideImage, captureProblemForVision } from '../capture/screenshoot.js';  // ✅ 添加 captureSlideImage
+import { getOnLesson, checkinClass, getActivePresentationId } from '../net/xhr-interceptor.js';
+import { connectOrAttachLessonWS } from '../net/ws-interceptor.js';
 
 let _autoLoopStarted = false;
+let _autoJoinStarted = false;
+let _autoOnLessonClickStarted = false;
+let _autoOnLessonClickInProgress = false;
+let _routerHooked = false;
 
 // 1.18.5: 本地默认答案生成（无 API Key 时使用，保持 AutoAnswer 流程通畅）
 function makeDefaultAnswer(problem) {
@@ -67,6 +73,7 @@ async function handleAutoAnswerInternal(problem) {
         startTime: status.startTime,
         endTime: status.endTime,
         forceRetry: false,
+        lessonId: repo.currentLessonId,
       });
 
       // 更新状态与UI
@@ -88,7 +95,7 @@ async function handleAutoAnswerInternal(problem) {
     // ✅ 关键修复：直接使用幻灯片的cover图片，而不是截图DOM
     console.log('[AutoAnswer] 使用融合模式分析（文本+幻灯片图片）...');
     
-    const imageBase64 = await captureSlideImage(slideId);
+    let imageBase64 = await captureSlideImage(slideId);
     
     // ✅ 如果获取幻灯片图片失败，回退到DOM截图
     if (!imageBase64) {
@@ -137,7 +144,8 @@ async function handleAutoAnswerInternal(problem) {
     await submitAnswer(problem, parsed, {
       startTime: status.startTime,
       endTime: status.endTime,
-      forceRetry: false
+      forceRetry: false,
+      lessonId: repo.currentLessonId
     });
     
     console.log('[AutoAnswer] ✅ 提交成功');
@@ -271,7 +279,10 @@ export const actions = {
 
   async submit(problem, content) {
     const result = this.parseManual(problem.problemType, content);
-    await submitAnswer(problem, result);
+    await submitAnswer(problem, result,{
+      lessonId: repo.currentLessonId,
+      autoGate: false  // 手动提交：保持旧行为，不触发自动等待/判定
+    });
     this.onAnswerProblem(problem.problemId, result);
   },
 
@@ -307,6 +318,8 @@ export const actions = {
       });
     }
     repo.loadStoredPresentations();
+    this.maybeStartAutoJoin();            // ← 改成统一入口
+    this.installRouterRearm();            // ← 监听路由变化，自动重挂
   },
   
     startAutoAnswerLoop() {
@@ -325,5 +338,208 @@ export const actions = {
         }
       });
     }, 500);
+  },
+
+  // ===== 自动进入课堂：轮询“正在上课”并为每个课堂独立建链 =====
+  startAutoJoinLoop() {
+    if (_autoJoinStarted) return;
+    _autoJoinStarted = true;
+    repo.autoJoinRunning = true;
+
+    const loop = async () => {
+      if (!repo.autoJoinRunning) return;
+      try {
+        const list = await getOnLesson();
+        // 期望结构：每项至少含 { lessonId, status }，其中 status==1 表示正在上课
+        for (const it of list) {
+          const lessonId = it.lessonId || it.lesson_id || it.id;
+          const status = it.status;
+          if (!lessonId || status !== 1) continue;
+          if (repo.isLessonConnected(lessonId)) continue; // 已有连接
+
+          console.log('[AutoJoin] 检测到正在上课的课堂，准备进入:', lessonId);
+          try {
+            const { token, setAuth } = await checkinClass(lessonId);
+            if (!token) {
+              console.warn('[AutoJoin] 未获取到 lessonToken，跳过:', lessonId);
+              continue;
+            }
+            // 建立 WS 并发送 hello（消息会走 ws-interceptor 统一分发）
+            connectOrAttachLessonWS({ lessonId, auth: token });
+            // 标记该课堂为“自动进入”
+            repo.markLessonAutoJoined(lessonId, true);
+            // 若设置为“自动进入课堂默认自动答题”，为该课放开自动答题判定
+            if (ui.config.autoAnswerOnAutoJoin) {
+              repo.forceAutoAnswerLessons.add(lessonId);
+              // 说明：该标记只作为“shouldAutoAnswer”判定的一个加项，不直接改全局 autoAnswer
+            }
+          } catch (e) {
+            console.error('[AutoJoin] 进入课堂失败:', lessonId, e);
+          }
+        }
+      } catch (e) {
+          console.error('[AutoJoin] 拉取正在上课失败:', e);
+      } finally {
+        // 5 秒一轮，保证多课堂时彼此独立、互不阻塞
+        setTimeout(loop, 5000);
+      }
+    };
+    loop();
+  },
+
+  stopAutoJoinLoop() {
+    repo.autoJoinRunning = false;
+  },
+
+  /** 统一判断并启动自动加入链路（可多次调用，内部防重） */
+  maybeStartAutoJoin() {
+    if (!ui.config.autoJoinEnabled) return;
+    this.startAutoJoinLoop();
+    this.startAutoClickOnOnLessonBar();
+  },
+
+  /** 前端路由变化时，重新检查并挂载自动加入 */
+  installRouterRearm() {
+    if (_routerHooked) return;
+    _routerHooked = true;
+    const uw = (gm && gm.uw) ? gm.uw : (window.unsafeWindow || window);
+    const rearm = () => {
+      // 重置一次“onlesson 点击守卫”的进行中标记，避免被卡住
+      _autoOnLessonClickInProgress = false;
+      // 每次路由变更都尝试启动（内部有防重，所以安全）
+      this.maybeStartAutoJoin();
+    };
+    const wrap = (obj, key) => {
+      const orig = obj[key];
+      obj[key] = function (...args) {
+        const ret = orig.apply(this, args);
+        try { rearm(); } catch {}
+        return ret;
+      };
+    };
+    wrap(uw.history, 'pushState');
+    wrap(uw.history, 'replaceState');
+    uw.addEventListener('popstate', rearm);
+    uw.addEventListener('visibilitychange', () => { if (!document.hidden) rearm(); });
+  },
+
+  // ===== 自动点击“正在上课”条：无需预先拿 lesson_id，复用官方路由逻辑 =====
+  startAutoClickOnOnLessonBar() {
+    if (_autoOnLessonClickStarted) return;
+    _autoOnLessonClickStarted = true;
+
+    // 仅在非课堂页（首页/课表页等）生效
+    if (/\/lesson\//.test(location.pathname)) return;
+
+    const uw = (gm && gm.uw) ? gm.uw : (window.unsafeWindow || window);
+
+    async function tryApiJumpFirst() {
+      if (_autoOnLessonClickInProgress) return false;
+      _autoOnLessonClickInProgress = true;
+      try {
+        const list = await getOnLesson();              // ← 强化后的版本
+        const arr = Array.isArray(list) ? list : [];
+        // A) 严格：status===1
+        let on = arr.find(x => (x?.status === 1) && (x.lessonId || x.lesson_id || x.id));
+        // B) 回退：没有严格匹配，但有 lessonId 就用第一条
+        if (!on) {
+          const withId = arr.find(x => (x && (x.lessonId || x.lesson_id || x.id)));
+          if (withId) {
+            console.warn('[AutoJoin][API] 没有 status===1，但存在 lessonId，使用回退项：', {
+              status: withId.status,
+              keys: Object.keys(withId || {}),
+              sample: withId
+            });
+            on = withId;
+          }
+        }
+        if (!on) {
+          // 详细日志：环境、主机、列表长度与前 3 项
+          try {
+            console.warn('[AutoJoin][API] EMPTY on-lesson list', {
+              host: location.hostname,
+              path: location.pathname,
+              length: Array.isArray(list) ? list.length : -1,
+              sample: Array.isArray(list) ? list.slice(0, 3) : list
+            });
+          } catch {}
+          _autoOnLessonClickInProgress = false; 
+          return false;
+        }
+        const lessonId = on.lessonId || on.lesson_id || on.id;
+        let target = null;
+        
+        if (lessonId) target = `/lesson/fullscreen/v3/${lessonId}`;
+        else     target = `/v2/web/lesson/${lessonId}`; // 兜底：让站内自己跳转
+        if (location.pathname === target) { _autoOnLessonClickInProgress = false; return true; }
+
+        // 为了少日志，先 replace 再 assign（站内有时也会 push /index）
+        history.replaceState(null, '', location.href);
+        location.assign(target);
+        return true;
+      } catch (e) {
+        console.warn('[AutoJoin][API] 跳转失败：', e, {
+          host: location.hostname,
+          path: location.pathname
+        });
+        _autoOnLessonClickInProgress = false;
+        return false;
+      }
+    }
+
+    function attachGuardAndTrigger(root = uw.document) {
+      const bar = root.querySelector('.onlesson .jump_lesson__bar');
+      if (!bar || bar.__ykt_guard_bound__) return false;
+      if (_autoOnLessonClickInProgress) return false;
+
+      bar.__ykt_guard_bound__ = true;
+      console.log('[AutoJoin][DOM] 发现 onlesson 条，接管点击（捕获阶段）');
+
+      const handler = async (ev) => {
+        ev.preventDefault();
+        ev.stopImmediatePropagation?.();
+        ev.stopPropagation();
+        if (_autoOnLessonClickInProgress) return;
+
+        // 延时阶梯：考虑 WS 刚推完 banner 但接口还没更新
+        const delays = [0, 250, 600, 1200, 2000, 3000];
+        for (const d of delays) {
+          if (d) await new Promise(r => setTimeout(r, d));
+          if (await tryApiJumpFirst()) return;
+        }
+        console.warn('[AutoJoin][DOM] on-lesson 接口仍为空，放弃本次点击');
+        try {
+          console.group('%c[AutoJoin][DOM] on-lesson 仍为空，放弃本次点击', 'color:#f60');
+          console.log('env:', { host: location.hostname, path: location.pathname, href: location.href });
+          console.log('retryDelays(ms):', delays);
+          console.log('hint:', '可能是域/路径不匹配、会话未带上、或 WS/接口不同步导致。请展开上方 [getOnLesson] 折叠日志查看每个候选 URL 的状态与响应片段。');
+          console.groupEnd();
+        } catch {}
+      };
+
+      bar.addEventListener('click', handler, { capture: true });
+      // 触发一次我们自己的 click（优先进入捕获处理器）
+      try {
+        const W = bar.ownerDocument?.defaultView || uw;
+        const ClickEvt = W.MouseEvent || uw.MouseEvent;
+        bar.dispatchEvent(new ClickEvt('click', { bubbles: true, cancelable: true, view: W }));
+      } catch (e) {
+        // 兜底：部分环境对 MouseEvent 构造器有限制
+        try { bar.click(); } catch (_) {}
+      }
+      return true;
+    }
+
+    // A) 首选：直接 API 跳转（若此时就能拿到 on-lesson，就不必等 DOM）
+    tryApiJumpFirst().then((ok) => {
+      if (ok) return;
+      // B) DOM 渲染后接管点击
+      if (attachGuardAndTrigger()) return;
+      const mo = new uw.MutationObserver(() => {
+        if (attachGuardAndTrigger()) { mo.disconnect(); return; }
+      });
+      mo.observe(uw.document.documentElement, { childList: true, subtree: true });
+      // setTimeout(() => mo.disconnect(), 10000);
+    });
   },
 };

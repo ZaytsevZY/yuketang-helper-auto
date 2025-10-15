@@ -20,6 +20,22 @@
         <h4>自动作答设置</h4>
         <div class="setting-item">
           <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-auto-join">
+            <span class="checkmark"></span>
+            自动进入课堂
+          </label>
+          <small>默认自动进入“正在上课”的课堂（与 Python 版一致）。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-auto-join-auto-answer">
+            <span class="checkmark"></span>
+            对于自动进入的课堂，默认使用自动答题
+          </label>
+          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
             <input type="checkbox" id="ykt-input-auto-answer">
             <span class="checkmark"></span>
             启用自动作答

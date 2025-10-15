@@ -1,3 +1,5 @@
+在未特殊说明的情况下，你可以基于MIT协议使用我们的项目
+```
 The MIT License (MIT)
 Copyright © 2025 <copyright holders>
 
@@ -6,3 +8,17 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+我们的项目将会以最小限度使用用户的以下权限，使用本项目默认同意权限：
+1. 读取用户浏览器的cookies，包括用户的雨课堂登录信息
+2. 读取用户自行输入的内容，包括用户的LLM API-KEY
+3. (以最小限度)在本地读取用户雨课堂内的信息，包括用户的课程列表
+4. (以最小限度)操作用户的浏览器，用户可以在设置中禁用自动功能
+对于用户行为造成的后果，本项目进行如下声明：
+1. 本项目适用的页面白名单在userscript.meta.js中进行了说明
+2. 如果用户修改项目准入，在测试等页面违规使用项目，造成学术不端等后果，本项目概不负责
+3. 当用户使用项目AI和自动化功能时，应对项目造成的效果保持注意
+4. 如果用户没有保持注意义务，造成课程未打卡等后果，对用户的成绩造成影响，本项目概不负责
+5. 对于用户使用本项目的其他问题，请在issue中进行说明
+6. 如果您认为本项目构成侵权，请联系仓库所有者
+7. 除在readme注明的项目外，本项目和其他项目概无联系

@@ -15,8 +15,21 @@ import { PROBLEM_TYPE_MAP } from '../core/types.js'
 const _config = Object.assign({}, DEFAULT_CONFIG, storage.get('config', {}));
 _config.ai.kimiApiKey = storage.get('kimiApiKey', _config.ai.kimiApiKey);
 _config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
+if (typeof _config.autoJoinEnabled === 'undefined') _config.autoJoinEnabled = false;
+if (typeof _config.autoAnswerOnAutoJoin === 'undefined') _config.autoAnswerOnAutoJoin = true;
+_config.autoJoinEnabled = !!_config.autoJoinEnabled;
+_config.autoAnswerOnAutoJoin = !!_config.autoAnswerOnAutoJoin;
 
-function saveConfig() { storage.set('config', _config); }
+function saveConfig() { 
+  try {
+      // 只持久化需要的字段，避免循环引用
+      storage.set('config', {
+        ...this.config,
+        autoJoinEnabled: !!this.config.autoJoinEnabled,
+        autoAnswerOnAutoJoin: !!this.config.autoAnswerOnAutoJoin,
+      });
+    } catch (e) { console.warn('[ui.saveConfig] failed', e); }
+}
 
 // 面板层级管理
 let currentZIndex = 10000000;

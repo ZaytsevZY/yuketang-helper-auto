@@ -10,6 +10,28 @@
 // - Uses options to pass deadline window and behavior flags.
 // - Allows header overrides for testing and non-browser envs.
 
+// === 新增：设置与课堂上下文（仅内部使用，不导出） ===
+import { ui } from '../ui/ui-api.js';
+import { repo } from '../state/repo.js';
+
+function sleep(ms) { return new Promise(r => setTimeout(r, Math.max(0, ms|0))); }
+function calcAutoWaitMs() {
+  const base = Math.max(0, (ui?.config?.autoAnswerDelay ?? 0));
+  const rand = Math.max(0, (ui?.config?.autoAnswerRandomDelay ?? 0));
+  return base + (rand ? Math.floor(Math.random() * rand) : 0);
+}
+function shouldAutoAnswerForLesson_(lessonId) {
+  // 全局开关优先
+  if (ui?.config?.autoAnswer) return true;
+  if (!lessonId) return false;
+  // 对“自动进入”的课堂，若开启“默认自动答题”，也允许
+  if (repo?.autoJoinedLessons?.has(lessonId) && ui?.config?.autoAnswerOnAutoJoin) return true;
+  // 上层可在特定课堂放行一次
+  if (repo?.forceAutoAnswerLessons?.has(lessonId)) return true;
+  return false;
+}
+
+
 const DEFAULT_HEADERS = () => ({
   'Content-Type': 'application/json',
   'xtbz': 'ykt',
@@ -116,6 +138,9 @@ export async function retryAnswer(problem, result, dt, options = {}) {
  * @param {number} [submitOptions.retryDtOffsetMs=2000] - dt = startTime + offset when retrying.
  * @param {Record<string,string>} [submitOptions.headers] - extra/override headers.
  * @returns {Promise<{'route':'answer'|'retry', resp:any}>}
+ * @param {number|string} [submitOptions.lessonId] - 所属课堂；缺省时将使用 repo.currentLessonId
+ * @param {boolean} [submitOptions.autoGate=true]  - 是否启用“自动进入课堂/默认自动答题”的判定（向后兼容，默认开启）
+ * @param {number} [submitOptions.waitMs]          - 覆盖自动等待时间；未提供时按设置计算
  */
 export async function submitAnswer(problem, result, submitOptions = {}) {
   const {
@@ -125,6 +150,18 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
     retryDtOffsetMs = 2000,
     headers,
   } = submitOptions;
+
+  // ===== 新增：在进入提交主流程前，依据设置做“是否允许自动答题”的判定与可选等待 =====
+  const lessonId = _lessonId ?? repo?.currentLessonId ?? null;
+  // 仅当 autoGate=true 时才应用“自动进入课堂/默认自动答题”的逻辑；保持老调用方不受影响
+  if (autoGate && shouldAutoAnswerForLesson_(lessonId)) {
+    const ms = typeof waitMs === 'number' ? Math.max(0, waitMs) : calcAutoWaitMs();
+    if (ms > 0) {
+      // 如果设置了截止时间，避免把等待拖到截止之后（预留 80ms 安全边界）
+      const guard = (typeof endTime === 'number') ? Math.max(0, endTime - Date.now() - 80) : ms;
+      await sleep(Math.min(ms, guard));
+    }
+  }
 
   const now = Date.now();
   const pastDeadline = typeof endTime === 'number' && now >= endTime;
