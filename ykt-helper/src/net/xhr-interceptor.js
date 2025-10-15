@@ -100,9 +100,6 @@ export async function getOnLesson() {
   const same = (p) => new URL(p, origin).toString();
   const candidates = [
     same('/api/v3/classroom/on-lesson'),
-    'https://pro.yuketang.cn/api/v3/classroom/on-lesson',
-    'https://www.yuketang.cn/api/v3/classroom/on-lesson',
-    // 兼容历史/校内网关前缀（存在就命中，不存在会 404）
     same('/mooc-api/v1/lms/classroom/on-lesson'),
     same('/apiv3/classroom/on-lesson'),
   ];
@@ -265,4 +262,43 @@ export async function checkinClass(lessonId, opts = {}) {
   } catch {}
   // 抛给上层，由上层走“直跳 lesson 页”的兜底逻辑
   throw new Error('checkinClass HTTP 400');
+}
+
+/** 获取当前/最近激活的 presentationId（多候选，自适配不同网关） */
+export async function getActivePresentationId(lessonId) {
+  const origin = location.origin;
+  const same = (p) => new URL(p, origin).toString();
+  // 常见候选：不同环境接口命名不一，这里都试一下
+  const qs = (id) => `?lessonId=${encodeURIComponent(id)}`;
+  const candidates = [
+    same(`/api/v3/lesson/presentation/active${qs(lessonId)}`),
+    same(`/api/v3/lesson/presentation/current${qs(lessonId)}`),
+    same(`/api/v3/lesson/presentation${qs(lessonId)}`),
+    same(`/apiv3/lesson/presentation${qs(lessonId)}`),
+    same(`/mooc-api/v1/lms/lesson/presentation${qs(lessonId)}`),
+  ];
+
+  for (const url of candidates) {
+    try {
+      const r = await fetch(url, { credentials: 'include' });
+      if (!r.ok) continue;
+      const j = await r.json().catch(() => ({}));
+      // 兼容多种返回结构
+      const fromData = j?.data || j?.result || j;
+      if (!fromData) continue;
+      // 可能直接是对象 {presentationId: xxx}，也可能在列表里
+      const pid =
+        fromData.presentationId ||
+        fromData.presentation_id ||
+        (Array.isArray(fromData) && (fromData[0]?.presentationId || fromData[0]?.presentation_id));
+      if (pid) {
+        console.log('[getActivePresentationId] OK', { url, presentationId: pid });
+        return String(pid);
+      }
+    } catch (e) {
+      // 忽略，试下一个
+    }
+  }
+  console.warn('[getActivePresentationId] no pid found for lesson', lessonId);
+  return null;
 }

@@ -5,12 +5,14 @@
 // @description  课堂习题提示，AI解答习题
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
+// @match        https://pro.yuketang.cn/web/*
 // @match        https://*.yuketang.cn/lesson/fullscreen/v3/*
 // @match        https://*.yuketang.cn/v2/web/*
 // @match        https://www.yuketang.cn/lesson/fullscreen/v3/*
 // @match        https://www.yuketang.cn/v2/web/*
 // @match        https://pro.yuketang.cn/lesson/fullscreen/v3/*
 // @match        https://pro.yuketang.cn/v2/web/*
+// @match        https://pro.yuketang.cn/v2/web/index
 // @grant        GM_addStyle
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
@@ -252,7 +254,7 @@
     const $rand = root$4.querySelector("#ykt-input-random-delay");
     const $priorityRadios = root$4.querySelector("#ykt-ai-pick-main-first");
     $api.value = ui.config.ai.kimiApiKey || "";
-    if (typeof ui.config.autoJoinEnabled === "undefined") ui.config.autoJoinEnabled = true;
+    if (typeof ui.config.autoJoinEnabled === "undefined") ui.config.autoJoinEnabled = false;
     if (typeof ui.config.autoAnswerOnAutoJoin === "undefined") ui.config.autoAnswerOnAutoJoin = true;
     $autoJoin.checked = !!ui.config.autoJoinEnabled;
     $autoJoinAutoAnswer.checked = !!ui.config.autoAnswerOnAutoJoin;
@@ -276,12 +278,17 @@
       ui.saveConfig();
       ui.updateAutoAnswerBtn();
       ui.toast("设置已保存");
+      if (!before && ui.config.autoJoinEnabled) try {
+        const {actions: actions} = require("../../state/actions.js");
+ // 按你们构建链路适配
+                actions.maybeStartAutoJoin?.();
+      } catch {}
     });
     root$4.querySelector("#ykt-btn-settings-reset").addEventListener("click", () => {
       if (!confirm("确定要重置为默认设置吗？")) return;
       Object.assign(ui.config, DEFAULT_CONFIG);
       ui.config.ai.kimiApiKey = "";
-      ui.config.autoJoinEnabled = true;
+      ui.config.autoJoinEnabled = false;
       ui.config.autoAnswerOnAutoJoin = true;
       ui.config.aiAutoAnalyze = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
       ui.config.aiSlidePickPriority = DEFAULT_CONFIG.aiSlidePickPriority ?? true;
@@ -317,7 +324,7 @@
   // -----------------------------------------------
   // Unified Prompt blocks for Text & Vision
   // -----------------------------------------------
-    const BASE_SYSTEM_PROMPT = [ "你是 Kimi，由 Moonshot AI 提供的人工智能助手。你需要在以下规则下工作：", "1) 任何时候优先遵循【用户输入（优先级最高）】中的明确要求；", "2) 当输入是课件页面（PPT）图像或题干文本时，先判断是否存在“明确题目”；", "3) 若存在明确题目，则输出以下格式的内容：", "   单选：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个，如A", "   多选：格式要求：\n答案: [多个字母用顿号分开]\n解释: [选择理由]\n\n注意：格式如A、B、C", "   投票：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个选项", "   填空/主观题: 格式要求：答案: [直接给出答案内容]，解释: [简要说明]", "4) 若识别不到明确题目，直接使用回答用户输入的问题", "3) 如果PROMPT格式不正确，或者你只接收了图片，输出：", "   STATE: NO_PROMPT", "   SUMMARY: <介绍页面/上下文的主要内容>" ].join("\n");
+    const BASE_SYSTEM_PROMPT = [ "你是 Kimi，由 Moonshot AI 提供的人工智能助手。你需要在以下规则下工作：", "1) 任何时候优先遵循【用户输入（优先级最高）】中的明确要求；", "2) 当输入是课件页面（PPT）图像或题干文本时，先判断是否存在“明确题目”；", "3) 若存在明确题目，则输出以下格式的内容：", "   单选：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个，如A", "   多选：格式要求：\n答案: [多个字母用顿号分开]\n解释: [选择理由]\n\n注意：格式如A、B、C", "   投票：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个选项，如A", "   填空/主观题: 格式要求：答案: [直接给出答案内容]，解释: [补充说明]", "4) 若识别不到明确题目，直接使用回答用户输入的问题", "3) 如果PROMPT格式不正确，或者你只接收了图片，输出：", "   STATE: NO_PROMPT", "   SUMMARY: <介绍页面/上下文的主要内容>" ].join("\n");
   // Vision 补充：识别题型与版面元素的步骤说明
     const VISION_GUIDE = [ "【视觉识别要求】", "A. 先判断是否为题目页面（是否有题干/选项/空格/问句等）", "B. 若是题目，尝试提取题干、选项与关键信息；", "C. 否则参考用户输入回答" ].join("\n");
   /**
@@ -2018,7 +2025,7 @@
     // ✅ 如果没有活跃题目，隐藏整个面板容器
         if (!hasActiveProblems) root$1.style.display = "none"; else root$1.style.display = "";
   }
-  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>雨课堂助手使用教程</h3>\r\n    <h5>1.18.5</h5>\r\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="tutorial-content">\r\n      <h4>功能介绍</h4>\r\n      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>\r\n      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">GitHub</a></p>\r\n      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B-%E6%A8%A1%E5%9D%97%E5%8C%96%E6%9E%84%E5%BB%BA%E7%89%88" target="_blank" rel="noopener">GreasyFork</a></p>\r\n\r\n      <h4>工具栏按钮说明</h4>\r\n      <ul>\r\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>\r\n        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面，提问可见内容。</li>\r\n        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>\r\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\r\n        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>\r\n        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>\r\n      </ul>\r\n\r\n      <h4>自动作答</h4>\r\n      <ul>\r\n        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>\r\n        <li>需要配置 <del>DeepSeek API</del> Kimi API 密钥。</li>\r\n        <li>答案来自 AI，结果仅供参考。</li>\r\n      </ul>\r\n\r\n      <h4>AI 解答</h4>\r\n      <ol>\r\n        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>\r\n        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>\r\n      </ol>\r\n\r\n      <h4>注意事项</h4>\r\n      <p>1) 仅供学习参考，请独立思考；</p>\r\n      <p>2) 合理使用 API 额度；</p>\r\n      <p>3) 答案不保证 100% 正确；</p>\r\n      <p>4) 自动作答有一定风险，谨慎开启。</p>\r\n\r\n      <h4>联系方式</h4>\r\n      <ul>\r\n        <li>请在Github issue提出问题</li>\r\n      </ul>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
+  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>雨课堂助手使用教程</h3>\r\n    <h5>1.18.7</h5>\r\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="tutorial-content">\r\n      <h4>功能介绍</h4>\r\n      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>\r\n      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">GitHub</a></p>\r\n      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B-%E6%A8%A1%E5%9D%97%E5%8C%96%E6%9E%84%E5%BB%BA%E7%89%88" target="_blank" rel="noopener">GreasyFork</a></p>\r\n\r\n      <h4>工具栏按钮说明</h4>\r\n      <ul>\r\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>\r\n        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面，提问可见内容。</li>\r\n        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>\r\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\r\n        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>\r\n        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>\r\n      </ul>\r\n\r\n      <h4>自动作答</h4>\r\n      <ul>\r\n        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>\r\n        <li>需要配置 <del>DeepSeek API</del> Kimi API 密钥。</li>\r\n        <li>答案来自 AI，结果仅供参考。</li>\r\n      </ul>\r\n\r\n      <h4>AI 解答</h4>\r\n      <ol>\r\n        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>\r\n        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>\r\n      </ol>\r\n\r\n      <h4>注意事项</h4>\r\n      <p>1) 仅供学习参考，请独立思考；</p>\r\n      <p>2) 合理使用 API 额度；</p>\r\n      <p>3) 答案不保证 100% 正确；</p>\r\n      <p>4) 自动作答有一定风险，谨慎开启。</p>\r\n\r\n      <h4>联系方式</h4>\r\n      <ul>\r\n        <li>请在Github issue提出问题</li>\r\n      </ul>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
   let mounted = false;
   let root;
   function $(sel) {
@@ -2050,10 +2057,21 @@
     const _config = Object.assign({}, DEFAULT_CONFIG, storage.get("config", {}));
   _config.ai.kimiApiKey = storage.get("kimiApiKey", _config.ai.kimiApiKey);
   _config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
-  if (typeof _config.autoJoinEnabled === "undefined") _config.autoJoinEnabled = true;
+  if (typeof _config.autoJoinEnabled === "undefined") _config.autoJoinEnabled = false;
   if (typeof _config.autoAnswerOnAutoJoin === "undefined") _config.autoAnswerOnAutoJoin = true;
+  _config.autoJoinEnabled = !!_config.autoJoinEnabled;
+  _config.autoAnswerOnAutoJoin = !!_config.autoAnswerOnAutoJoin;
   function saveConfig() {
-    storage.set("config", _config);
+    try {
+      // 只持久化需要的字段，避免循环引用
+      storage.set("config", {
+        ...this.config,
+        autoJoinEnabled: !!this.config.autoJoinEnabled,
+        autoAnswerOnAutoJoin: !!this.config.autoAnswerOnAutoJoin
+      });
+    } catch (e) {
+      console.warn("[ui.saveConfig] failed", e);
+    }
   }
   // 面板层级管理
     let currentZIndex = 1e7;
@@ -2224,43 +2242,203 @@
   }
   // ===== 自动进入课堂所需的最小 API 封装 =====
   // 说明：使用 fetch，浏览器自动带上 cookie；与拦截器互不影响
-  /** 拉取“正在上课”的课堂列表 */  async function getOnLesson() {
-    const url = "/api/v3/classroom/on-lesson";
-    const resp = await fetch(url, {
-      credentials: "include"
-    });
-    if (!resp.ok) throw new Error(`getOnLesson HTTP ${resp.status}`);
-    const data = await resp.json();
-    // 常见返回结构：{ code:0, data:{ onLessonClassrooms:[{ lessonId, status, ... }] } }
-        const list = data?.data?.onLessonClassrooms || data?.result || [];
-    return Array.isArray(list) ? list : [];
+  /** 拉取“正在上课”的课堂列表 */
+  /** 拉取“正在上课”的课堂列表（多端候选 + 详细日志） */  async function getOnLesson() {
+    const origin = location.origin;
+    const same = p => new URL(p, origin).toString();
+    const candidates = [ same("/api/v3/classroom/on-lesson"), same("/mooc-api/v1/lms/classroom/on-lesson"), same("/apiv3/classroom/on-lesson") ];
+    const tries = [];
+    let finalList = [];
+    let lastErr = null;
+    for (const url of candidates) {
+      const item = {
+        url: url,
+        ok: false,
+        status: 0,
+        note: ""
+      };
+      try {
+        const r = await fetch(url, {
+          credentials: "include"
+        });
+        item.status = r.status;
+        if (!r.ok) {
+          item.note = `HTTP ${r.status}`;
+          tries.push(item);
+          continue;
+        }
+        const text = await r.text();
+        // 打个缩略，避免把整段 JSON 打爆
+                item.bodySnippet = text.slice(0, 300);
+        let j = {};
+        try {
+          j = JSON.parse(text);
+        } catch (_) {
+          item.note = "JSON parse failed";
+        }
+        const list = j?.data?.onLessonClassrooms || j?.result || j?.data || [];
+        item.parsedLength = Array.isArray(list) ? list.length : -1;
+        if (Array.isArray(list) && list.length) {
+          item.ok = true;
+          tries.push(item);
+          finalList = list;
+          break;
+        } else {
+          item.note ||= "empty list";
+          tries.push(item);
+        }
+      } catch (e) {
+        item.note = e && e.message || "fetch error";
+        tries.push(item);
+        lastErr = e;
+      }
+    }
+    // 统一打印调试信息（折叠组，方便查看）
+        try {
+      console.groupCollapsed(`%c[getOnLesson] host=%s  result=%s  candidates=%d`, "color:#09f", location.hostname, finalList.length ? `OK(${finalList.length})` : "EMPTY", candidates.length);
+      tries.forEach((t, i) => {
+        console.log(`#${i + 1}`, {
+          url: t.url,
+          ok: t.ok,
+          status: t.status,
+          note: t.note,
+          parsedLength: t.parsedLength,
+          bodySnippet: t.bodySnippet
+        });
+      });
+      if (!finalList.length && lastErr) console.warn("[getOnLesson] last error:", lastErr);
+      console.groupEnd();
+    } catch {}
+    return finalList;
   }
-  /** 课堂 checkin，返回 { token, setAuth } */  async function checkinClass(lessonId) {
-    const url = "/api/v3/lesson/checkin";
-    const resp = await fetch(url, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        lessonId: lessonId
-      })
-    });
-    if (!resp.ok) throw new Error(`checkinClass HTTP ${resp.status}`);
-    // 读取响应体（包含 lessonToken）与响应头（Set-Auth）
-        const data = await resp.json();
-    const token = data?.data?.lessonToken || data?.result?.lessonToken || data?.lessonToken;
-    // Set-Auth 可能用于后续接口的 Authorization: Bearer <Set-Auth>（可选）
-        const setAuth = resp.headers.get("Set-Auth") || resp.headers.get("set-auth") || null;
-    return {
-      token: token,
-      setAuth: setAuth,
-      raw: data
+  // src/net/xhr-interceptor.js
+    async function checkinClass(lessonId, opts = {}) {
+    const origin = location.origin;
+    const same = p => new URL(p, origin).toString();
+    const classroomId = opts?.classroomId;
+    const headers = {
+      "content-type": "application/json",
+      xtbz: "ykt"
     };
+    // 针对不同网关，使用各自的 payload 形态
+        const candidates = [ {
+      url: same("/api/v3/lesson/checkin"),
+      payload: {
+        lessonId: lessonId,
+        ...classroomId ? {
+          classroomId: classroomId
+        } : {}
+      },
+      // v3: 驼峰
+      name: "v3-same"
+    }, {
+      url: "https://pro.yuketang.cn/api/v3/lesson/checkin",
+      payload: {
+        lessonId: lessonId,
+        ...classroomId ? {
+          classroomId: classroomId
+        } : {}
+      },
+      name: "v3-pro"
+    }, {
+      url: "https://www.yuketang.cn/api/v3/lesson/checkin",
+      payload: {
+        lessonId: lessonId,
+        ...classroomId ? {
+          classroomId: classroomId
+        } : {}
+      },
+      name: "v3-www"
+    }, {
+      url: same("/mooc-api/v1/lms/lesson/checkin"),
+      payload: {
+        lesson_id: lessonId,
+        ...classroomId ? {
+          classroom_id: classroomId
+        } : {}
+      },
+      // 旧网关：蛇形
+      name: "mooc-same"
+    }, {
+      url: same("/apiv3/lesson/checkin"),
+      payload: {
+        lessonId: lessonId,
+        ...classroomId ? {
+          classroomId: classroomId
+        } : {}
+      },
+      name: "apiv3-same"
+    } ];
+    const tries = [];
+    let lastErr;
+    for (const cand of candidates) {
+      const item = {
+        url: cand.url,
+        name: cand.name,
+        status: 0,
+        note: ""
+      };
+      try {
+        const resp = await fetch(cand.url, {
+          method: "POST",
+          credentials: "include",
+          headers: headers,
+          body: JSON.stringify(cand.payload)
+        });
+        item.status = resp.status;
+        const text = await resp.text().catch(() => "");
+        item.bodySnippet = text.slice(0, 300);
+        if (!resp.ok) {
+          item.note = `HTTP ${resp.status}`;
+          // 如果 400/401/403，继续试下一条
+                    tries.push(item);
+          continue;
+        }
+        let data = {};
+        try {
+          data = JSON.parse(text);
+        } catch {
+          item.note = "JSON parse failed";
+        }
+        const token = data?.data?.lessonToken || data?.result?.lessonToken || data?.lessonToken;
+        const setAuth = resp.headers.get("Set-Auth") || resp.headers.get("set-auth") || null;
+        item.note = token ? "OK" : "no token in body";
+        tries.push(item);
+        if (token) {
+          try {
+            console.groupCollapsed("%c[checkinClass] OK %s", "color:#0a0", cand.name);
+            console.log("payload:", cand.payload);
+            console.log("setAuth:", !!setAuth);
+            console.groupEnd();
+          } catch {}
+          return {
+            token: token,
+            setAuth: setAuth,
+            raw: data
+          };
+        }
+      } catch (e) {
+        item.note = e.message || "fetch error";
+        tries.push(item);
+        lastErr = e;
+      }
+    }
+    try {
+      console.groupCollapsed("%c[checkinClass] FAILED host=%s", "color:#f33", location.hostname);
+      console.log("lessonId:", lessonId, "classroomId:", classroomId);
+      tries.forEach((t, i) => console.log(`#${i + 1}`, t));
+      if (lastErr) console.warn("lastErr:", lastErr);
+      console.groupEnd();
+    } catch {}
+    // 抛给上层，由上层走“直跳 lesson 页”的兜底逻辑
+        throw new Error("checkinClass HTTP 400");
   }
   // src/state/actions.js
     let _autoLoopStarted = false;
+  let _autoJoinStarted = false;
+  let _autoOnLessonClickStarted = false;
+  let _autoOnLessonClickInProgress = false;
+  let _routerHooked = false;
   // 1.18.5: 本地默认答案生成（无 API Key 时使用，保持 AutoAnswer 流程通畅）
     function makeDefaultAnswer(problem) {
     switch (problem.problemType) {
@@ -2337,7 +2515,7 @@
       console.log("[AutoAnswer] =================================");
       // ✅ 关键修复：直接使用幻灯片的cover图片，而不是截图DOM
             console.log("[AutoAnswer] 使用融合模式分析（文本+幻灯片图片）...");
-      const imageBase64 = await captureSlideImage(slideId);
+      let imageBase64 = await captureSlideImage(slideId);
       // ✅ 如果获取幻灯片图片失败，回退到DOM截图
             if (!imageBase64) {
         console.log("[AutoAnswer] 无法获取幻灯片图片，尝试使用DOM截图...");
@@ -2513,8 +2691,11 @@
         window.GM_saveTab(tab);
       });
       repo.loadStoredPresentations();
-      if (ui.config.autoJoinEnabled) this.startAutoJoinLoop();
-    },
+      this.maybeStartAutoJoin();
+ // ← 改成统一入口
+            this.installRouterRearm();
+ // ← 监听路由变化，自动重挂
+        },
     startAutoAnswerLoop() {
       if (_autoLoopStarted) return;
       _autoLoopStarted = true;
@@ -2579,6 +2760,170 @@
     },
     stopAutoJoinLoop() {
       repo.autoJoinRunning = false;
+    },
+    /** 统一判断并启动自动加入链路（可多次调用，内部防重） */
+    maybeStartAutoJoin() {
+      if (!ui.config.autoJoinEnabled) return;
+      this.startAutoJoinLoop();
+      this.startAutoClickOnOnLessonBar();
+    },
+    /** 前端路由变化时，重新检查并挂载自动加入 */
+    installRouterRearm() {
+      if (_routerHooked) return;
+      _routerHooked = true;
+      const uw = gm && gm.uw ? gm.uw : window.unsafeWindow || window;
+      const rearm = () => {
+        // 重置一次“onlesson 点击守卫”的进行中标记，避免被卡住
+        _autoOnLessonClickInProgress = false;
+        // 每次路由变更都尝试启动（内部有防重，所以安全）
+                this.maybeStartAutoJoin();
+      };
+      const wrap = (obj, key) => {
+        const orig = obj[key];
+        obj[key] = function(...args) {
+          const ret = orig.apply(this, args);
+          try {
+            rearm();
+          } catch {}
+          return ret;
+        };
+      };
+      wrap(uw.history, "pushState");
+      wrap(uw.history, "replaceState");
+      uw.addEventListener("popstate", rearm);
+      uw.addEventListener("visibilitychange", () => {
+        if (!document.hidden) rearm();
+      });
+    },
+    // ===== 自动点击“正在上课”条：无需预先拿 lesson_id，复用官方路由逻辑 =====
+    startAutoClickOnOnLessonBar() {
+      if (_autoOnLessonClickStarted) return;
+      _autoOnLessonClickStarted = true;
+      // 仅在非课堂页（首页/课表页等）生效
+            if (/\/lesson\//.test(location.pathname)) return;
+      const uw = gm && gm.uw ? gm.uw : window.unsafeWindow || window;
+      async function tryApiJumpFirst() {
+        if (_autoOnLessonClickInProgress) return false;
+        _autoOnLessonClickInProgress = true;
+        try {
+          const list = await getOnLesson();
+ // ← 强化后的版本
+                    const arr = Array.isArray(list) ? list : [];
+          // A) 严格：status===1
+                    let on = arr.find(x => x?.status === 1 && (x.lessonId || x.lesson_id || x.id));
+          // B) 回退：没有严格匹配，但有 lessonId 就用第一条
+                    if (!on) {
+            const withId = arr.find(x => x && (x.lessonId || x.lesson_id || x.id));
+            if (withId) {
+              console.warn("[AutoJoin][API] 没有 status===1，但存在 lessonId，使用回退项：", {
+                status: withId.status,
+                keys: Object.keys(withId || {}),
+                sample: withId
+              });
+              on = withId;
+            }
+          }
+          if (!on) {
+            // 详细日志：环境、主机、列表长度与前 3 项
+            try {
+              console.warn("[AutoJoin][API] EMPTY on-lesson list", {
+                host: location.hostname,
+                path: location.pathname,
+                length: Array.isArray(list) ? list.length : -1,
+                sample: Array.isArray(list) ? list.slice(0, 3) : list
+              });
+            } catch {}
+            _autoOnLessonClickInProgress = false;
+            return false;
+          }
+          const lessonId = on.lessonId || on.lesson_id || on.id;
+          let target = null;
+          if (lessonId) target = `/lesson/fullscreen/v3/${lessonId}`; else target = `/v2/web/lesson/${lessonId}`;
+ // 兜底：让站内自己跳转
+                    if (location.pathname === target) {
+            _autoOnLessonClickInProgress = false;
+            return true;
+          }
+          // 为了少日志，先 replace 再 assign（站内有时也会 push /index）
+                    history.replaceState(null, "", location.href);
+          location.assign(target);
+          return true;
+        } catch (e) {
+          console.warn("[AutoJoin][API] 跳转失败：", e, {
+            host: location.hostname,
+            path: location.pathname
+          });
+          _autoOnLessonClickInProgress = false;
+          return false;
+        }
+      }
+      function attachGuardAndTrigger(root = uw.document) {
+        const bar = root.querySelector(".onlesson .jump_lesson__bar");
+        if (!bar || bar.__ykt_guard_bound__) return false;
+        if (_autoOnLessonClickInProgress) return false;
+        bar.__ykt_guard_bound__ = true;
+        console.log("[AutoJoin][DOM] 发现 onlesson 条，接管点击（捕获阶段）");
+        const handler = async ev => {
+          ev.preventDefault();
+          ev.stopImmediatePropagation?.();
+          ev.stopPropagation();
+          if (_autoOnLessonClickInProgress) return;
+          // 延时阶梯：考虑 WS 刚推完 banner 但接口还没更新
+                    const delays = [ 0, 250, 600, 1200, 2e3, 3e3 ];
+          for (const d of delays) {
+            if (d) await new Promise(r => setTimeout(r, d));
+            if (await tryApiJumpFirst()) return;
+          }
+          console.warn("[AutoJoin][DOM] on-lesson 接口仍为空，放弃本次点击");
+          try {
+            console.group("%c[AutoJoin][DOM] on-lesson 仍为空，放弃本次点击", "color:#f60");
+            console.log("env:", {
+              host: location.hostname,
+              path: location.pathname,
+              href: location.href
+            });
+            console.log("retryDelays(ms):", delays);
+            console.log("hint:", "可能是域/路径不匹配、会话未带上、或 WS/接口不同步导致。请展开上方 [getOnLesson] 折叠日志查看每个候选 URL 的状态与响应片段。");
+            console.groupEnd();
+          } catch {}
+        };
+        bar.addEventListener("click", handler, {
+          capture: true
+        });
+        // 触发一次我们自己的 click（优先进入捕获处理器）
+                try {
+          const W = bar.ownerDocument?.defaultView || uw;
+          const ClickEvt = W.MouseEvent || uw.MouseEvent;
+          bar.dispatchEvent(new ClickEvt("click", {
+            bubbles: true,
+            cancelable: true,
+            view: W
+          }));
+        } catch (e) {
+          // 兜底：部分环境对 MouseEvent 构造器有限制
+          try {
+            bar.click();
+          } catch (_) {}
+        }
+        return true;
+      }
+      // A) 首选：直接 API 跳转（若此时就能拿到 on-lesson，就不必等 DOM）
+            tryApiJumpFirst().then(ok => {
+        if (ok) return;
+        // B) DOM 渲染后接管点击
+                if (attachGuardAndTrigger()) return;
+        const mo = new uw.MutationObserver(() => {
+          if (attachGuardAndTrigger()) {
+            mo.disconnect();
+            return;
+          }
+        });
+        mo.observe(uw.document.documentElement, {
+          childList: true,
+          subtree: true
+        });
+        // setTimeout(() => mo.disconnect(), 10000);
+            });
     }
   };
   // src/net/ws-interceptor.js

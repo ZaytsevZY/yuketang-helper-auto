@@ -8,6 +8,7 @@ export const meta = `
 // @description  课堂习题提示，AI解答习题
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
+// @match        https://pro.yuketang.cn/web/*
 // @match        https://*.yuketang.cn/lesson/fullscreen/v3/*
 // @match        https://*.yuketang.cn/v2/web/*
 // @match        https://www.yuketang.cn/lesson/fullscreen/v3/*

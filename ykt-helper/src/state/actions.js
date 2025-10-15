@@ -9,13 +9,14 @@ import { queryKimi, queryKimiVision } from '../ai/kimi.js';
 import { showAutoAnswerPopup } from '../ui/panels/auto-answer-popup.js';
 import { formatProblemForAI, formatProblemForDisplay, formatProblemForVision, parseAIAnswer } from '../tsm/ai-format.js';
 import { captureSlideImage, captureProblemForVision } from '../capture/screenshoot.js';  // ✅ 添加 captureSlideImage
-import { getOnLesson, checkinClass } from '../net/xhr-interceptor.js';
+import { getOnLesson, checkinClass, getActivePresentationId } from '../net/xhr-interceptor.js';
 import { connectOrAttachLessonWS } from '../net/ws-interceptor.js';
 
 let _autoLoopStarted = false;
 let _autoJoinStarted = false;
 let _autoOnLessonClickStarted = false;
 let _autoOnLessonClickInProgress = false;
+let _routerHooked = false;
 
 // 1.18.5: 本地默认答案生成（无 API Key 时使用，保持 AutoAnswer 流程通畅）
 function makeDefaultAnswer(problem) {
@@ -317,11 +318,8 @@ export const actions = {
       });
     }
     repo.loadStoredPresentations();
-     if (ui.config.autoJoinEnabled) {
-      this.startAutoJoinLoop();
-      // 仅在非课堂页尝试：自动模拟点击“正在上课”条，触发官方路由跳转
-      this.startAutoClickOnOnLessonBar();
-    }
+    this.maybeStartAutoJoin();            // ← 改成统一入口
+    this.installRouterRearm();            // ← 监听路由变化，自动重挂
   },
   
     startAutoAnswerLoop() {
@@ -393,6 +391,38 @@ export const actions = {
     repo.autoJoinRunning = false;
   },
 
+  /** 统一判断并启动自动加入链路（可多次调用，内部防重） */
+  maybeStartAutoJoin() {
+    if (!ui.config.autoJoinEnabled) return;
+    this.startAutoJoinLoop();
+    this.startAutoClickOnOnLessonBar();
+  },
+
+  /** 前端路由变化时，重新检查并挂载自动加入 */
+  installRouterRearm() {
+    if (_routerHooked) return;
+    _routerHooked = true;
+    const uw = (gm && gm.uw) ? gm.uw : (window.unsafeWindow || window);
+    const rearm = () => {
+      // 重置一次“onlesson 点击守卫”的进行中标记，避免被卡住
+      _autoOnLessonClickInProgress = false;
+      // 每次路由变更都尝试启动（内部有防重，所以安全）
+      this.maybeStartAutoJoin();
+    };
+    const wrap = (obj, key) => {
+      const orig = obj[key];
+      obj[key] = function (...args) {
+        const ret = orig.apply(this, args);
+        try { rearm(); } catch {}
+        return ret;
+      };
+    };
+    wrap(uw.history, 'pushState');
+    wrap(uw.history, 'replaceState');
+    uw.addEventListener('popstate', rearm);
+    uw.addEventListener('visibilitychange', () => { if (!document.hidden) rearm(); });
+  },
+
   // ===== 自动点击“正在上课”条：无需预先拿 lesson_id，复用官方路由逻辑 =====
   startAutoClickOnOnLessonBar() {
     if (_autoOnLessonClickStarted) return;
@@ -437,17 +467,10 @@ export const actions = {
           return false;
         }
         const lessonId = on.lessonId || on.lesson_id || on.id;
-        const classroomId = on.classroomId || on.classroom_id;
-        // 优先尝试 checkin（带 classroomId 提高成功率）
-        try {
-          await checkinClass(lessonId, { classroomId });
-        } catch (e) {
-          // 如果 checkin 400，兜底直接跳 lesson 页面，让站内自己完成后续
-          console.warn('[AutoJoin][API] checkin 失败，兜底直跳 lesson 页：', e);
-        }
-
-        // 已在 /index 的“重复导航”告警：如果目标与当前一致就不跳
-        const target = `/v2/web/lesson/${lessonId}`;
+        let target = null;
+        
+        if (lessonId) target = `/lesson/fullscreen/v3/${lessonId}`;
+        else     target = `/v2/web/lesson/${lessonId}`; // 兜底：让站内自己跳转
         if (location.pathname === target) { _autoOnLessonClickInProgress = false; return true; }
 
         // 为了少日志，先 replace 再 assign（站内有时也会 push /index）
@@ -516,7 +539,7 @@ export const actions = {
         if (attachGuardAndTrigger()) { mo.disconnect(); return; }
       });
       mo.observe(uw.document.documentElement, { childList: true, subtree: true });
-      setTimeout(() => mo.disconnect(), 10000);
+      // setTimeout(() => mo.disconnect(), 10000);
     });
   },
 };

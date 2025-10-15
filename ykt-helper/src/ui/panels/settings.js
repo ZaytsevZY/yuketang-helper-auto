@@ -24,7 +24,7 @@ export function mountSettingsPanel() {
   const $priorityRadios = root.querySelector('#ykt-ai-pick-main-first');
 
   $api.value = ui.config.ai.kimiApiKey || '';
-  if (typeof ui.config.autoJoinEnabled === 'undefined') ui.config.autoJoinEnabled = true;
+  if (typeof ui.config.autoJoinEnabled === 'undefined') ui.config.autoJoinEnabled = false;
   if (typeof ui.config.autoAnswerOnAutoJoin === 'undefined') ui.config.autoAnswerOnAutoJoin = true;
   $autoJoin.checked = !!ui.config.autoJoinEnabled;
   $autoJoinAutoAnswer.checked = !!ui.config.autoAnswerOnAutoJoin;
@@ -51,13 +51,20 @@ export function mountSettingsPanel() {
     ui.saveConfig();
     ui.updateAutoAnswerBtn();
     ui.toast('设置已保存');
+
+    if (!before && ui.config.autoJoinEnabled) {
+      try {
+        const { actions } = require('../../state/actions.js'); // 按你们构建链路适配
+        actions.maybeStartAutoJoin?.();
+      } catch {}
+    }
   });
 
   root.querySelector('#ykt-btn-settings-reset').addEventListener('click', () => {
     if (!confirm('确定要重置为默认设置吗？')) return;
     Object.assign(ui.config, DEFAULT_CONFIG);
     ui.config.ai.kimiApiKey = '';
-    ui.config.autoJoinEnabled = true;
+    ui.config.autoJoinEnabled = false;
     ui.config.autoAnswerOnAutoJoin = true;
     ui.config.aiAutoAnalyze = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
     ui.config.aiSlidePickPriority = (DEFAULT_CONFIG.aiSlidePickPriority ?? true);
