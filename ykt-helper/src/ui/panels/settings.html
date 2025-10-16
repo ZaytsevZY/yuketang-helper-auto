@@ -66,7 +66,25 @@
           </label>
           <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>
         </div>
-      </div>       
+      </div>
+
+      <div class="setting-group">
+        <h4>习题提醒</h4>
+        <div class="setting-item">
+          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>
+          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />
+          <small>习题出现时，弹窗在屏幕上的停留时长</small>
+        </div>
+        <div class="setting-item">
+          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>
+          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />
+          <small>用于提示音的音量大小；建议 30~80</small>
+        </div>
+        <div class="setting-item">
+          <button id="ykt-btn-test-notify">测试习题提醒</button>
+        </div>
+      </div>
+
       <div class="setting-actions">
         <button id="ykt-btn-settings-save">保存设置</button>
         <button id="ykt-btn-settings-reset">重置为默认</button>

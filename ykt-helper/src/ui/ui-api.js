@@ -17,6 +17,9 @@ _config.ai.kimiApiKey = storage.get('kimiApiKey', _config.ai.kimiApiKey);
 _config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
 if (typeof _config.autoJoinEnabled === 'undefined') _config.autoJoinEnabled = false;
 if (typeof _config.autoAnswerOnAutoJoin === 'undefined') _config.autoAnswerOnAutoJoin = true;
+if (typeof _config.notifyProblems === 'undefined') _config.notifyProblems = true;           // 是否开启提醒
+if (typeof _config.notifyPopupDuration === 'undefined') _config.notifyPopupDuration = 5000; // 弹窗时长(ms)
+if (typeof _config.notifyVolume === 'undefined') _config.notifyVolume = 0.6;                // 提示音量(0~1)
 _config.autoJoinEnabled = !!_config.autoJoinEnabled;
 _config.autoAnswerOnAutoJoin = !!_config.autoAnswerOnAutoJoin;
 
@@ -106,13 +109,136 @@ export const ui = {
     window.addEventListener('ykt:open-ai', () => this.showAIPanel(true));
   },
 
+  // === 新增：题目提醒（弹窗 + 声音）===
   notifyProblem(problem, slide) {
-    // gm.notify({
-    //   title: '雨课堂习题提示',
-    //   text: this.getProblemDetail(problem),
-    //   image: slide?.thumbnail || null,
-    //   timeout: 5000,
-    // });
+    try {
+      // 1) 原生通知（如果可用，备用，不阻碍自定义弹窗）
+      try {
+        this.nativeNotify?.({
+          title: '雨课堂习题提示',
+          text: this.getProblemDetail(problem),
+          image: slide?.thumbnail || null,
+          timeout: Math.max(2000, +this.config.notifyPopupDuration || 5000),
+        });
+      } catch {}
+
+      // 2) 自定义悬浮弹窗
+     const wrapper = document.createElement('div');
+      wrapper.className = 'ykt-problem-notify';
+      // 内联样式，避免依赖外部CSS
+      Object.assign(wrapper.style, {
+        position: 'fixed',
+        right: '20px',
+        bottom: '24px',
+        maxWidth: '380px',
+        background: 'rgba(20,20,20,0.92)',
+        color: '#fff',
+        borderRadius: '12px',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+        padding: '14px 16px',
+        display: 'flex',
+        gap: '12px',
+        alignItems: 'flex-start',
+        zIndex: String(++currentZIndex),
+        fontSize: '14px',
+        lineHeight: '1.5',
+        backdropFilter: 'blur(2px)',
+        border: '1px solid rgba(255,255,255,0.06)',
+      });
+
+      // 缩略图（可选）
+      if (slide?.thumbnail) {
+        const img = document.createElement('img');
+        img.src = slide.thumbnail;
+        Object.assign(img.style, {
+          width: '56px',
+          height: '56px',
+          objectFit: 'cover',
+          borderRadius: '8px',
+          flex: '0 0 auto',
+        });
+        wrapper.appendChild(img);
+      }
+
+      const body = document.createElement('div');
+      body.style.flex = '1 1 auto';
+      const title = document.createElement('div');
+      title.textContent = '习题已发布';
+      Object.assign(title.style, { fontWeight: '600', marginBottom: '6px', fontSize: '15px' });
+      const detail = document.createElement('pre');
+      detail.textContent = this.getProblemDetail(problem);
+      Object.assign(detail.style, {
+        whiteSpace: 'pre-wrap',
+        margin: 0,
+        fontFamily: 'inherit',
+        opacity: '0.92',
+        maxHeight: '220px',
+        overflow: 'auto',
+      });
+      body.appendChild(title);
+      body.appendChild(detail);
+      wrapper.appendChild(body);
+
+      // 关闭按钮
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = '×';
+      Object.assign(closeBtn.style, {
+        border: 'none',
+        background: 'transparent',
+        color: '#fff',
+        opacity: '0.7',
+        fontSize: '18px',
+        lineHeight: '18px',
+        cursor: 'pointer',
+        padding: '0 4px',
+        marginLeft: '4px',
+      });
+      closeBtn.addEventListener('mouseenter', () => (closeBtn.style.opacity = '1'));
+      closeBtn.addEventListener('mouseleave', () => (closeBtn.style.opacity = '0.7'));
+      closeBtn.onclick = () => wrapper.remove();
+      wrapper.appendChild(closeBtn);
+
+      document.body.appendChild(wrapper);
+      this._bringToFront(wrapper);
+
+      // 自动移除
+      const timeout = Math.max(2000, +this.config.notifyPopupDuration || 5000);
+      setTimeout(() => wrapper.remove(), timeout);
+
+      // 3) 播放提示音（WebAudio 简单“叮咚”）
+      this._playNotifyTone(+this.config.notifyVolume || 0.6);
+    } catch (e) {
+      console.warn('[ui.notifyProblem] failed:', e);
+    }
+  },
+
+  // 简易提示音：两个音高的短促“叮-咚”
+  _playNotifyTone(volume = 0.6) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const now = ctx.currentTime;
+      const master = ctx.createGain();
+      master.gain.value = Math.max(0, Math.min(1, volume));
+      master.connect(ctx.destination);
+
+      const tone = (freq, t0, dur = 0.12) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t0);
+        gain.gain.setValueAtTime(0, t0);
+        gain.gain.linearRampToValueAtTime(1, t0 + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+        osc.connect(gain);
+        gain.connect(master);
+        osc.start(t0);
+        osc.stop(t0 + dur + 0.02);
+      };
+      tone(880, now);           // A5
+      tone(1318.51, now + 0.16); // E6
+      // 自动关闭
+      setTimeout(() => ctx.close(), 500);
+    } catch {}
   },
 
   getProblemDetail(problem) {
