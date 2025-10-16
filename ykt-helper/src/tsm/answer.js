@@ -143,16 +143,18 @@ export async function retryAnswer(problem, result, dt, options = {}) {
  * @param {number} [submitOptions.waitMs]          - 覆盖自动等待时间；未提供时按设置计算
  */
 export async function submitAnswer(problem, result, submitOptions = {}) {
-  const {
-    startTime,
-    endTime,
-    forceRetry = false,
-    retryDtOffsetMs = 2000,
-    headers,
-  } = submitOptions;
+  // 安全解构：避免别名，避免空对象问题
+  const startTime = submitOptions?.startTime;
+  const endTime = submitOptions?.endTime;
+  const forceRetry = submitOptions?.forceRetry ?? false;
+  const retryDtOffsetMs = submitOptions?.retryDtOffsetMs ?? 2000;
+  const headers = submitOptions?.headers;
+  const autoGate = submitOptions?.autoGate ?? true;
+  const waitMs = submitOptions?.waitMs;
+  const lessonIdFromOpts = submitOptions && 'lessonId' in submitOptions ? submitOptions.lessonId : undefined;
 
-  // ===== 新增：在进入提交主流程前，依据设置做“是否允许自动答题”的判定与可选等待 =====
-  const lessonId = _lessonId ?? repo?.currentLessonId ?? null;
+   // 统一拿 lessonId（优先用传入，其次 repo.currentLessonId）
+   const lessonId = (lessonIdFromOpts ?? repo?.currentLessonId ?? null);
   // 仅当 autoGate=true 时才应用“自动进入课堂/默认自动答题”的逻辑；保持老调用方不受影响
   if (autoGate && shouldAutoAnswerForLesson_(lessonId)) {
     const ms = typeof waitMs === 'number' ? Math.max(0, waitMs) : calcAutoWaitMs();
