@@ -22,6 +22,14 @@ export function mountSettingsPanel() {
   const $delay = root.querySelector('#ykt-input-answer-delay');
   const $rand = root.querySelector('#ykt-input-random-delay');
   const $priorityRadios = root.querySelector('#ykt-ai-pick-main-first');
+  const $notifyDur = root.querySelector('#ykt-input-notify-duration');
+  const $notifyVol = root.querySelector('#ykt-input-notify-volume');
+  const $audioFile = root.querySelector('#ykt-input-notify-audio-file');
+  const $audioUrl  = root.querySelector('#ykt-input-notify-audio-url');
+  const $applyUrl  = root.querySelector('#ykt-btn-apply-audio-url');
+  const $preview   = root.querySelector('#ykt-btn-preview-audio');
+  const $clear     = root.querySelector('#ykt-btn-clear-audio');
+  const $audioName = root.querySelector('#ykt-tip-audio-name');
 
   $api.value = ui.config.ai.kimiApiKey || '';
   if (typeof ui.config.autoJoinEnabled === 'undefined') ui.config.autoJoinEnabled = false;
@@ -34,6 +42,13 @@ export function mountSettingsPanel() {
   $rand.value = Math.floor(ui.config.autoAnswerRandomDelay / 1000);
   const curPriority = ui.config.aiSlidePickPriority || 'main';
   $priorityRadios.checked = (ui.config.aiSlidePickMainFirst !== false);
+  $notifyDur.value = Math.max(2, Math.floor((+ui.config.notifyPopupDuration || 5000) / 1000));
+  $notifyVol.value = Math.round(100 * Math.max(0, Math.min(1, +ui.config.notifyVolume ?? 0.6)));
+  if (ui.config.customNotifyAudioName || ui.config.customNotifyAudioSrc) {
+    $audioName.textContent = `当前：${ui.config.customNotifyAudioName || '(自定义URL)'}`;
+  } else {
+    $audioName.textContent = '当前：使用内置“叮-咚”提示音';
+  }
 
   root.querySelector('#ykt-settings-close').addEventListener('click', () => showSettingsPanel(false));
 
@@ -46,6 +61,8 @@ export function mountSettingsPanel() {
     ui.config.autoAnswerDelay = Math.max(1000, (+$delay.value || 0) * 1000);
     ui.config.autoAnswerRandomDelay = Math.max(0, (+$rand.value || 0) * 1000);
     ui.config.aiSlidePickPriority = !!$priorityRadios.checked;
+    ui.config.notifyPopupDuration = Math.max(2000, (+$notifyDur.value || 0) * 1000);
+    ui.config.notifyVolume = Math.max(0, Math.min(1, (+$notifyVol.value || 0) / 100));
 
     storage.set('kimiApiKey', ui.config.ai.kimiApiKey);
     ui.saveConfig();
@@ -68,6 +85,9 @@ export function mountSettingsPanel() {
     ui.config.autoAnswerOnAutoJoin = true;
     ui.config.aiAutoAnalyze = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
     ui.config.aiSlidePickPriority = (DEFAULT_CONFIG.aiSlidePickPriority ?? true);
+    ui.config.notifyPopupDuration = 5000;
+    ui.config.notifyVolume = 0.6;
+    ui.setCustomNotifyAudio({ src: '', name: '' });
     storage.set('kimiApiKey', '');
     ui.saveConfig();
     ui.updateAutoAnswerBtn();
@@ -80,9 +100,91 @@ export function mountSettingsPanel() {
     $rand.value = Math.floor(DEFAULT_CONFIG.autoAnswerRandomDelay / 1000);
     $autoAnalyze.checked = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
     $priorityRadios.checked = (DEFAULT_CONFIG.aiSlidePickPriority ?? true)
+    $notifyDur.value = 5;
+    $notifyVol.value = 60;
+    $audioName.textContent = '当前：使用内置“叮-咚”提示音';
 
     ui.toast('设置已重置');
   });
+
+  // === 新增：自定义音频 - 文件上传 ===
+  if ($audioFile) {
+    $audioFile.addEventListener('change', async (e) => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      // 简单体积限制，避免 localStorage 过大（如 storage 基于 localStorage）
+      const MAX = 2 * 1024 * 1024; // 2MB
+      if (f.size > MAX) {
+        ui.toast('音频文件过大（>2MB），请压缩或使用URL方式', 3000);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const src = reader.result; // data URL
+        ui.setCustomNotifyAudio({ src, name: f.name });
+        $audioName.textContent = `当前：${f.name}`;
+        // 立即试播，满足浏览器的“用户手势”政策
+        ui._playNotifySound(Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100)));
+        ui.toast('已应用自定义提示音（文件）');
+      };
+      reader.onerror = () => ui.toast('读取音频文件失败', 2500);
+      reader.readAsDataURL(f);
+    });
+  }
+
+  // === 新增：自定义音频 - 应用URL ===
+  if ($applyUrl) {
+    $applyUrl.addEventListener('click', () => {
+      const url = ($audioUrl.value || '').trim();
+      if (!url) { ui.toast('请输入音频 URL', 2000); return; }
+      if (!/^https?:\/\/|^data:audio\//i.test(url)) {
+        ui.toast('URL 必须以 http/https 或 data:audio/ 开头', 3000);
+        return;
+      }
+      ui.setCustomNotifyAudio({ src: url, name: '' });
+      $audioName.textContent = '当前：（自定义URL）';
+      // 立即试播
+      ui._playNotifySound(Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100)));
+      ui.toast('已应用自定义提示音（URL）');
+    });
+  }
+
+  // === 新增：预览当前提示音 ===
+  if ($preview) {
+    $preview.addEventListener('click', () => {
+      ui._playNotifySound(Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100)));
+    });
+  }
+
+  // === 新增：清除自定义音频 ===
+  if ($clear) {
+    $clear.addEventListener('click', () => {
+      ui.setCustomNotifyAudio({ src: '', name: '' });
+      $audioName.textContent = '当前：使用内置“叮-咚”提示音';
+      ui.toast('已清除自定义提示音');
+    });
+  }
+
+  // === 新增：测试习题提醒按钮 ===
+  const $btnTest = root.querySelector('#ykt-btn-test-notify');
+  if ($btnTest) {
+    $btnTest.addEventListener('click', () => {
+      // 构造一个小示例
+      const mockProblem = {
+        problemId: 'TEST-001',
+        body: '【测试题】下列哪个选项是质数？',
+        options: [
+          { key: 'A', value: '12' },
+          { key: 'B', value: '17' },
+          { key: 'C', value: '21' },
+          { key: 'D', value: '28' },
+        ],
+      };
+      const mockSlide = { thumbnail: null };
+      ui.notifyProblem(mockProblem, mockSlide);
+      ui.toast('已触发测试提醒（请留意右下角弹窗与提示音）', 2500);
+    });
+  }
 
   mounted = true;
   return root;
