@@ -83,6 +83,18 @@
         <div class="setting-item">
           <button id="ykt-btn-test-notify">测试习题提醒</button>
         </div>
+        <div class="setting-item">
+          <label>自定义提示音（其一即可）</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />
+            <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>
+            <button id="ykt-btn-apply-audio-url">应用URL</button>
+            <button id="ykt-btn-preview-audio">预览</button>
+            <button id="ykt-btn-clear-audio">清除自定义音频</button>
+          </div>
+          <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>
+          <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>
+        </div>
       </div>
 
       <div class="setting-actions">

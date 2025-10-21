@@ -20,6 +20,8 @@ if (typeof _config.autoAnswerOnAutoJoin === 'undefined') _config.autoAnswerOnAut
 if (typeof _config.notifyProblems === 'undefined') _config.notifyProblems = true;           // 是否开启提醒
 if (typeof _config.notifyPopupDuration === 'undefined') _config.notifyPopupDuration = 5000; // 弹窗时长(ms)
 if (typeof _config.notifyVolume === 'undefined') _config.notifyVolume = 0.6;                // 提示音量(0~1)
+if (typeof _config.customNotifyAudioSrc === 'undefined') _config.customNotifyAudioSrc = ''; // '' 表示未设置
+if (typeof _config.customNotifyAudioName === 'undefined') _config.customNotifyAudioName = ''; // 仅用于显示
 _config.autoJoinEnabled = !!_config.autoJoinEnabled;
 _config.autoAnswerOnAutoJoin = !!_config.autoAnswerOnAutoJoin;
 
@@ -206,10 +208,40 @@ export const ui = {
       setTimeout(() => wrapper.remove(), timeout);
 
       // 3) 播放提示音（WebAudio 简单“叮咚”）
-      this._playNotifyTone(+this.config.notifyVolume || 0.6);
+      this._playNotifySound(+this.config.notifyVolume || 0.6);
     } catch (e) {
       console.warn('[ui.notifyProblem] failed:', e);
     }
+  },
+
+  // 播放自定义提示音  
+  _playNotifySound(volume = 0.6) {
+    const src = (this.config.customNotifyAudioSrc || '').trim();
+    if (src) {
+      try {
+        // 采用 <audio> 元素，避免跨域 / MIME 导致的 WebAudio 解码问题
+        if (!this.__notifyAudioEl) {
+          this.__notifyAudioEl = new Audio();
+          this.__notifyAudioEl.preload = 'auto';
+        }
+        const el = this.__notifyAudioEl;
+        el.pause();
+        // 若用户更换了音频，或首次设置，更新 src
+        if (el.src !== src) el.src = src;
+        el.volume = Math.max(0, Math.min(1, volume));
+        el.currentTime = 0;
+        const p = el.play();
+            // 某些浏览器可能因非用户手势阻止自动播放：失败时回退
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => this._playNotifyTone(volume));
+        }
+        return;
+      } catch (e) {
+        console.warn('[ui._playNotifySound] custom audio failed, fallback to tone:', e);
+        // 回退到合成音
+      }
+    }
+    this._playNotifyTone(volume);
   },
 
   // 简易提示音：两个音高的短促“叮-咚”
@@ -239,6 +271,13 @@ export const ui = {
       // 自动关闭
       setTimeout(() => ctx.close(), 500);
     } catch {}
+  },
+
+  // 供设置页调用：写入/清除自定义提示音
+  setCustomNotifyAudio({ src, name }) {
+    this.config.customNotifyAudioSrc = src || '';
+    this.config.customNotifyAudioName = name || '';
+    this.saveConfig();
   },
 
   getProblemDetail(problem) {

@@ -55,3 +55,15 @@
 - 增加了从雨课堂主页面自动进入课堂的逻辑
 
 - 更新用户协议
+
+1.19.0
+
+- 针对141.0.7390.108-chrome及以上版本，增加了fetch拦截接口
+
+- 针对 [#6](https://github.com/ZaytsevZY/yuketang-helper-auto/issues/6)，添加了提示音和自定义提示音
+
+- 修复了自动作答功能显示`lessonid is not defined`的bug
+
+- 重新更改了日志输出格式
+
+- 重构了部分代码

@@ -235,7 +235,7 @@
       setTimeout(() => el.remove(), 500);
     }, duration);
   }
-  var tpl$5 = '<div id="ykt-settings-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>AI雨课堂助手设置</h3>\r\n    <span class="close-btn" id="ykt-settings-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="settings-content">\r\n      <div class="setting-group">\r\n        <h4>AI配置</h4>\r\n          \x3c!-- 将DeepSeek相关配置替换为Kimi --\x3e\r\n          <div class="setting-item">\r\n              <label for="kimi-api-key">Kimi API Key:</label>\r\n              <input type="password" id="kimi-api-key" placeholder="输入您的 Kimi API Key">\r\n              <small>从 <a href="https://platform.moonshot.cn/" target="_blank">Kimi开放平台</a> 获取</small>\r\n          </div>\r\n      </div>\r\n\r\n      <div class="setting-group">\r\n        <h4>自动作答设置</h4>\r\n        <div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-input-auto-join">\r\n            <span class="checkmark"></span>\r\n            自动进入课堂\r\n          </label>\r\n          <small>默认自动进入“正在上课”的课堂（与 Python 版一致）。</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\r\n            <span class="checkmark"></span>\r\n            对于自动进入的课堂，默认使用自动答题\r\n          </label>\r\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-input-auto-answer">\r\n            <span class="checkmark"></span>\r\n            启用自动作答\r\n          </label>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\r\n            <span class="checkmark"></span>\r\n            打开 AI 页面时自动分析\r\n          </label>\r\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\r\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\r\n          <small>题目出现后等待多长时间开始作答</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\r\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\r\n          <small>在基础延迟基础上随机增加的时间范围</small>\r\n        </div><div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-ai-pick-main-first">\r\n            <span class="checkmark"></span>\r\n            主界面优先（未勾选则课件浏览优先）\r\n          </label>\r\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\r\n        </div>\r\n      </div>\r\n\r\n      <div class="setting-group">\r\n        <h4>习题提醒</h4>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\r\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\r\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\r\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\r\n          <small>用于提示音的音量大小；建议 30~80</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\r\n        </div>\r\n      </div>\r\n\r\n      <div class="setting-actions">\r\n        <button id="ykt-btn-settings-save">保存设置</button>\r\n        <button id="ykt-btn-settings-reset">重置为默认</button>\r\n      </div>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
+  var tpl$5 = '<div id="ykt-settings-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>AI雨课堂助手设置</h3>\r\n    <span class="close-btn" id="ykt-settings-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="settings-content">\r\n      <div class="setting-group">\r\n        <h4>AI配置</h4>\r\n          \x3c!-- 将DeepSeek相关配置替换为Kimi --\x3e\r\n          <div class="setting-item">\r\n              <label for="kimi-api-key">Kimi API Key:</label>\r\n              <input type="password" id="kimi-api-key" placeholder="输入您的 Kimi API Key">\r\n              <small>从 <a href="https://platform.moonshot.cn/" target="_blank">Kimi开放平台</a> 获取</small>\r\n          </div>\r\n      </div>\r\n\r\n      <div class="setting-group">\r\n        <h4>自动作答设置</h4>\r\n        <div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-input-auto-join">\r\n            <span class="checkmark"></span>\r\n            自动进入课堂\r\n          </label>\r\n          <small>默认自动进入“正在上课”的课堂（与 Python 版一致）。</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\r\n            <span class="checkmark"></span>\r\n            对于自动进入的课堂，默认使用自动答题\r\n          </label>\r\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-input-auto-answer">\r\n            <span class="checkmark"></span>\r\n            启用自动作答\r\n          </label>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\r\n            <span class="checkmark"></span>\r\n            打开 AI 页面时自动分析\r\n          </label>\r\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\r\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\r\n          <small>题目出现后等待多长时间开始作答</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\r\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\r\n          <small>在基础延迟基础上随机增加的时间范围</small>\r\n        </div><div class="setting-item">\r\n          <label class="checkbox-label">\r\n            <input type="checkbox" id="ykt-ai-pick-main-first">\r\n            <span class="checkmark"></span>\r\n            主界面优先（未勾选则课件浏览优先）\r\n          </label>\r\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\r\n        </div>\r\n      </div>\r\n\r\n      <div class="setting-group">\r\n        <h4>习题提醒</h4>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\r\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\r\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\r\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\r\n          <small>用于提示音的音量大小；建议 30~80</small>\r\n        </div>\r\n        <div class="setting-item">\r\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\r\n        </div>\r\n        <div class="setting-item">\r\n          <label>自定义提示音（其一即可）</label>\r\n          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\r\n            <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\r\n            <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\r\n            <button id="ykt-btn-apply-audio-url">应用URL</button>\r\n            <button id="ykt-btn-preview-audio">预览</button>\r\n            <button id="ykt-btn-clear-audio">清除自定义音频</button>\r\n          </div>\r\n          <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\r\n          <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\r\n        </div>\r\n      </div>\r\n\r\n      <div class="setting-actions">\r\n        <button id="ykt-btn-settings-save">保存设置</button>\r\n        <button id="ykt-btn-settings-reset">重置为默认</button>\r\n      </div>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
   let mounted$5 = false;
   let root$4;
   function mountSettingsPanel() {
@@ -255,6 +255,12 @@
     const $priorityRadios = root$4.querySelector("#ykt-ai-pick-main-first");
     const $notifyDur = root$4.querySelector("#ykt-input-notify-duration");
     const $notifyVol = root$4.querySelector("#ykt-input-notify-volume");
+    const $audioFile = root$4.querySelector("#ykt-input-notify-audio-file");
+    const $audioUrl = root$4.querySelector("#ykt-input-notify-audio-url");
+    const $applyUrl = root$4.querySelector("#ykt-btn-apply-audio-url");
+    const $preview = root$4.querySelector("#ykt-btn-preview-audio");
+    const $clear = root$4.querySelector("#ykt-btn-clear-audio");
+    const $audioName = root$4.querySelector("#ykt-tip-audio-name");
     $api.value = ui.config.ai.kimiApiKey || "";
     if (typeof ui.config.autoJoinEnabled === "undefined") ui.config.autoJoinEnabled = false;
     if (typeof ui.config.autoAnswerOnAutoJoin === "undefined") ui.config.autoAnswerOnAutoJoin = true;
@@ -268,6 +274,7 @@
     $priorityRadios.checked = ui.config.aiSlidePickMainFirst !== false;
     $notifyDur.value = Math.max(2, Math.floor((+ui.config.notifyPopupDuration || 5e3) / 1e3));
     $notifyVol.value = Math.round(100 * Math.max(0, Math.min(1, +ui.config.notifyVolume ?? .6)));
+    if (ui.config.customNotifyAudioName || ui.config.customNotifyAudioSrc) $audioName.textContent = `当前：${ui.config.customNotifyAudioName || "(自定义URL)"}`; else $audioName.textContent = "当前：使用内置“叮-咚”提示音";
     root$4.querySelector("#ykt-settings-close").addEventListener("click", () => showSettingsPanel(false));
     root$4.querySelector("#ykt-btn-settings-save").addEventListener("click", () => {
       ui.config.ai.kimiApiKey = $api.value.trim();
@@ -300,6 +307,10 @@
       ui.config.aiSlidePickPriority = DEFAULT_CONFIG.aiSlidePickPriority ?? true;
       ui.config.notifyPopupDuration = 5e3;
       ui.config.notifyVolume = .6;
+      ui.setCustomNotifyAudio({
+        src: "",
+        name: ""
+      });
       storage.set("kimiApiKey", "");
       ui.saveConfig();
       ui.updateAutoAnswerBtn();
@@ -311,7 +322,70 @@
       $rand.value = Math.floor(DEFAULT_CONFIG.autoAnswerRandomDelay / 1e3);
       $autoAnalyze.checked = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
       $priorityRadios.checked = DEFAULT_CONFIG.aiSlidePickPriority ?? true;
+      $notifyDur.value = 5;
+      $notifyVol.value = 60;
+      $audioName.textContent = "当前：使用内置“叮-咚”提示音";
       ui.toast("设置已重置");
+    });
+    // === 新增：自定义音频 - 文件上传 ===
+        if ($audioFile) $audioFile.addEventListener("change", async e => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      // 简单体积限制，避免 localStorage 过大（如 storage 基于 localStorage）
+            const MAX = 2 * 1024 * 1024;
+ // 2MB
+            if (f.size > MAX) {
+        ui.toast("音频文件过大（>2MB），请压缩或使用URL方式", 3e3);
+        return;
+      }
+      const reader = new FileReader;
+      reader.onload = () => {
+        const src = reader.result;
+ // data URL
+                ui.setCustomNotifyAudio({
+          src: src,
+          name: f.name
+        });
+        $audioName.textContent = `当前：${f.name}`;
+        // 立即试播，满足浏览器的“用户手势”政策
+                ui._playNotifySound(Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100)));
+        ui.toast("已应用自定义提示音（文件）");
+      };
+      reader.onerror = () => ui.toast("读取音频文件失败", 2500);
+      reader.readAsDataURL(f);
+    });
+    // === 新增：自定义音频 - 应用URL ===
+        if ($applyUrl) $applyUrl.addEventListener("click", () => {
+      const url = ($audioUrl.value || "").trim();
+      if (!url) {
+        ui.toast("请输入音频 URL", 2e3);
+        return;
+      }
+      if (!/^https?:\/\/|^data:audio\//i.test(url)) {
+        ui.toast("URL 必须以 http/https 或 data:audio/ 开头", 3e3);
+        return;
+      }
+      ui.setCustomNotifyAudio({
+        src: url,
+        name: ""
+      });
+      $audioName.textContent = "当前：（自定义URL）";
+      // 立即试播
+            ui._playNotifySound(Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100)));
+      ui.toast("已应用自定义提示音（URL）");
+    });
+    // === 新增：预览当前提示音 ===
+        if ($preview) $preview.addEventListener("click", () => {
+      ui._playNotifySound(Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100)));
+    });
+    // === 新增：清除自定义音频 ===
+        if ($clear) $clear.addEventListener("click", () => {
+      ui.setCustomNotifyAudio({
+        src: "",
+        name: ""
+      });
+      $audioName.textContent = "当前：使用内置“叮-咚”提示音";
+      ui.toast("已清除自定义提示音");
     });
     // === 新增：测试习题提醒按钮 ===
         const $btnTest = root$4.querySelector("#ykt-btn-test-notify");
@@ -2290,6 +2364,10 @@
  // 弹窗时长(ms)
     if (typeof _config.notifyVolume === "undefined") _config.notifyVolume = .6;
  // 提示音量(0~1)
+    if (typeof _config.customNotifyAudioSrc === "undefined") _config.customNotifyAudioSrc = "";
+ // '' 表示未设置
+    if (typeof _config.customNotifyAudioName === "undefined") _config.customNotifyAudioName = "";
+ // 仅用于显示
     _config.autoJoinEnabled = !!_config.autoJoinEnabled;
   _config.autoAnswerOnAutoJoin = !!_config.autoAnswerOnAutoJoin;
   function saveConfig() {
@@ -2461,10 +2539,35 @@
                 const timeout = Math.max(2e3, +this.config.notifyPopupDuration || 5e3);
         setTimeout(() => wrapper.remove(), timeout);
         // 3) 播放提示音（WebAudio 简单“叮咚”）
-                this._playNotifyTone(+this.config.notifyVolume || .6);
+                this._playNotifySound(+this.config.notifyVolume || .6);
       } catch (e) {
         console.warn("[ui.notifyProblem] failed:", e);
       }
+    },
+    // 播放自定义提示音  
+    _playNotifySound(volume = .6) {
+      const src = (this.config.customNotifyAudioSrc || "").trim();
+      if (src) try {
+        // 采用 <audio> 元素，避免跨域 / MIME 导致的 WebAudio 解码问题
+        if (!this.__notifyAudioEl) {
+          this.__notifyAudioEl = new Audio;
+          this.__notifyAudioEl.preload = "auto";
+        }
+        const el = this.__notifyAudioEl;
+        el.pause();
+        // 若用户更换了音频，或首次设置，更新 src
+                if (el.src !== src) el.src = src;
+        el.volume = Math.max(0, Math.min(1, volume));
+        el.currentTime = 0;
+        const p = el.play();
+        // 某些浏览器可能因非用户手势阻止自动播放：失败时回退
+                if (p && typeof p.catch === "function") p.catch(() => this._playNotifyTone(volume));
+        return;
+      } catch (e) {
+        console.warn("[ui._playNotifySound] custom audio failed, fallback to tone:", e);
+        // 回退到合成音
+            }
+      this._playNotifyTone(volume);
     },
     // 简易提示音：两个音高的短促“叮-咚”
     _playNotifyTone(volume = .6) {
@@ -2494,6 +2597,12 @@
         // 自动关闭
                 setTimeout(() => ctx.close(), 500);
       } catch {}
+    },
+    // 供设置页调用：写入/清除自定义提示音
+    setCustomNotifyAudio({src: src, name: name}) {
+      this.config.customNotifyAudioSrc = src || "";
+      this.config.customNotifyAudioName = name || "";
+      this.saveConfig();
     },
     getProblemDetail(problem) {
       if (!problem) return "题目未找到";
