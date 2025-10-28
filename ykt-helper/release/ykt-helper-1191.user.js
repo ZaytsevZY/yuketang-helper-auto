@@ -1039,13 +1039,13 @@
   }
   /**
    * Vuex 辅助工具 - 用于获取雨课堂主界面状态（附加调试日志）
-   */  const L$2 = (...a) => console.log("[YKT][DBG][vuex-helper]", ...a);
-  const W$2 = (...a) => console.warn("[YKT][WARN][vuex-helper]", ...a);
+   */  const L$3 = (...a) => console.log("[YKT][DBG][vuex-helper]", ...a);
+  const W$3 = (...a) => console.warn("[YKT][WARN][vuex-helper]", ...a);
   const E = (...a) => console.error("[YKT][ERR][vuex-helper]", ...a);
   function getVueApp() {
     try {
       const app = document.querySelector("#app")?.__vue__;
-      if (!app) W$2("getVueApp: 找不到 #app.__vue__");
+      if (!app) W$3("getVueApp: 找不到 #app.__vue__");
       return app || null;
     } catch (e) {
       E("getVueApp 错误:", e);
@@ -1058,12 +1058,12 @@
     try {
       const app = getVueApp();
       if (!app || !app.$store) {
-        W$2("getCurrentMainPageSlideId: 无 app 或 store");
+        W$3("getCurrentMainPageSlideId: 无 app 或 store");
         return null;
       }
       const currSlide = app.$store.state?.currSlide;
       if (!currSlide) {
-        L$2("getCurrentMainPageSlideId: currSlide 为 null/undefined");
+        L$3("getCurrentMainPageSlideId: currSlide 为 null/undefined");
         return null;
       }
       const rawSid = currSlide.sid;
@@ -1084,7 +1084,7 @@
     const unwatch = app.$store.watch(state => state.currSlide, (ns, os) => {
       const newSid = ns?.sid == null ? null : String(ns.sid);
       const oldSid = os?.sid == null ? null : String(os.sid);
-      L$2("主界面页面切换", {
+      L$3("主界面页面切换", {
         oldSid: oldSid,
         newSid: newSid,
         newType: ns?.type,
@@ -1096,7 +1096,7 @@
     }, {
       deep: false
     });
-    L$2("✅ 已启动主界面页面切换监听");
+    L$3("✅ 已启动主界面页面切换监听");
     return unwatch;
   }
   function waitForVueReady() {
@@ -1105,15 +1105,15 @@
       const check = () => {
         const app = getVueApp();
         if (app && app.$store) {
-          L$2("waitForVueReady: ok, elapsed(ms)=", Date.now() - t0);
+          L$3("waitForVueReady: ok, elapsed(ms)=", Date.now() - t0);
           resolve(app);
         } else setTimeout(check, 100);
       };
       check();
     });
   }
-  const L$1 = (...a) => console.log("[YKT][DBG][ai]", ...a);
-  const W$1 = (...a) => console.warn("[YKT][WARN][ai]", ...a);
+  const L$2 = (...a) => console.log("[YKT][DBG][ai]", ...a);
+  const W$2 = (...a) => console.warn("[YKT][WARN][ai]", ...a);
   let mounted$4 = false;
   let root$3;
   // 来自 presentation 的一次性优先
@@ -1206,7 +1206,7 @@
   /** —— 运行时自愈：把 repo.slides 的数字键迁移为字符串键 —— */  function normalizeRepoSlidesKeys$1(tag = "ai.mount") {
     try {
       if (!repo || !repo.slides || !(repo.slides instanceof Map)) {
-        W$1("normalizeRepoSlidesKeys: repo.slides 不是 Map");
+        W$2("normalizeRepoSlidesKeys: repo.slides 不是 Map");
         return;
       }
       const beforeKeys = Array.from(repo.slides.keys());
@@ -1221,9 +1221,9 @@
         }
       }
       const afterSample = Array.from(repo.slides.keys()).slice(0, 8);
-      L$1(`[normalizeRepoSlidesKeys@${tag}] 总键=${beforeKeys.length}，数字键=${nums.length}，迁移为字符串=${moved}，sample=`, afterSample);
+      L$2(`[normalizeRepoSlidesKeys@${tag}] 总键=${beforeKeys.length}，数字键=${nums.length}，迁移为字符串=${moved}，sample=`, afterSample);
     } catch (e) {
-      W$1("normalizeRepoSlidesKeys error:", e);
+      W$2("normalizeRepoSlidesKeys error:", e);
     }
   }
   function asIdStr(v) {
@@ -1232,7 +1232,7 @@
   function isMainPriority() {
     const v = ui?.config?.aiSlidePickPriority;
     const ret = !(v === "presentation");
-    L$1("isMainPriority?", {
+    L$2("isMainPriority?", {
       cfg: v,
       result: ret
     });
@@ -1244,14 +1244,14 @@
         const latest = repo.encounteredProblems.at(-1);
         const st = repo.problemStatus.get(latest.problemId);
         const sid = st?.slideId ? String(st.slideId) : null;
-        L$1("fallbackSlideIdFromRecent", {
+        L$2("fallbackSlideIdFromRecent", {
           latestProblemId: latest.problemId,
           sid: sid
         });
         return sid;
       }
     } catch (e) {
-      W$1("fallbackSlideIdFromRecent error:", e);
+      W$2("fallbackSlideIdFromRecent error:", e);
     }
     return null;
   }
@@ -1303,7 +1303,7 @@
     $$4("#ykt-ai-ask")?.addEventListener("click", askAIFusionMode);
     waitForVueReady().then(() => {
       watchMainPageChange((slideId, slideInfo) => {
-        L$1("主界面页面切换事件", {
+        L$2("主界面页面切换事件", {
           slideId: slideId,
           slideInfoType: slideInfo?.type,
           problemID: slideInfo?.problemID,
@@ -1313,10 +1313,10 @@
         renderQuestion();
       });
     }).catch(e => {
-      W$1("Vue 实例初始化失败，将使用备用方案:", e);
+      W$2("Vue 实例初始化失败，将使用备用方案:", e);
     });
     window.addEventListener("ykt:presentation:slide-selected", ev => {
-      L$1("收到小窗选页事件", ev?.detail);
+      L$2("收到小窗选页事件", ev?.detail);
       const sid = asIdStr(ev?.detail?.slideId);
       const imageUrl = ev?.detail?.imageUrl || null;
       if (sid) preferredSlideFromPresentation = {
@@ -1326,14 +1326,14 @@
       renderQuestion();
     });
     window.addEventListener("ykt:open-ai", () => {
-      L$1("收到打开 AI 面板事件");
+      L$2("收到打开 AI 面板事件");
       showAIPanel(true);
     });
     window.addEventListener("ykt:ask-ai-for-slide", ev => {
       const detail = ev?.detail || {};
       const slideId = asIdStr(detail.slideId);
       const imageUrl = detail.imageUrl || "";
-      L$1("收到“提问当前PPT”事件", {
+      L$2("收到“提问当前PPT”事件", {
         slideId: slideId,
         imageLen: imageUrl?.length || 0
       });
@@ -1344,7 +1344,7 @@
         };
         const look = getSlideByAny$1(slideId);
         if (look.slide && imageUrl) look.slide.image = imageUrl;
-        L$1("提问当前PPT: lookupHit=", look.hit, "hasSlide=", !!look.slide);
+        L$2("提问当前PPT: lookupHit=", look.hit, "hasSlide=", !!look.slide);
       }
       showAIPanel(true);
       renderQuestion();
@@ -1356,7 +1356,7 @@
       }
     });
     mounted$4 = true;
-    L$1("mountAIPanel 完成, cfg.aiSlidePickPriority=", ui?.config?.aiSlidePickPriority);
+    L$2("mountAIPanel 完成, cfg.aiSlidePickPriority=", ui?.config?.aiSlidePickPriority);
     return root$3;
   }
   function showAIPanel(v = true) {
@@ -1370,7 +1370,7 @@
     }
     const aiBtn = document.getElementById("ykt-btn-ai");
     if (aiBtn) aiBtn.classList.toggle("active", !!v);
-    L$1("showAIPanel", {
+    L$2("showAIPanel", {
       visible: v
     });
   }
@@ -1403,7 +1403,7 @@
         return [];
       }
     })();
-    L$1(`${where} -> lookup`, {
+    L$2(`${where} -> lookup`, {
       id: sid,
       hasString: hasS,
       hasNumber: hasN,
@@ -1443,7 +1443,7 @@
         const presentationPanel = document.getElementById("ykt-presentation-panel");
         const isOpen = presentationPanel && presentationPanel.classList.contains("visible");
         const curSid = asIdStr(repo.currentSlideId);
-        L$1("renderQuestion(presentation priority)", {
+        L$2("renderQuestion(presentation priority)", {
           isOpen: isOpen,
           curSid: curSid
         });
@@ -1518,7 +1518,7 @@
         slide = look.slide;
         forcedImageUrl = preferredSlideFromPresentation.imageUrl || null;
         selectionSource = `课件浏览（传入/${look.hit}键命中）`;
-        L$1("[ask] 使用presentation传入的页面:", {
+        L$2("[ask] 使用presentation传入的页面:", {
           currentSlideId: currentSlideId,
           lookupHit: look.hit,
           hasSlide: !!slide
@@ -1533,7 +1533,7 @@
             const look = getSlideByAny$1(currentSlideId);
             slide = look.slide;
             selectionSource = `主界面当前页面（${look.hit}键命中）`;
-            L$1("[ask] 使用主界面当前页面:", {
+            L$2("[ask] 使用主界面当前页面:", {
               currentSlideId: currentSlideId,
               lookupHit: look.hit,
               hasSlide: !!slide
@@ -1547,7 +1547,7 @@
             const look = getSlideByAny$1(currentSlideId);
             slide = look.slide;
             selectionSource = `课件浏览面板（${look.hit}键命中）`;
-            L$1("[ask] 使用课件面板选中的页面:", {
+            L$2("[ask] 使用课件面板选中的页面:", {
               currentSlideId: currentSlideId,
               lookupHit: look.hit,
               hasSlide: !!slide
@@ -1560,7 +1560,7 @@
         const look = getSlideByAny$1(currentSlideId);
         slide = look.slide;
         selectionSource = selectionSource || `课件浏览（兜底/${look.hit}键命中）`;
-        L$1("[ask] Fallback 使用 repo.currentSlideId:", {
+        L$2("[ask] Fallback 使用 repo.currentSlideId:", {
           currentSlideId: currentSlideId,
           lookupHit: look.hit,
           hasSlide: !!slide
@@ -1573,7 +1573,7 @@
           const look = getSlideByAny$1(currentSlideId);
           slide = look.slide;
           selectionSource = selectionSource || `最近题目（兜底/${look.hit}键命中）`;
-          L$1("[ask] Fallback 使用 最近题目 slideId:", {
+          L$2("[ask] Fallback 使用 最近题目 slideId:", {
             currentSlideId: currentSlideId,
             lookupHit: look.hit,
             hasSlide: !!slide
@@ -1581,34 +1581,34 @@
         }
       }
       if (!currentSlideId || !slide) throw new Error("无法确定要分析的页面。请在主界面打开一个页面，或在课件浏览中选择页面。");
-      L$1("[ask] 页面选择来源:", selectionSource, "页面ID:", currentSlideId, "页面信息:", slide);
+      L$2("[ask] 页面选择来源:", selectionSource, "页面ID:", currentSlideId, "页面信息:", slide);
       if (forcedImageUrl) {
         slide.image = forcedImageUrl;
  // 强制指定
-                L$1("[ask] 使用传入 imageUrl");
+                L$2("[ask] 使用传入 imageUrl");
       }
-      L$1("[ask] 获取页面图片...");
+      L$2("[ask] 获取页面图片...");
       ui.toast(`正在获取${selectionSource}图片...`, 2e3);
       const imageBase64 = await captureSlideImage(currentSlideId);
       if (!imageBase64) throw new Error("无法获取页面图片，请确保页面已加载完成");
-      L$1("[ask] ✅ 页面图片获取成功，大小(KB)=", Math.round(imageBase64.length / 1024));
+      L$2("[ask] ✅ 页面图片获取成功，大小(KB)=", Math.round(imageBase64.length / 1024));
       let textPrompt = `【页面说明】当前页面可能不是题目页；请结合用户提示作答。`;
       const customPrompt = getCustomPrompt();
       if (customPrompt) {
         textPrompt += `\n\n【用户自定义要求】\n${customPrompt}`;
-        L$1("[ask] 用户自定义prompt:", customPrompt);
+        L$2("[ask] 用户自定义prompt:", customPrompt);
       }
       ui.toast(`正在分析${selectionSource}内容...`, 3e3);
-      L$1("[ask] 调用 Vision API...");
+      L$2("[ask] 调用 Vision API...");
       const aiContent = await queryKimiVision(imageBase64, textPrompt, ui.config.ai);
       setAILoading(false);
-      L$1("[ask] Vision API调用成功, 内容长度=", aiContent?.length);
+      L$2("[ask] Vision API调用成功, 内容长度=", aiContent?.length);
       // 若当前页有题目，尝试解析
             let parsed = null;
       const problem = slide?.problem;
       if (problem) {
         parsed = parseAIAnswer(problem, aiContent);
-        L$1("[ask] 解析结果:", parsed);
+        L$2("[ask] 解析结果:", parsed);
       }
       let displayContent = `${selectionSource}图像分析结果：\n${aiContent}`;
       if (customPrompt) displayContent = `${selectionSource}图像分析结果（包含自定义要求）：\n${aiContent}`;
@@ -1620,7 +1620,7 @@
       }
     } catch (e) {
       setAILoading(false);
-      W$1("[ask] 页面分析失败:", e);
+      W$2("[ask] 页面分析失败:", e);
       setAIError(`页面分析失败: ${e.message}`);
     }
   }
@@ -1639,15 +1639,15 @@
     }
     return null;
   }
-  const L = (...a) => console.log("[YKT][DBG][presentation]", ...a);
-  const W = (...a) => console.warn("[YKT][WARN][presentation]", ...a);
+  const L$1 = (...a) => console.log("[YKT][DBG][presentation]", ...a);
+  const W$1 = (...a) => console.warn("[YKT][WARN][presentation]", ...a);
   function $$3(sel) {
     return document.querySelector(sel);
   }
   /** —— 运行时自愈：把 repo.slides 的数字键迁移为字符串键 —— */  function normalizeRepoSlidesKeys(tag = "presentation.mount") {
     try {
       if (!repo || !repo.slides || !(repo.slides instanceof Map)) {
-        W("normalizeRepoSlidesKeys: repo.slides 不是 Map");
+        W$1("normalizeRepoSlidesKeys: repo.slides 不是 Map");
         return;
       }
       const beforeKeys = Array.from(repo.slides.keys());
@@ -1663,9 +1663,9 @@
         // 保留旧键以防其他模块还在用数字键；仅打印提示
             }
       const afterSample = Array.from(repo.slides.keys()).slice(0, 8);
-      L(`[normalizeRepoSlidesKeys@${tag}] 总键=${beforeKeys.length}，数字键=${nums.length}，迁移为字符串=${moved}，sample=`, afterSample);
+      L$1(`[normalizeRepoSlidesKeys@${tag}] 总键=${beforeKeys.length}，数字键=${nums.length}，迁移为字符串=${moved}，sample=`, afterSample);
     } catch (e) {
-      W("normalizeRepoSlidesKeys error:", e);
+      W$1("normalizeRepoSlidesKeys error:", e);
     }
   }
   // Map 查找（string 优先），miss 时跨 presentations 查找并写回 repo.slides
@@ -1707,7 +1707,7 @@
     $$3("#ykt-ask-current")?.addEventListener("click", () => {
       const sid = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
       const lookup = getSlideByAny(sid);
-      L("点击“提问当前PPT”", {
+      L$1("点击“提问当前PPT”", {
         currentSlideId: sid,
         lookupHit: lookup.hit,
         hasSlide: !!lookup.slide
@@ -1729,11 +1729,11 @@
     cb.addEventListener("change", () => {
       ui.config.showAllSlides = !!cb.checked;
       ui.saveConfig();
-      L("切换 showAllSlides =", ui.config.showAllSlides);
+      L$1("切换 showAllSlides =", ui.config.showAllSlides);
       updatePresentationList();
     });
     mounted$3 = true;
-    L("mountPresentationPanel 完成");
+    L$1("mountPresentationPanel 完成");
     return host;
   }
   function showPresentationPanel(visible = true) {
@@ -1742,7 +1742,7 @@
     if (visible) updatePresentationList();
     const presBtn = document.getElementById("ykt-btn-pres");
     if (presBtn) presBtn.classList.toggle("active", !!visible);
-    L("showPresentationPanel", {
+    L$1("showPresentationPanel", {
       visible: visible
     });
   }
@@ -1750,26 +1750,26 @@
     mountPresentationPanel();
     const listEl = document.getElementById("ykt-presentation-list");
     if (!listEl) {
-      W("updatePresentationList: 缺少容器");
+      W$1("updatePresentationList: 缺少容器");
       return;
     }
     listEl.innerHTML = "";
     if (repo.presentations.size === 0) {
       listEl.innerHTML = '<p class="no-presentations">暂无课件记录</p>';
-      W("无 presentations");
+      W$1("无 presentations");
       return;
     }
     const currentPath = window.location.pathname;
     const m = currentPath.match(/\/lesson\/fullscreen\/v3\/([^/]+)/);
     const currentLessonFromURL = m ? m[1] : null;
-    L("过滤课件", {
+    L$1("过滤课件", {
       currentLessonFromURL: currentLessonFromURL,
       repoCurrentLessonId: repo.currentLessonId
     });
     const filtered = new Map;
     for (const [id, p] of repo.presentations) if (currentLessonFromURL && repo.currentLessonId && currentLessonFromURL === repo.currentLessonId) filtered.set(id, p); else if (!currentLessonFromURL) filtered.set(id, p); else if (currentLessonFromURL === repo.currentLessonId) filtered.set(id, p);
     const presentationsToShow = filtered.size > 0 ? filtered : repo.presentations;
-    L("展示课件数量=", presentationsToShow.size);
+    L$1("展示课件数量=", presentationsToShow.size);
     try {
       let filled = 0, total = 0;
       for (const [, pres] of presentationsToShow) {
@@ -1784,13 +1784,13 @@
         }
       }
       const sample = Array.from(repo.slides.keys()).slice(0, 8);
-      L("[hydrate slides → repo.slides]", {
+      L$1("[hydrate slides → repo.slides]", {
         filled: filled,
         totalVisibleSlides: total,
         sampleKeys: sample
       });
     } catch (e) {
-      W("hydrate repo.slides 失败：", e);
+      W$1("hydrate repo.slides 失败：", e);
     }
     for (const [id, presentation] of presentationsToShow) {
       const cont = document.createElement("div");
@@ -1801,7 +1801,7 @@
       cont.appendChild(titleEl);
       titleEl.querySelector(".download-btn")?.addEventListener("click", e => {
         e.stopPropagation();
-        L("点击下载课件", {
+        L$1("点击下载课件", {
           presId: String(presentation.id)
         });
         downloadPresentation(presentation);
@@ -1812,7 +1812,7 @@
       const slides = presentation.slides || [];
       const slidesToShow = showAll ? slides : slides.filter(s => s.problem);
       const currentIdStr = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
-      L("渲染课件缩略图", {
+      L$1("渲染课件缩略图", {
         presId: String(presentation.id),
         slidesTotal: slides.length,
         slidesShown: slidesToShow.length,
@@ -1832,7 +1832,7 @@
           if (s.problem.result) thumb.classList.add("answered");
         }
         thumb.addEventListener("click", () => {
-          L("缩略图点击", {
+          L$1("缩略图点击", {
             presIdStr: presIdStr,
             slideIdStr: slideIdStr,
             beforeRepo: {
@@ -1848,7 +1848,7 @@
           thumb.classList.add("active");
           const actives = slidesWrap.querySelectorAll(".slide-thumb.active");
           const allIds = Array.from(slidesWrap.querySelectorAll(".slide-thumb")).map(x => x.dataset.slideId);
-          L("高亮状态", {
+          L$1("高亮状态", {
             activeCount: actives.length,
             activeId: thumb.dataset.slideId,
             allIdsSample: allIds.slice(0, 10)
@@ -1859,7 +1859,7 @@
             const cross = findSlideAcrossPresentations(slideIdStr);
             if (cross) {
               repo.slides.set(slideIdStr, cross);
-              L("click-fill repo.slides <- cross", {
+              L$1("click-fill repo.slides <- cross", {
                 slideIdStr: slideIdStr
               });
             }
@@ -1869,17 +1869,17 @@
             const keysSample = Array.from(repo.slides.keys()).slice(0, 8);
             const typeDist = keysSample.reduce((m, k) => (m[typeof k] = (m[typeof k] || 0) + 1, 
             m), {});
-            L("repo.slides keys sample:", keysSample, "typeDist:", typeDist);
+            L$1("repo.slides keys sample:", keysSample, "typeDist:", typeDist);
           } catch {}
           const detail = {
             slideId: slideIdStr,
             presentationId: presIdStr
           };
-          L("派发事件 ykt:presentation:slide-selected", detail);
+          L$1("派发事件 ykt:presentation:slide-selected", detail);
           window.dispatchEvent(new CustomEvent("ykt:presentation:slide-selected", {
             detail: detail
           }));
-          L("调用 actions.navigateTo ->", {
+          L$1("调用 actions.navigateTo ->", {
             presIdStr: presIdStr,
             slideIdStr: slideIdStr
           });
@@ -1890,7 +1890,7 @@
         img.src = s.thumbnail || "";
         img.alt = s.title || `第 ${s.page ?? ""} 页`;
         img.onerror = function() {
-          W("缩略图加载失败，移除该项", {
+          W$1("缩略图加载失败，移除该项", {
             slideIdStr: slideIdStr,
             src: img.src
           });
@@ -1909,7 +1909,7 @@
   }
   function downloadPresentation(presentation) {
     repo.currentPresentationId = String(presentation.id);
-    L("downloadPresentation -> 设置 currentPresentationId", repo.currentPresentationId);
+    L$1("downloadPresentation -> 设置 currentPresentationId", repo.currentPresentationId);
     downloadPresentationPDF();
   }
   function updateSlideView() {
@@ -1920,7 +1920,7 @@
     problemView.innerHTML = "";
     const curId = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
     const lookup = getSlideByAny(curId);
-    L("updateSlideView", {
+    L$1("updateSlideView", {
       curId: curId,
       lookupHit: lookup.hit,
       hasInMap: !!lookup.slide
@@ -1931,7 +1931,7 @@
     }
     const slide = lookup.slide;
     if (!slide) {
-      W("updateSlideView: 根据 curId 未取到 slide", {
+      W$1("updateSlideView: 根据 curId 未取到 slide", {
         curId: curId
       });
       return;
@@ -1971,7 +1971,7 @@
   async function downloadCurrentSlide() {
     const sid = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
     const lookup = getSlideByAny(sid);
-    L("downloadCurrentSlide", {
+    L$1("downloadCurrentSlide", {
       sid: sid,
       lookupHit: lookup.hit,
       has: !!lookup.slide
@@ -1996,7 +1996,7 @@
   }
   async function downloadPresentationPDF() {
     const pid = repo.currentPresentationId != null ? String(repo.currentPresentationId) : null;
-    L("downloadPresentationPDF", {
+    L$1("downloadPresentationPDF", {
       pid: pid,
       hasPres: pid ? repo.presentations.has(pid) : false
     });
@@ -2051,13 +2051,25 @@
     }
   }
   var tpl$2 = '<div id="ykt-problem-list-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>课堂习题列表</h3>\r\n    <span class="close-btn" id="ykt-problem-list-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div id="ykt-problem-list" class="problem-list">\r\n      \x3c!-- 由 problem-list.js 动态填充：\r\n           .problem-row\r\n             .problem-title\r\n             .problem-meta\r\n             .problem-actions (查看 / AI解答 / 已作答) --\x3e\r\n    </div>\r\n  </div>\r\n</div>\r\n';
-  // ==== [ADD] 工具方法 & 取题接口（兼容旧版多端点） ====
-    function create(tag, cls) {
+  const L = (...a) => console.log("[YKT][DBG][problem-list]", ...a);
+  const W = (...a) => console.warn("[YKT][WARN][problem-list]", ...a);
+  function $$2(sel) {
+    return document.querySelector(sel);
+  }
+  function create(tag, cls) {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
     return n;
   }
-  const HEADERS = () => ({
+  function pretty(obj) {
+    try {
+      return JSON.stringify(obj, null, 2);
+    } catch {
+      return String(obj);
+    }
+  }
+  // ========== 兼容新老端点的题目详情拉取（用于“刷新题目”按钮） ==========
+    const HEADERS = () => ({
     "Content-Type": "application/json",
     xtbz: "ykt",
     "X-Client": "h5",
@@ -2084,7 +2096,7 @@
       }
     });
   }
-  // 兼容旧版：依次尝试多个端点，先成功先用
+  // 依次尝试多个端点，先成功先用
     async function fetchProblemDetail(problemId) {
     const candidates = [ `/api/v3/lesson/problem/detail?problemId=${problemId}`, `/api/v3/lesson/problem/get?problemId=${problemId}`, `/mooc-api/v1/lms/problem/detail?problem_id=${problemId}` ];
     for (const url of candidates) try {
@@ -2093,29 +2105,153 @@
     } catch (_) {/* try next */}
     throw new Error("无法获取题目信息");
   }
-  function pretty(obj) {
+  // ========== 关键修复：从 presentations/slides 懒加载灌入题目 ==========
+  /**
+   * 将所有可见课件中的题目页灌入 repo.problems / repo.encounteredProblems
+   * 目的：绕过 XHR/fetch 拦截失效，直接从现有内存结构构建题目列表
+   */  function hydrateProblemsFromPresentations() {
     try {
-      return JSON.stringify(obj, null, 2);
-    } catch {
-      return String(obj);
+      const beforeCnt = repo.problems?.size || 0;
+      const encBefore = (repo.encounteredProblems || []).length;
+      const seen = new Set((repo.encounteredProblems || []).map(e => e.problemId));
+      let foundSlides = 0, filledProblems = 0, addedEvents = 0;
+      for (const [, pres] of repo.presentations) {
+        const slides = pres?.slides || [];
+        if (!slides.length) continue;
+        for (const s of slides) {
+          if (!s || !s.problem) continue;
+          foundSlides++;
+          const pid = s.problem.problemId || s.problem.id;
+          if (!pid) continue;
+          const pidStr = String(pid);
+          // 填充 repo.problems
+                    if (!repo.problems.has(pidStr)) {
+            // 归一化一个最小 problem 对象
+            const normalized = {
+              problemId: pidStr,
+              problemType: s.problem.problemType || s.problem.type || s.problem.questionType || "unknown",
+              body: s.problem.body || s.problem.title || "",
+              options: s.problem.options || [],
+              result: s.problem.result || null,
+              status: s.problem.status || {},
+              startTime: s.problem.startTime,
+              endTime: s.problem.endTime,
+              slideId: String(s.id),
+              presentationId: String(pres.id)
+            };
+            repo.problems.set(pidStr, Object.assign({}, s.problem, normalized));
+            filledProblems++;
+          }
+          // 填充 repo.encounteredProblems（供 UI 构建列表）
+                    if (!seen.has(pidStr)) {
+            seen.add(pidStr);
+            (repo.encounteredProblems || (repo.encounteredProblems = [])).push({
+              problemId: pidStr,
+              problemType: s.problem.problemType || s.problem.type || s.problem.questionType || "unknown",
+              body: s.problem.body || s.problem.title || "",
+              presentationId: String(pres.id),
+              slideId: String(s.id),
+              slide: s,
+              endTime: s.problem.endTime,
+              startTime: s.problem.startTime
+            });
+            addedEvents++;
+          }
+        }
+      }
+      // 稍微稳定一下顺序：按 presentationId+slide.index 排序
+            if (repo.encounteredProblems && repo.encounteredProblems.length) repo.encounteredProblems.sort((a, b) => {
+        if (a.presentationId !== b.presentationId) return String(a.presentationId).localeCompare(String(b.presentationId));
+        const ax = a.slide?.index ?? 0, bx = b.slide?.index ?? 0;
+        return ax - bx;
+      });
+      const afterCnt = repo.problems?.size || 0;
+      const encAfter = (repo.encounteredProblems || []).length;
+      L("[hydrateProblemsFromPresentations]", {
+        foundSlides: foundSlides,
+        filledProblems: filledProblems,
+        addedEvents: addedEvents,
+        problemsBefore: beforeCnt,
+        problemsAfter: afterCnt,
+        encounteredBefore: encBefore,
+        encounteredAfter: encAfter,
+        sampleProblems: Array.from(repo.problems.keys()).slice(0, 8)
+      });
+    } catch (e) {
+      W("hydrateProblemsFromPresentations error:", e);
     }
   }
-  // ==== [ADD] 渲染行上的按钮（查看 / AI解答 / 刷新题目） ====
+  /**
+   * 在无法从 repo.problems 命中时，跨 presentations 查找并回写
+   */  function crossFindProblem(problemIdStr) {
+    for (const [, pres] of repo.presentations) {
+      const arr = pres?.slides || [];
+      for (const s of arr) {
+        const pid = s?.problem?.problemId || s?.problem?.id;
+        if (pid && String(pid) === problemIdStr) {
+          // 回写
+          const normalized = Object.assign({}, s.problem, {
+            problemId: problemIdStr,
+            problemType: s.problem.problemType || s.problem.type || s.problem.questionType || "unknown",
+            body: s.problem.body || s.problem.title || "",
+            options: s.problem.options || [],
+            result: s.problem.result || null,
+            status: s.problem.status || {},
+            startTime: s.problem.startTime,
+            endTime: s.problem.endTime,
+            slideId: String(s.id),
+            presentationId: String(pres.id)
+          });
+          repo.problems.set(problemIdStr, normalized);
+          return {
+            problem: normalized,
+            slide: s,
+            presentationId: String(pres.id)
+          };
+        }
+      }
+    }
+    return null;
+  }
+  // ========== 行渲染与交互 ==========
     function bindRowActions(row, e, prob) {
     const actionsBar = row.querySelector(".problem-actions");
-    const btnGo = create("button");
+    // 查看：跳到对应的课件页
+        const btnGo = create("button");
     btnGo.textContent = "查看";
-    btnGo.onclick = () => actions.navigateTo(e.presentationId, e.slide?.id || e.slideId);
+    btnGo.onclick = () => {
+      const presId = e.presentationId || prob?.presentationId;
+      const slideId = e.slide?.id || e.slideId || prob?.slideId;
+      L("查看题目 -> navigateTo", {
+        presId: presId,
+        slideId: slideId
+      });
+      if (presId && slideId) actions.navigateTo(String(presId), String(slideId)); else ui.toast("缺少跳转信息");
+    };
     actionsBar.appendChild(btnGo);
-    const btnAI = create("button");
+    // AI 解答：打开 AI 面板并优先使用该题所在页（若拿得到）
+        const btnAI = create("button");
     btnAI.textContent = "AI解答";
-    btnAI.onclick = () => window.dispatchEvent(new CustomEvent("ykt:open-ai", {
-      detail: {
-        problemId: e.problemId
-      }
-    }));
+    btnAI.onclick = () => {
+      e.presentationId || prob?.presentationId;
+      const slideId = e.slide?.id || e.slideId || prob?.slideId;
+      if (slideId) 
+      // 派发“提问当前PPT”以便 AI 面板优先识别该页
+      window.dispatchEvent(new CustomEvent("ykt:ask-ai-for-slide", {
+        detail: {
+          slideId: String(slideId),
+          imageUrl: repo.slides.get(String(slideId))?.image || repo.slides.get(String(slideId))?.thumbnail || ""
+        }
+      }));
+      window.dispatchEvent(new CustomEvent("ykt:open-ai", {
+        detail: {
+          problemId: e.problemId
+        }
+      }));
+    };
     actionsBar.appendChild(btnAI);
-    const btnRefresh = create("button");
+    // 刷新题目：从接口拉一次（用于补齐详情/答案状态）
+        const btnRefresh = create("button");
     btnRefresh.textContent = "刷新题目";
     btnRefresh.onclick = async () => {
       row.classList.add("loading");
@@ -2154,7 +2290,7 @@
       row.appendChild(detail);
     }
     detail.innerHTML = "";
-    // ===== 显示“已作答答案” =====
+    // 已作答答案
         const answeredBox = create("div", "answered-box");
     const ansLabel = create("div", "label");
     ansLabel.textContent = "已作答答案";
@@ -2163,7 +2299,7 @@
     answeredBox.appendChild(ansLabel);
     answeredBox.appendChild(ansPre);
     detail.appendChild(answeredBox);
-    // ===== 手动答题（含补交） =====
+    // 手动答题（含补交）
         const editorBox = create("div", "editor-box");
     const editLabel = create("div", "label");
     editLabel.textContent = "手动答题（JSON）";
@@ -2204,9 +2340,7 @@
           problemType: e.problemType
         }, result, {
           startTime: startTime,
-          endTime: endTime,
-          lessonId: repo.currentLessonId,
-          autoGate: false
+          endTime: endTime
         });
         ui.toast(route === "answer" ? "提交成功" : "补交成功");
         const merged = Object.assign({}, prob || {}, {
@@ -2231,9 +2365,7 @@
             }, result, {
               startTime: startTime,
               endTime: endTime,
-              forceRetry: true,
-              lessonId: repo.currentLessonId,
-              autoGate: false
+              forceRetry: true
             });
             ui.toast("补交成功");
             const merged = Object.assign({}, prob || {}, {
@@ -2270,9 +2402,7 @@
         }, result, {
           startTime: startTime,
           endTime: endTime,
-          forceRetry: true,
-          lessonId: repo.currentLessonId,
-          autoGate: false
+          forceRetry: true
         });
         ui.toast("补交成功");
         const merged = Object.assign({}, prob || {}, {
@@ -2295,11 +2425,9 @@
     editorBox.appendChild(submitBar);
     detail.appendChild(editorBox);
   }
-  let mounted$2 = false;
+  // ========== 面板生命周期 ==========
+    let mounted$2 = false;
   let root$2;
-  function $$2(sel) {
-    return document.querySelector(sel);
-  }
   function mountProblemListPanel() {
     if (mounted$2) return root$2;
     const wrap = document.createElement("div");
@@ -2309,24 +2437,58 @@
     $$2("#ykt-problem-list-close")?.addEventListener("click", () => showProblemListPanel(false));
     window.addEventListener("ykt:open-problem-list", () => showProblemListPanel(true));
     mounted$2 = true;
+    // ★ 关键：首次挂载时就做一次灌入
+        hydrateProblemsFromPresentations();
     updateProblemList();
     return root$2;
   }
   function showProblemListPanel(visible = true) {
     mountProblemListPanel();
     root$2.classList.toggle("visible", !!visible);
-    if (visible) updateProblemList();
+    if (visible) {
+      // 面板打开时再做一次灌入（确保课程切换后也能补齐）
+      hydrateProblemsFromPresentations();
+      updateProblemList();
+    }
   }
   function updateProblemList() {
     mountProblemListPanel();
     const container = $$2("#ykt-problem-list");
     container.innerHTML = "";
-    (repo.encounteredProblems || []).forEach(e => {
-      const prob = repo.problems.get(e.problemId) || {};
+    // 如果还是空，再兜一次（以防外层刚刚把 presentations 更新完）
+        if (!repo.encounteredProblems || repo.encounteredProblems.length === 0) hydrateProblemsFromPresentations();
+    const list = repo.encounteredProblems || [];
+    L("updateProblemList", {
+      count: list.length
+    });
+    if (list.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "problem-empty";
+      empty.textContent = "暂无题目（可尝试切换章节或刷新页面）";
+      container.appendChild(empty);
+      return;
+    }
+    list.forEach(e => {
+      // 若 repo.problems 没有，跨课件兜底找一次并回写
+      let prob = repo.problems.get(e.problemId) || null;
+      if (!prob) {
+        const cross = crossFindProblem(String(e.problemId));
+        if (cross) {
+          prob = cross.problem;
+          // 同步补全跳转信息
+                    e.presentationId = e.presentationId || cross.presentationId;
+          e.slide = e.slide || cross.slide;
+          e.slideId = e.slideId || cross.slide?.id;
+          L("cross-fill problem", {
+            pid: e.problemId,
+            pres: e.presentationId,
+            slideId: e.slideId
+          });
+        }
+      }
       const row = document.createElement("div");
       row.className = "problem-row";
-      // 标题和元信息容器，内容由 updateRow 填充
-            const title = document.createElement("div");
+      const title = document.createElement("div");
       title.className = "problem-title";
       row.appendChild(title);
       const meta = document.createElement("div");
@@ -2335,10 +2497,8 @@
       const actionsBar = document.createElement("div");
       actionsBar.className = "problem-actions";
       row.appendChild(actionsBar);
-      // 绑定按钮（查看 / AI解答 / 刷新题目）
-            bindRowActions(row, e, prob);
-      // 渲染题目信息 + 已作答答案 + 手动提交/补交 UI
-            updateRow(row, e, prob);
+      bindRowActions(row, e, prob || {});
+      updateRow(row, e, prob || {});
       container.appendChild(row);
     });
   }
@@ -2403,7 +2563,7 @@
     // ✅ 如果没有活跃题目，隐藏整个面板容器
         if (!hasActiveProblems) root$1.style.display = "none"; else root$1.style.display = "";
   }
-  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>雨课堂助手使用教程</h3>\r\n    <h5>1.19.0</h5>\r\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="tutorial-content">\r\n      <h4>功能介绍</h4>\r\n      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>\r\n      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">GitHub</a></p>\r\n      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B-%E6%A8%A1%E5%9D%97%E5%8C%96%E6%9E%84%E5%BB%BA%E7%89%88" target="_blank" rel="noopener">GreasyFork</a></p>\r\n\r\n      <h4>工具栏按钮说明</h4>\r\n      <ul>\r\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>\r\n        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面，提问可见内容。</li>\r\n        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>\r\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\r\n        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>\r\n        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>\r\n      </ul>\r\n\r\n      <h4>自动作答</h4>\r\n      <ul>\r\n        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>\r\n        <li>需要配置 <del>DeepSeek API</del> Kimi API 密钥。</li>\r\n        <li>答案来自 AI，结果仅供参考。</li>\r\n      </ul>\r\n\r\n      <h4>AI 解答</h4>\r\n      <ol>\r\n        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>\r\n        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>\r\n      </ol>\r\n\r\n      <h4>注意事项</h4>\r\n      <p>1) 仅供学习参考，请独立思考；</p>\r\n      <p>2) 合理使用 API 额度；</p>\r\n      <p>3) 答案不保证 100% 正确；</p>\r\n      <p>4) 自动作答有一定风险，谨慎开启。</p>\r\n\r\n      <h4>联系方式</h4>\r\n      <ul>\r\n        <li>请在Github issue提出问题</li>\r\n      </ul>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
+  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>雨课堂助手使用教程</h3>\r\n    <h5>1.19.1</h5>\r\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="tutorial-content">\r\n      <h4>功能介绍</h4>\r\n      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>\r\n      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">GitHub</a></p>\r\n      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B-%E6%A8%A1%E5%9D%97%E5%8C%96%E6%9E%84%E5%BB%BA%E7%89%88" target="_blank" rel="noopener">GreasyFork</a></p>\r\n\r\n      <h4>工具栏按钮说明</h4>\r\n      <ul>\r\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>\r\n        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面，提问可见内容。</li>\r\n        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>\r\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\r\n        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>\r\n        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>\r\n      </ul>\r\n\r\n      <h4>自动作答</h4>\r\n      <ul>\r\n        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>\r\n        <li>需要配置 <del>DeepSeek API</del> Kimi API 密钥。</li>\r\n        <li>答案来自 AI，结果仅供参考。</li>\r\n      </ul>\r\n\r\n      <h4>AI 解答</h4>\r\n      <ol>\r\n        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>\r\n        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>\r\n      </ol>\r\n\r\n      <h4>注意事项</h4>\r\n      <p>1) 仅供学习参考，请独立思考；</p>\r\n      <p>2) 合理使用 API 额度；</p>\r\n      <p>3) 答案不保证 100% 正确；</p>\r\n      <p>4) 自动作答有一定风险，谨慎开启。</p>\r\n\r\n      <h4>联系方式</h4>\r\n      <ul>\r\n        <li>请在Github issue提出问题</li>\r\n      </ul>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
   let mounted = false;
   let root;
   function $(sel) {
