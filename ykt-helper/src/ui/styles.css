@@ -351,3 +351,130 @@
   border-color: #63b3ed;
   box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.25);
 }
+
+/* ===== Markdown-like 样式（作用域限定在 AI 结果区）===== */
+.ai-answer {
+  /* 避免被全局 white-space 或 font 影响 */
+  white-space: normal;
+  line-height: 1.6;
+  font-size: 14px;
+  color: var(--ykt-fg, #222);
+}
+
+/* 段落和标题间距 */
+.ai-answer p { margin: 8px 0; }
+.ai-answer h1, .ai-answer h2, .ai-answer h3,
+.ai-answer h4, .ai-answer h5, .ai-answer h6 {
+  margin: 12px 0 6px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+.ai-answer h1 { font-size: 20px; }
+.ai-answer h2 { font-size: 18px; }
+.ai-answer h3 { font-size: 16px; }
+.ai-answer h4 { font-size: 15px; }
+.ai-answer h5, .ai-answer h6 { font-size: 14px; }
+
+/* 链接 */
+.ai-answer a {
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* 引用块 */
+.ai-answer blockquote {
+  margin: 8px 0;
+  padding: 6px 10px;
+  border-left: 3px solid rgba(0,0,0,0.2);
+  background: rgba(0,0,0,0.03);
+}
+
+/* 水平线 */
+.ai-answer hr {
+  border: 0;
+  border-top: 1px solid rgba(0,0,0,0.15);
+  margin: 10px 0;
+}
+
+/* 代码块与行内代码 */
+.ai-answer pre.ykt-md-code {
+  margin: 8px 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 6px;
+  background: #f7f8fa;
+}
+.ai-answer pre.ykt-md-code code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+.ai-answer code.ykt-md-inline {
+  padding: 1px 4px;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 4px;
+  background: #f7f8fa;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+
+/* 列表：优先启用浏览器原生圆点/数字 */
+.ai-answer ul, .ai-answer ol {
+  margin: 6px 0 6px 22px;   /* 左缩进 */
+}
+.ai-answer ul { list-style: disc; }
+.ai-answer ol { list-style: decimal; }
+
+/* 如果全局 CSS 把 list-style: none 重置掉导致圆点不显示，
+   可以使用下面“伪元素圆点”方案覆盖（按需开启，二选一即可） */
+
+/* --- 伪元素“●”方案（若上面的 disc/decimal 不生效就启用这段）---
+.ai-answer ul, .ai-answer ol { list-style: none; margin: 6px 0; padding: 0; }
+.ai-answer ul li, .ai-answer ol li { position: relative; padding-left: 1.2em; }
+.ai-answer ul li::before {
+  content: "•";
+  position: absolute; left: 0; top: 0;
+  width: 1.2em; display: inline-block; text-align: center;
+}
+.ai-answer ol { counter-reset: ykt-ol; }
+.ai-answer ol li { counter-increment: ykt-ol; }
+.ai-answer ol li::before {
+  content: counter(ykt-ol) ".";
+  position: absolute; left: 0; top: 0;
+  width: 1.2em; display: inline-block; text-align: right; margin-right: .2em;
+}
+------------------------------------------------------------------ */
+
+/* 表格（如果 LLM 生成了表格 Markdown） */
+.ai-answer table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+  max-width: 100%;
+}
+.ai-answer th, .ai-answer td {
+  border: 1px solid rgba(0,0,0,0.15);
+  padding: 6px 8px;
+  text-align: left;
+}
+.ai-answer thead th {
+  background: rgba(0,0,0,0.05);
+  font-weight: 600;
+}
+
+/* 适配深色（如面板有暗色主题） */
+@media (prefers-color-scheme: dark) {
+  .ai-answer { color: #e6e6e6; }
+  .ai-answer blockquote {
+    border-left-color: rgba(255,255,255,0.35);
+    background: rgba(255,255,255,0.06);
+  }
+  .ai-answer pre.ykt-md-code,
+  .ai-answer code.ykt-md-inline {
+    background: #111418;
+    border-color: rgba(255,255,255,0.2);
+  }
+  .ai-answer hr { border-top-color: rgba(255,255,255,0.2); }
+  .ai-answer th, .ai-answer td { border-color: rgba(255,255,255,0.2); }
+  .ai-answer thead th { background: rgba(255,255,255,0.08); }
+}

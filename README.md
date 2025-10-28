@@ -20,13 +20,15 @@
     </h3>
 </html>
 
-> 最后更新时间：2025.10.21
+> 最后更新时间：2025.10.28
 
 ## 项目说明
 
 - 项目灵感来自于：[雨课堂助手](https://github.com/hotwords123/yuketang-helper.git)，本项目已兼容ykt-helper v1.5.1。
 
 - 项目兼容：[清华大学荷塘雨课堂助手-AI版](https://github.com/DragonAura/THU-Yuketang-Helper-AI)，但是不建议同时使用2种AI答题。
+
+- 注意：本项目暂时不支持雨课堂最新版的**动态二维码**，如果你修读的课程使用动态二维码，我们无法提供摸鱼方面的帮助。
 
 
 ## 安装方法
@@ -35,11 +37,13 @@
 
 - 首先确保浏览器已安装[篡改猴(Tampermonkey)](https://www.tampermonkey.net/)插件；
 
+  - 如果你使用的浏览器是edge，你需要打开拓展-管理拓展-开发者模式
+
 - 在安装对应插件后，可以[一键安装](https://update.greasyfork.org/scripts/531469/AI%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B.user.js)本项目的**稳定版本**；(一般不是最新版)
 
 - 或手动创建新脚本，复制```yuketang-helper-ai-<版本号>.js```到篡改猴新建脚本中。
 
-- 目前支持141.0.7390.108-chrome及以下的版本；暂时不支持最新版edge
+- 目前支持141.0.7390.108-chrome及以下的chrome版本，你可以在141.0.3537.99-edge及以下的edge版本上进行测试。
 
 ## 源代码
 
@@ -152,6 +156,8 @@
 请在[更新记录](./changelog.md)中查看详细的更新记录。
 
 ---
+
+- 1.19.1: 增加了markdown渲染器
 
 - 1.19.0: 新增了自定义习题提醒，修复了若干bug
 
