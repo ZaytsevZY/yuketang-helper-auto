@@ -67,3 +67,9 @@
 - 重新更改了日志输出格式
 
 - 重构了部分代码
+
+1.19.1
+
+- 针对 [#9](https://github.com/ZaytsevZY/yuketang-helper-auto/issues/9)，增加了markdown渲染器
+
+- 维护了edge兼容性

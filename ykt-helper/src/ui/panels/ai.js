@@ -16,6 +16,116 @@ let root;
 // 来自 presentation 的一次性优先
 let preferredSlideFromPresentation = null;
 
+function escapeHtml(s = '') {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function safeLink(url = '') {
+  try {
+    const u = new URL(url, location.origin);
+    if (u.protocol === 'http:' || u.protocol === 'https:') return u.href;
+  } catch (_) {}
+  return null; // 非 http/https 直接丢弃，避免 javascript: 等协议
+}
+
+function mdToHtml(mdRaw = '') {
+  // 先整体转义，确保默认无 HTML 注入
+  let md = escapeHtml(mdRaw).replace(/\r\n?/g, '\n');
+
+  // 代码块（fenced）
+  // ```lang\ncode\n```
+  md = md.replace(/```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g, (_, lang, code) => {
+    const l = lang ? ` data-lang="${lang}"` : '';
+    return `<pre class="ykt-md-code"><code${l}>${code}</code></pre>`;
+  });
+
+  // 行内代码 `
+  md = md.replace(/`([^`]+?)`/g, (_, code) => `<code class="ykt-md-inline">${code}</code>`);
+
+  // 标题 #, ##, ###, ####, #####, ######
+  md = md
+    .replace(/^######\s+(.*)$/gm, '<h6>$1</h6>')
+    .replace(/^#####\s+(.*)$/gm, '<h5>$1</h5>')
+    .replace(/^####\s+(.*)$/gm, '<h4>$1</h4>')
+    .replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
+    .replace(/^##\s+(.*)$/gm, '<h2>$1</h2>')
+    .replace(/^#\s+(.*)$/gm, '<h1>$1</h1>');
+
+  // 引用块 >
+  md = md.replace(/^(?:&gt;\s?.+(\n(?!\n).+)*)/gm, (block) => {
+    const inner = block.replace(/^&gt;\s?/gm, '');
+    return `<blockquote>${inner}</blockquote>`;
+  });
+
+  // 无序列表 -/*/+
+  // 先把连续的列表块整体替换
+  md = md.replace(
+    /(^(-|\*|\+)\s+.+(\n(?!\n).+)*)/gm,
+    (block) => {
+      const items = block
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => /^(-|\*|\+)\s+/.test(l))
+        .map((l) => `<li>${l.replace(/^(-|\*|\+)\s+/, '')}</li>`)
+        .join('');
+      return `<ul>${items}</ul>`;
+    }
+  );
+
+  // 有序列表 1. 2. ...
+  md = md.replace(
+    /(^\d+\.\s+.+(\n(?!\n).+)*)/gm,
+    (block) => {
+      const items = block
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => /^\d+\.\s+/.test(l))
+        .map((l) => `<li>${l.replace(/^\d+\.\s+/, '')}</li>`)
+        .join('');
+      return `<ol>${items}</ol>`;
+    }
+  );
+
+  // 粗体/斜体（注意顺序）
+  md = md.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+  md = md.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
+  md = md.replace(/__([^_]+?)__/g, '<strong>$1</strong>');
+  md = md.replace(/_([^_]+?)_/g, '<em>$1</em>');
+
+  // 水平线
+  md = md.replace(/^\s*([-*_]){3,}\s*$/gm, '<hr/>');
+
+  // 链接 [text](url)
+  md = md.replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, (_, text, url) => {
+    const safe = safeLink(url);
+    if (!safe) return text; // 不安全则降级为纯文本
+    return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+  });
+
+  // 段落：把非块级标签之外的连续文字块包成 <p>
+  const lines = md.split('\n');
+  const out = [];
+  let buf = [];
+  const flush = () => {
+    if (!buf.length) return;
+    out.push(`<p>${buf.join('<br/>')}</p>`);
+    buf = [];
+  };
+  const isBlock = (s) => /^(<h[1-6]|<ul>|<ol>|<pre |<blockquote>|<hr\/>|<p>|<table|<div)/.test(s);
+  for (const ln of lines) {
+    if (!ln.trim()) { flush(); continue; }
+    if (isBlock(ln)) { flush(); out.push(ln); }
+    else { buf.push(ln); }
+  }
+  flush();
+  return out.join('\n');
+}
+
 function findSlideAcrossPresentations(idStr) {
   for (const [, pres] of repo.presentations) { const arr = pres?.slides || []; const hit = arr.find(s => String(s.id) === idStr); if (hit) return hit; }
   return null;
@@ -161,7 +271,11 @@ export function setAILoading(v) { $('#ykt-ai-loading').style.display = v ? '' : 
 export function setAIError(msg = '') {
   const el = $('#ykt-ai-error'); el.style.display = msg ? '' : 'none'; el.textContent = msg || '';
 }
-export function setAIAnswer(content = '') { $('#ykt-ai-answer').textContent = content || ''; }
+export function setAIAnswer(content = '') {
+  const el = $('#ykt-ai-answer');
+  if (!el) return;
+  el.innerHTML = content ? mdToHtml(content) : '';
+}
 
 function getCustomPrompt() {
   const el = $('#ykt-ai-custom-prompt'); return el ? (el.value.trim() || '') : '';
