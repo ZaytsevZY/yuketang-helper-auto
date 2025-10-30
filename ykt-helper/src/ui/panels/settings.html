@@ -8,12 +8,22 @@
     <div class="settings-content">
       <div class="setting-group">
         <h4>AI配置</h4>
-          <!-- 将DeepSeek相关配置替换为Kimi -->
           <div class="setting-item">
               <label for="kimi-api-key">Kimi API Key:</label>
               <input type="password" id="kimi-api-key" placeholder="输入您的 Kimi API Key">
               <small>从 <a href="https://platform.moonshot.cn/" target="_blank">Kimi开放平台</a> 获取</small>
           </div>
+      </div>
+
+      <div class="setting-group">
+        <h4>UI设置</h4>
+          <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-ui-tex">
+            <span class="checkmark"></span>
+            渲染LaTeX格式的公式
+          </label>
+        </div>
       </div>
 
       <div class="setting-group">

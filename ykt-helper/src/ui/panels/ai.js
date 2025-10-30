@@ -16,6 +16,50 @@ let root;
 // 来自 presentation 的一次性优先
 let preferredSlideFromPresentation = null;
 
+let __texLoading = false;
+let __texReady = false;
+function ensureMathJax() {
+  return new Promise((resolve) => {
+    if (__texReady && window.MathJax && typeof window.MathJax.typesetPromise === 'function') {
+      resolve(true); return;
+    }
+    if (__texLoading) {
+      // 等待已在途的加载
+      const t = setInterval(() => {
+        if (__texReady && window.MathJax && typeof window.MathJax.typesetPromise === 'function') {
+          clearInterval(t); resolve(true);
+        }
+      }, 50);
+      return;
+    }
+    __texLoading = true;
+    // 先放置全局配置，再加载脚本
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true
+      },
+      options: {
+        skipHtmlTags: ['script','noscript','style','textarea','pre','code'],
+        ignoreHtmlClass: 'tex-ignore'
+      },
+      svg: { fontCache: 'global' }
+    };
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.min.js';
+    s.async = true;
+    s.onload = () => { __texReady = true; resolve(true); };
+    s.onerror = () => { console.warn('[YKT][WARN][ai] MathJax 加载失败，降级为纯文本公式'); resolve(false); };
+    document.head.appendChild(s);
+  });
+}
+
+function typesetTexIn(el) {
+  if (!el || !window.MathJax || typeof window.MathJax.typesetPromise !== 'function') return Promise.resolve();
+  return window.MathJax.typesetPromise([el]).catch(()=>{});
+}
+
 function escapeHtml(s = '') {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -275,6 +319,17 @@ export function setAIAnswer(content = '') {
   const el = $('#ykt-ai-answer');
   if (!el) return;
   el.innerHTML = content ? mdToHtml(content) : '';
+  try {
+    if (ui?.config?.iftex) {
+      ensureMathJax().then((ok) => {
+        if (!ok) return; 
+        el.classList.add('tex-enabled');
+        typesetTexIn(el);
+      });
+    } else {
+      el.classList.remove('tex-enabled');
+    }
+  } catch (e) { /* 静默降级 */ }
 }
 
 function getCustomPrompt() {

@@ -354,11 +354,10 @@
 
 /* ===== Markdown-like 样式（作用域限定在 AI 结果区）===== */
 .ai-answer {
-  /* 避免被全局 white-space 或 font 影响 */
   white-space: normal;
   line-height: 1.6;
   font-size: 14px;
-  color: var(--ykt-fg, #222);
+  color: inherit;
 }
 
 /* 段落和标题间距 */
@@ -425,26 +424,6 @@
 .ai-answer ul { list-style: disc; }
 .ai-answer ol { list-style: decimal; }
 
-/* 如果全局 CSS 把 list-style: none 重置掉导致圆点不显示，
-   可以使用下面“伪元素圆点”方案覆盖（按需开启，二选一即可） */
-
-/* --- 伪元素“●”方案（若上面的 disc/decimal 不生效就启用这段）---
-.ai-answer ul, .ai-answer ol { list-style: none; margin: 6px 0; padding: 0; }
-.ai-answer ul li, .ai-answer ol li { position: relative; padding-left: 1.2em; }
-.ai-answer ul li::before {
-  content: "•";
-  position: absolute; left: 0; top: 0;
-  width: 1.2em; display: inline-block; text-align: center;
-}
-.ai-answer ol { counter-reset: ykt-ol; }
-.ai-answer ol li { counter-increment: ykt-ol; }
-.ai-answer ol li::before {
-  content: counter(ykt-ol) ".";
-  position: absolute; left: 0; top: 0;
-  width: 1.2em; display: inline-block; text-align: right; margin-right: .2em;
-}
------------------------------------------------------------------- */
-
 /* 表格（如果 LLM 生成了表格 Markdown） */
 .ai-answer table {
   border-collapse: collapse;
@@ -464,7 +443,6 @@
 
 /* 适配深色（如面板有暗色主题） */
 @media (prefers-color-scheme: dark) {
-  .ai-answer { color: #e6e6e6; }
   .ai-answer blockquote {
     border-left-color: rgba(255,255,255,0.35);
     background: rgba(255,255,255,0.06);
@@ -478,3 +456,7 @@
   .ai-answer th, .ai-answer td { border-color: rgba(255,255,255,0.2); }
   .ai-answer thead th { background: rgba(255,255,255,0.08); }
 }
+
+#ykt-ai-answer.tex-enabled svg { vertical-align: middle; }
+#ykt-ai-answer.tex-enabled .MathJax { line-height: 1; }
+#ykt-ai-answer .mjx-svg { color: currentColor; }
