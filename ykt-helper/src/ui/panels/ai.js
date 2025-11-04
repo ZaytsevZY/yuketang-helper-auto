@@ -16,6 +16,21 @@ let root;
 // 来自 presentation 的一次性优先
 let preferredSlideFromPresentation = null;
 
+function ensureMathJax() {
+  const mj = window.MathJax;
+  const ok = !!(mj && mj.typesetPromise);
+  if (!ok) console.warn('[YKT][WARN][ai] MathJax 未就绪（未通过 @require 预置？）');
+  return Promise.resolve(ok);
+}
+
+function typesetTexIn(el) {
+  const mj = window.MathJax;
+  if (!el || !mj || typeof mj.typesetPromise !== 'function') return Promise.resolve(false);
+  // 等待 MathJax 自己的启动就绪
+  const ready = mj.startup && mj.startup.promise ? mj.startup.promise : Promise.resolve();
+  return ready.then(() => mj.typesetPromise([el]).then(() => true).catch(() => false));
+}
+
 function escapeHtml(s = '') {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -184,7 +199,7 @@ function getSlideByAny(id) {
   // 141 下 repo.slides 可能未灌入，跨 presentations 搜索并写回
   const cross = findSlideAcrossPresentations(sid);
   if (cross) { repo.slides.set(sid, cross); return { slide: cross, hit: 'cross-fill' }; }
-  // 早期版本兼容（很少见）：如果有人把键存成 number，再试一次
+  // 早期版本兼容（很少见）
   const asNum = Number.isNaN(Number(sid)) ? null : Number(sid);
   if (asNum != null && repo.slides.has(asNum)) {
     const v = repo.slides.get(asNum); repo.slides.set(sid, v);
@@ -274,7 +289,22 @@ export function setAIError(msg = '') {
 export function setAIAnswer(content = '') {
   const el = $('#ykt-ai-answer');
   if (!el) return;
+  if (window.MathJax && window.MathJax.config == null) window.MathJax.config = {};
+  window.MathJax = Object.assign(window.MathJax || {}, {
+    tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }
+  });
   el.innerHTML = content ? mdToHtml(content) : '';
+  try {
+    if (ui?.config?.iftex) {
+      ensureMathJax().then((ok) => {
+        if (!ok) { console.warn('[YKT][WARN][ai] MathJax 未就绪，跳过 typeset'); return; } 
+        el.classList.add('tex-enabled');
+        typesetTexIn(el).then(() => console.log('[YKT][DBG][ai] MathJax typeset 完成'));
+      });
+    } else {
+      el.classList.remove('tex-enabled');
+    }
+  } catch (e) { /* 静默降级 */ }
 }
 
 function getCustomPrompt() {

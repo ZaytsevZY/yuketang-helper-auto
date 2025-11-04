@@ -12,6 +12,7 @@ export const DEFAULT_CONFIG = {
   autoAnswer: false,
   autoAnswerDelay: 3000,
   autoAnswerRandomDelay: 2000,
+  iftex: true,
   ai: {
     provider: 'kimi', // ✅ 改为 kimi
     kimiApiKey: '', // ✅ 添加 kimi 专用字段

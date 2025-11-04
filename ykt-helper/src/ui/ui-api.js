@@ -17,6 +17,7 @@ _config.ai.kimiApiKey = storage.get('kimiApiKey', _config.ai.kimiApiKey);
 _config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
 if (typeof _config.autoJoinEnabled === 'undefined') _config.autoJoinEnabled = false;
 if (typeof _config.autoAnswerOnAutoJoin === 'undefined') _config.autoAnswerOnAutoJoin = true;
+if (typeof _config.iftex === 'undefined') _config.iftex = true;
 if (typeof _config.notifyProblems === 'undefined') _config.notifyProblems = true;           // 是否开启提醒
 if (typeof _config.notifyPopupDuration === 'undefined') _config.notifyPopupDuration = 5000; // 弹窗时长(ms)
 if (typeof _config.notifyVolume === 'undefined') _config.notifyVolume = 0.6;                // 提示音量(0~1)

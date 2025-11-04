@@ -30,6 +30,7 @@ export function mountSettingsPanel() {
   const $preview   = root.querySelector('#ykt-btn-preview-audio');
   const $clear     = root.querySelector('#ykt-btn-clear-audio');
   const $audioName = root.querySelector('#ykt-tip-audio-name');
+  const $iftex = root.querySelector('#ykt-ui-tex');
 
   $api.value = ui.config.ai.kimiApiKey || '';
   if (typeof ui.config.autoJoinEnabled === 'undefined') ui.config.autoJoinEnabled = false;
@@ -38,6 +39,7 @@ export function mountSettingsPanel() {
   $autoJoinAutoAnswer.checked = !!ui.config.autoAnswerOnAutoJoin;
   $auto.checked = !!ui.config.autoAnswer;
   $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
+  $iftex.checked = !!ui.config.iftex;
   $delay.value = Math.floor(ui.config.autoAnswerDelay / 1000);
   $rand.value = Math.floor(ui.config.autoAnswerRandomDelay / 1000);
   const curPriority = ui.config.aiSlidePickPriority || 'main';
@@ -60,6 +62,7 @@ export function mountSettingsPanel() {
     ui.config.aiAutoAnalyze = !!$autoAnalyze.checked;
     ui.config.autoAnswerDelay = Math.max(1000, (+$delay.value || 0) * 1000);
     ui.config.autoAnswerRandomDelay = Math.max(0, (+$rand.value || 0) * 1000);
+    ui.config.iftex = !!$iftex.checked;
     ui.config.aiSlidePickPriority = !!$priorityRadios.checked;
     ui.config.notifyPopupDuration = Math.max(2000, (+$notifyDur.value || 0) * 1000);
     ui.config.notifyVolume = Math.max(0, Math.min(1, (+$notifyVol.value || 0) / 100));
@@ -71,7 +74,7 @@ export function mountSettingsPanel() {
 
     if (!before && ui.config.autoJoinEnabled) {
       try {
-        const { actions } = require('../../state/actions.js'); // 按你们构建链路适配
+        const { actions } = require('../../state/actions.js'); 
         actions.maybeStartAutoJoin?.();
       } catch {}
     }
@@ -87,6 +90,7 @@ export function mountSettingsPanel() {
     ui.config.aiSlidePickPriority = (DEFAULT_CONFIG.aiSlidePickPriority ?? true);
     ui.config.notifyPopupDuration = 5000;
     ui.config.notifyVolume = 0.6;
+    ui.config.iftex = true;
     ui.setCustomNotifyAudio({ src: '', name: '' });
     storage.set('kimiApiKey', '');
     ui.saveConfig();
@@ -96,6 +100,7 @@ export function mountSettingsPanel() {
     $autoJoin.checked = true;
     $autoJoinAutoAnswer.checked = true;
     $auto.checked = DEFAULT_CONFIG.autoAnswer;
+    $iftex.checked = !!ui.config.iftex;
     $delay.value = Math.floor(DEFAULT_CONFIG.autoAnswerDelay / 1000);
     $rand.value = Math.floor(DEFAULT_CONFIG.autoAnswerRandomDelay / 1000);
     $autoAnalyze.checked = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
