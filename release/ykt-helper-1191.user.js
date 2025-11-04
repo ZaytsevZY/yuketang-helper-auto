@@ -23,6 +23,7 @@
 // @grant        unsafeWindow
 // @run-at       document-start
 // @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
+// @require      https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.min.js
 // ==/UserScript==
 (function() {
   "use strict";
@@ -85,6 +86,7 @@
     autoAnswer: false,
     autoAnswerDelay: 3e3,
     autoAnswerRandomDelay: 2e3,
+    iftex: true,
     ai: {
       provider: "kimi",
       // ✅ 改为 kimi
@@ -309,6 +311,7 @@
       ui.config.aiSlidePickPriority = DEFAULT_CONFIG.aiSlidePickPriority ?? true;
       ui.config.notifyPopupDuration = 5e3;
       ui.config.notifyVolume = .6;
+      ui.config.iftex = true;
       ui.setCustomNotifyAudio({
         src: "",
         name: ""
@@ -320,7 +323,7 @@
       $autoJoin.checked = true;
       $autoJoinAutoAnswer.checked = true;
       $auto.checked = DEFAULT_CONFIG.autoAnswer;
-      $iftex.checked = true;
+      $iftex.checked = !!ui.config.iftex;
       $delay.value = Math.floor(DEFAULT_CONFIG.autoAnswerDelay / 1e3);
       $rand.value = Math.floor(DEFAULT_CONFIG.autoAnswerRandomDelay / 1e3);
       $autoAnalyze.checked = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
@@ -1121,57 +1124,18 @@
   let root$3;
   // 来自 presentation 的一次性优先
     let preferredSlideFromPresentation = null;
-  let __texLoading = false;
-  let __texReady = false;
   function ensureMathJax() {
-    return new Promise(resolve => {
-      if (__texReady && window.MathJax && typeof window.MathJax.typesetPromise === "function") {
-        resolve(true);
-        return;
-      }
-      if (__texLoading) {
-        // 等待已在途的加载
-        const t = setInterval(() => {
-          if (__texReady && window.MathJax && typeof window.MathJax.typesetPromise === "function") {
-            clearInterval(t);
-            resolve(true);
-          }
-        }, 50);
-        return;
-      }
-      __texLoading = true;
-      // 先放置全局配置，再加载脚本
-            window.MathJax = {
-        tex: {
-          inlineMath: [ [ "$", "$" ], [ "\\(", "\\)" ] ],
-          displayMath: [ [ "$$", "$$" ], [ "\\[", "\\]" ] ],
-          processEscapes: true
-        },
-        options: {
-          skipHtmlTags: [ "script", "noscript", "style", "textarea", "pre", "code" ],
-          ignoreHtmlClass: "tex-ignore"
-        },
-        svg: {
-          fontCache: "global"
-        }
-      };
-      const s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.min.js";
-      s.async = true;
-      s.onload = () => {
-        __texReady = true;
-        resolve(true);
-      };
-      s.onerror = () => {
-        console.warn("[YKT][WARN][ai] MathJax 加载失败，降级为纯文本公式");
-        resolve(false);
-      };
-      document.head.appendChild(s);
-    });
+    const mj = window.MathJax;
+    const ok = !!(mj && mj.typesetPromise);
+    if (!ok) console.warn("[YKT][WARN][ai] MathJax 未就绪（未通过 @require 预置？）");
+    return Promise.resolve(ok);
   }
   function typesetTexIn(el) {
-    if (!el || !window.MathJax || typeof window.MathJax.typesetPromise !== "function") return Promise.resolve();
-    return window.MathJax.typesetPromise([ el ]).catch(() => {});
+    const mj = window.MathJax;
+    if (!el || !mj || typeof mj.typesetPromise !== "function") return Promise.resolve(false);
+    // 等待 MathJax 自己的启动就绪
+        const ready = mj.startup && mj.startup.promise ? mj.startup.promise : Promise.resolve();
+    return ready.then(() => mj.typesetPromise([ el ]).then(() => true).catch(() => false));
   }
   function escapeHtml(s = "") {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -1440,12 +1404,21 @@
   function setAIAnswer(content = "") {
     const el = $$4("#ykt-ai-answer");
     if (!el) return;
+    if (window.MathJax && window.MathJax.config == null) window.MathJax.config = {};
+    window.MathJax = Object.assign(window.MathJax || {}, {
+      tex: {
+        inlineMath: [ [ "$", "$" ], [ "\\(", "\\)" ] ]
+      }
+    });
     el.innerHTML = content ? mdToHtml(content) : "";
     try {
       if (ui?.config?.iftex) ensureMathJax().then(ok => {
-        if (!ok) return;
+        if (!ok) {
+          console.warn("[YKT][WARN][ai] MathJax 未就绪，跳过 typeset");
+          return;
+        }
         el.classList.add("tex-enabled");
-        typesetTexIn(el);
+        typesetTexIn(el).then(() => console.log("[YKT][DBG][ai] MathJax typeset 完成"));
       }); else el.classList.remove("tex-enabled");
     } catch (e) {/* 静默降级 */}
   }

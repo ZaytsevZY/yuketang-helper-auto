@@ -26,5 +26,6 @@ export const meta = `
 // @grant        unsafeWindow
 // @run-at       document-start
 // @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
+// @require      https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.min.js
 // ==/UserScript==
 `;

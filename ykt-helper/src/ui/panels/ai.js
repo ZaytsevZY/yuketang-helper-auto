@@ -16,48 +16,19 @@ let root;
 // 来自 presentation 的一次性优先
 let preferredSlideFromPresentation = null;
 
-let __texLoading = false;
-let __texReady = false;
 function ensureMathJax() {
-  return new Promise((resolve) => {
-    if (__texReady && window.MathJax && typeof window.MathJax.typesetPromise === 'function') {
-      resolve(true); return;
-    }
-    if (__texLoading) {
-      // 等待已在途的加载
-      const t = setInterval(() => {
-        if (__texReady && window.MathJax && typeof window.MathJax.typesetPromise === 'function') {
-          clearInterval(t); resolve(true);
-        }
-      }, 50);
-      return;
-    }
-    __texLoading = true;
-    // 先放置全局配置，再加载脚本
-    window.MathJax = {
-      tex: {
-        inlineMath: [['$', '$'], ['\\(', '\\)']],
-        displayMath: [['$$', '$$'], ['\\[', '\\]']],
-        processEscapes: true
-      },
-      options: {
-        skipHtmlTags: ['script','noscript','style','textarea','pre','code'],
-        ignoreHtmlClass: 'tex-ignore'
-      },
-      svg: { fontCache: 'global' }
-    };
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.min.js';
-    s.async = true;
-    s.onload = () => { __texReady = true; resolve(true); };
-    s.onerror = () => { console.warn('[YKT][WARN][ai] MathJax 加载失败，降级为纯文本公式'); resolve(false); };
-    document.head.appendChild(s);
-  });
+  const mj = window.MathJax;
+  const ok = !!(mj && mj.typesetPromise);
+  if (!ok) console.warn('[YKT][WARN][ai] MathJax 未就绪（未通过 @require 预置？）');
+  return Promise.resolve(ok);
 }
 
 function typesetTexIn(el) {
-  if (!el || !window.MathJax || typeof window.MathJax.typesetPromise !== 'function') return Promise.resolve();
-  return window.MathJax.typesetPromise([el]).catch(()=>{});
+  const mj = window.MathJax;
+  if (!el || !mj || typeof mj.typesetPromise !== 'function') return Promise.resolve(false);
+  // 等待 MathJax 自己的启动就绪
+  const ready = mj.startup && mj.startup.promise ? mj.startup.promise : Promise.resolve();
+  return ready.then(() => mj.typesetPromise([el]).then(() => true).catch(() => false));
 }
 
 function escapeHtml(s = '') {
@@ -228,7 +199,7 @@ function getSlideByAny(id) {
   // 141 下 repo.slides 可能未灌入，跨 presentations 搜索并写回
   const cross = findSlideAcrossPresentations(sid);
   if (cross) { repo.slides.set(sid, cross); return { slide: cross, hit: 'cross-fill' }; }
-  // 早期版本兼容（很少见）：如果有人把键存成 number，再试一次
+  // 早期版本兼容（很少见）
   const asNum = Number.isNaN(Number(sid)) ? null : Number(sid);
   if (asNum != null && repo.slides.has(asNum)) {
     const v = repo.slides.get(asNum); repo.slides.set(sid, v);
@@ -318,13 +289,17 @@ export function setAIError(msg = '') {
 export function setAIAnswer(content = '') {
   const el = $('#ykt-ai-answer');
   if (!el) return;
+  if (window.MathJax && window.MathJax.config == null) window.MathJax.config = {};
+  window.MathJax = Object.assign(window.MathJax || {}, {
+    tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }
+  });
   el.innerHTML = content ? mdToHtml(content) : '';
   try {
     if (ui?.config?.iftex) {
       ensureMathJax().then((ok) => {
-        if (!ok) return; 
+        if (!ok) { console.warn('[YKT][WARN][ai] MathJax 未就绪，跳过 typeset'); return; } 
         el.classList.add('tex-enabled');
-        typesetTexIn(el);
+        typesetTexIn(el).then(() => console.log('[YKT][DBG][ai] MathJax typeset 完成'));
       });
     } else {
       el.classList.remove('tex-enabled');

@@ -90,6 +90,7 @@ export function mountSettingsPanel() {
     ui.config.aiSlidePickPriority = (DEFAULT_CONFIG.aiSlidePickPriority ?? true);
     ui.config.notifyPopupDuration = 5000;
     ui.config.notifyVolume = 0.6;
+    ui.config.iftex = true;
     ui.setCustomNotifyAudio({ src: '', name: '' });
     storage.set('kimiApiKey', '');
     ui.saveConfig();
@@ -99,7 +100,7 @@ export function mountSettingsPanel() {
     $autoJoin.checked = true;
     $autoJoinAutoAnswer.checked = true;
     $auto.checked = DEFAULT_CONFIG.autoAnswer;
-    $iftex.checked = true;
+    $iftex.checked = !!ui.config.iftex;
     $delay.value = Math.floor(DEFAULT_CONFIG.autoAnswerDelay / 1000);
     $rand.value = Math.floor(DEFAULT_CONFIG.autoAnswerRandomDelay / 1000);
     $autoAnalyze.checked = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
