@@ -175,9 +175,28 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
       err.details = { startTime, endTime, now };
       throw err;
     }
-    const base = typeof startTime === 'number' ? startTime : now - retryDtOffsetMs;
-    const dt = base + retryDtOffsetMs;
-    const resp = await retryAnswer(problem, result, dt, { headers });
+  console.log('[YKT][INFO][answer] 已触发补交分支 (/retry)', {
+    problemId: problem.problemId,
+    dt,
+    pastDeadline,
+    forceRetry: opts.forceRetry,
+  });
+  const ps = repo?.problemStatus?.get?.(problem.problemId);
+  const st = Number.isFinite(startTime) ? startTime : (ps?.startTime);
+  const et = Number.isFinite(endTime)   ? endTime   : (ps?.endTime);
+
+  // 计算一个稳定的 dt：优先 st+offset；缺失时退到 et-安全边界；再不行才用 now-offset
+  const off  = Math.max(0, retryDtOffsetMs);
+  let dt;
+  if (Number.isFinite(st)) {
+    dt = st + off;
+  } else if (Number.isFinite(et)) {
+    dt = Math.max(0, et - Math.max(off, 5000)); // 窗口靠前，避免越过截止
+  } else {
+    dt = Date.now() - off; // 最后兜底
+  }
+
+  const resp = await retryAnswer(problem, result, dt, { headers });
     return { route: 'retry', resp };
   }
 
