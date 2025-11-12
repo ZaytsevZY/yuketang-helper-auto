@@ -13,6 +13,7 @@
 // @match        https://pro.yuketang.cn/lesson/fullscreen/v3/*
 // @match        https://pro.yuketang.cn/v2/web/*
 // @match        https://pro.yuketang.cn/v2/web/index
+// @match        https://pro.yuketang.cn/v2/web/student-lesson-report/*
 // @grant        GM_addStyle
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
@@ -687,7 +688,7 @@
         };
         throw err;
       }
-      console.log("[YKT][INFO][answer] 已触发补交分支 (/retry)", {
+      console.log("[雨课堂助手][INFO][answer] 已触发补交分支 (/retry)", {
         problemId: problem.problemId,
         dt: dt,
         pastDeadline: pastDeadline,
@@ -945,7 +946,7 @@
       }
       // 如果没找到答案行，尝试第一行
             if (!answerLine) answerLine = lines[0]?.trim() || "";
-      console.log("[parseAIAnswer] 题目类型:", problem.problemType, "原始答案行:", answerLine);
+      console.log("[雨课堂助手][INFO][parseAIAnswer] 题目类型:", problem.problemType, "原始答案行:", answerLine);
       switch (problem.problemType) {
        case 1:
  // 单选题
@@ -954,15 +955,15 @@
           // 投票题
           let m = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/);
           if (m) {
-            console.log("[parseAIAnswer] 单选/投票解析结果:", [ m[0] ]);
+            console.log("[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析结果:", [ m[0] ]);
             return [ m[0] ];
           }
           const chineseMatch = answerLine.match(/选择?([ABCDEFGHIJKLMNOPQRSTUVWXYZ])/);
           if (chineseMatch) {
-            console.log("[parseAIAnswer] 单选/投票中文解析结果:", [ chineseMatch[1] ]);
+            console.log("[雨课堂助手][INFO][parseAIAnswer] 单选/投票中文解析结果:", [ chineseMatch[1] ]);
             return [ chineseMatch[1] ];
           }
-          console.log("[parseAIAnswer] 单选/投票解析失败");
+          console.log("[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析失败");
           return null;
         }
 
@@ -973,7 +974,7 @@
             const options = answerLine.split("、").map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/)).filter(m => m).map(m => m[0]);
             if (options.length > 0) {
               const result = [ ...new Set(options) ].sort();
-              console.log("[parseAIAnswer] 多选顿号解析结果:", result);
+              console.log("[雨课堂助手][INFO][parseAIAnswer] 多选顿号解析结果:", result);
               return result;
             }
           }
@@ -981,21 +982,21 @@
             const options = answerLine.split(/[,，]/).map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/)).filter(m => m).map(m => m[0]);
             if (options.length > 0) {
               const result = [ ...new Set(options) ].sort();
-              console.log("[parseAIAnswer] 多选逗号解析结果:", result);
+              console.log("[雨课堂助手][INFO][parseAIAnswer] 多选逗号解析结果:", result);
               return result;
             }
           }
           const letters = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g);
           if (letters && letters.length > 1) {
             const result = [ ...new Set(letters) ].sort();
-            console.log("[parseAIAnswer] 多选连续解析结果:", result);
+            console.log("[雨课堂助手][INFO][parseAIAnswer] 多选连续解析结果:", result);
             return result;
           }
           if (letters && letters.length === 1) {
-            console.log("[parseAIAnswer] 多选单个解析结果:", letters);
+            console.log("[雨课堂助手][INFO][parseAIAnswer] 多选单个解析结果:", letters);
             return letters;
           }
-          console.log("[parseAIAnswer] 多选解析失败");
+          console.log("[雨课堂助手][INFO][parseAIAnswer] 多选解析失败");
           return null;
         }
 
@@ -1004,18 +1005,18 @@
           // 填空题
           // ✅ 更激进的清理策略
           let cleanAnswer = answerLine.replace(/^(填空题|简答题|问答题|题目|答案是?)[:：\s]*/gi, "").trim();
-          console.log("[parseAIAnswer] 清理后答案:", cleanAnswer);
+          console.log("[雨课堂助手][INFO][parseAIAnswer] 清理后答案:", cleanAnswer);
           // 如果清理后还包含这些词，继续清理
                     if (/填空题|简答题|问答题|题目/i.test(cleanAnswer)) {
             cleanAnswer = cleanAnswer.replace(/填空题|简答题|问答题|题目/gi, "").trim();
-            console.log("[parseAIAnswer] 二次清理后:", cleanAnswer);
+            console.log("[雨课堂助手][INFO][parseAIAnswer] 二次清理后:", cleanAnswer);
           }
           const answerLength = cleanAnswer.length;
           if (answerLength <= 50) {
             cleanAnswer = cleanAnswer.replace(/^[^\w\u4e00-\u9fa5]+/, "").replace(/[^\w\u4e00-\u9fa5]+$/, "");
             const blanks = cleanAnswer.split(/[,，;；\s]+/).filter(Boolean);
             if (blanks.length > 0) {
-              console.log("[parseAIAnswer] 填空解析结果:", blanks);
+              console.log("[雨课堂助手][INFO][parseAIAnswer] 填空解析结果:", blanks);
               return blanks;
             }
           }
@@ -1024,10 +1025,10 @@
               content: cleanAnswer,
               pics: []
             };
-            console.log("[parseAIAnswer] 简答题解析结果:", result);
+            console.log("[雨课堂助手][INFO][parseAIAnswer] 简答题解析结果:", result);
             return result;
           }
-          console.log("[parseAIAnswer] 填空/简答解析失败");
+          console.log("[雨课堂助手][INFO][parseAIAnswer] 填空/简答解析失败");
           return null;
         }
 
@@ -1040,27 +1041,27 @@
               content: content,
               pics: []
             };
-            console.log("[parseAIAnswer] 主观题解析结果:", result);
+            console.log("[雨课堂助手][INFO][parseAIAnswer] 主观题解析结果:", result);
             return result;
           }
-          console.log("[parseAIAnswer] 主观题解析失败");
+          console.log("[雨课堂助手][INFO][parseAIAnswer] 主观题解析失败");
           return null;
         }
 
        default:
-        console.log("[parseAIAnswer] 未知题目类型:", problem.problemType);
+        console.log("[雨课堂助手][INFO][parseAIAnswer] 未知题目类型:", problem.problemType);
         return null;
       }
     } catch (e) {
-      console.error("[parseAIAnswer] 解析失败", e);
+      console.error("[雨课堂助手][INFO][parseAIAnswer] 解析失败", e);
       return null;
     }
   }
   /**
    * Vuex 辅助工具 - 用于获取雨课堂主界面状态（附加调试日志）
-   */  const L$3 = (...a) => console.log("[YKT][DBG][vuex-helper]", ...a);
-  const W$3 = (...a) => console.warn("[YKT][WARN][vuex-helper]", ...a);
-  const E = (...a) => console.error("[YKT][ERR][vuex-helper]", ...a);
+   */  const L$3 = (...a) => console.log("[雨课堂助手][DBG][vuex-helper]", ...a);
+  const W$3 = (...a) => console.warn("[雨课堂助手][WARN][vuex-helper]", ...a);
+  const E = (...a) => console.error("[雨课堂助手][ERR][vuex-helper]", ...a);
   function getVueApp() {
     try {
       const app = document.querySelector("#app")?.__vue__;
@@ -1131,8 +1132,8 @@
       check();
     });
   }
-  const L$2 = (...a) => console.log("[YKT][DBG][ai]", ...a);
-  const W$2 = (...a) => console.warn("[YKT][WARN][ai]", ...a);
+  const L$2 = (...a) => console.log("[雨课堂助手][DBG][ai]", ...a);
+  const W$2 = (...a) => console.warn("[雨课堂助手][WARN][ai]", ...a);
   let mounted$4 = false;
   let root$3;
   // 来自 presentation 的一次性优先
@@ -1140,7 +1141,7 @@
   function ensureMathJax() {
     const mj = window.MathJax;
     const ok = !!(mj && mj.typesetPromise);
-    if (!ok) console.warn("[YKT][WARN][ai] MathJax 未就绪（未通过 @require 预置？）");
+    if (!ok) console.warn("[雨课堂助手][WARN][ai] MathJax 未就绪（未通过 @require 预置？）");
     return Promise.resolve(ok);
   }
   function typesetTexIn(el) {
@@ -1427,11 +1428,11 @@
     try {
       if (ui?.config?.iftex) ensureMathJax().then(ok => {
         if (!ok) {
-          console.warn("[YKT][WARN][ai] MathJax 未就绪，跳过 typeset");
+          console.warn("[雨课堂助手][WARN][ai] MathJax 未就绪，跳过 typeset");
           return;
         }
         el.classList.add("tex-enabled");
-        typesetTexIn(el).then(() => console.log("[YKT][DBG][ai] MathJax typeset 完成"));
+        typesetTexIn(el).then(() => console.log("[雨课堂助手][DBG][ai] MathJax typeset 完成"));
       }); else el.classList.remove("tex-enabled");
     } catch (e) {/* 静默降级 */}
   }
@@ -1687,8 +1688,8 @@
     }
     return null;
   }
-  const L$1 = (...a) => console.log("[YKT][DBG][presentation]", ...a);
-  const W$1 = (...a) => console.warn("[YKT][WARN][presentation]", ...a);
+  const L$1 = (...a) => console.log("[雨课堂助手][DBG][presentation]", ...a);
+  const W$1 = (...a) => console.warn("[雨课堂助手][WARN][presentation]", ...a);
   function $$3(sel) {
     return document.querySelector(sel);
   }
@@ -2099,8 +2100,8 @@
     }
   }
   var tpl$2 = '<div id="ykt-problem-list-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>课堂习题列表</h3>\r\n    <span class="close-btn" id="ykt-problem-list-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div id="ykt-problem-list" class="problem-list">\r\n      \x3c!-- 由 problem-list.js 动态填充：\r\n           .problem-row\r\n             .problem-title\r\n             .problem-meta\r\n             .problem-actions (查看 / AI解答 / 已作答) --\x3e\r\n    </div>\r\n  </div>\r\n</div>\r\n';
-  const L = (...a) => console.log("[YKT][DBG][problem-list]", ...a);
-  const W = (...a) => console.warn("[YKT][WARN][problem-list]", ...a);
+  const L = (...a) => console.log("[雨课堂助手][DBG][problem-list]", ...a);
+  const W = (...a) => console.warn("[雨课堂助手][WARN][problem-list]", ...a);
   function $$2(sel) {
     return document.querySelector(sel);
   }
@@ -2581,7 +2582,7 @@
       const remain = Math.max(0, Math.floor((status.endTime - now) / 1e3));
       // ✅ 如果倒计时结束（剩余时间为0），跳过显示这个卡片
             if (remain <= 0) {
-        console.log(`[ActiveProblems] 题目 ${pid} 倒计时已结束，移除卡片`);
+        console.log(`[雨课堂助手][INFO][ActiveProblems] 题目 ${pid} 倒计时已结束，移除卡片`);
         return;
       }
       // ✅ 有至少一个活跃题目
@@ -2937,39 +2938,39 @@
     function detectEnvironmentAndAdaptAPI() {
       const hostname = location.hostname;
       if (hostname === "www.yuketang.cn") {
-        console.log("[雨课堂助手] 检测到标准雨课堂环境");
+        console.log("[雨课堂助手][INFO] 检测到标准雨课堂环境");
         return "standard";
       }
       if (hostname === "pro.yuketang.cn") {
-        console.log("[雨课堂助手] 检测到荷塘雨课堂环境");
+        console.log("[雨课堂助手][INFO] 检测到荷塘雨课堂环境");
         return "pro";
       }
-      console.log("[雨课堂助手] 未知环境:", hostname);
+      console.log("[雨课堂助手][ERR] 未知环境:", hostname);
       return "unknown";
     }
     MyXHR.addHandler((xhr, method, url) => {
       detectEnvironmentAndAdaptAPI();
       const pathname = url.pathname || "";
-      console.log("[雨课堂助手] XHR请求:", method, pathname, url.search);
+      console.log("[雨课堂助手][INFO] XHR请求:", method, pathname, url.search);
       // 课件：精确路径或包含关键字
             if (pathname === "/api/v3/lesson/presentation/fetch" || pathname.includes("presentation") && pathname.includes("fetch")) {
-        console.log("[雨课堂助手] ✅ 拦截课件请求");
+        console.log("[雨课堂助手][INFO] 拦截课件请求");
         xhr.intercept(resp => {
           const id = url.searchParams.get("presentation_id");
-          console.log("[雨课堂助手] 课件响应:", resp);
+          console.log("[雨课堂助手][INFO] 课件响应:", resp);
           if (resp && (resp.code === 0 || resp.success)) actions.onPresentationLoaded(id, resp.data || resp.result);
         });
         return;
       }
       // 答题
             if (pathname === "/api/v3/lesson/problem/answer" || pathname.includes("problem") && pathname.includes("answer")) {
-        console.log("[雨课堂助手] ✅ 拦截答题请求");
+        console.log("[雨课堂助手][INFO] 拦截答题请求");
         xhr.intercept((resp, payload) => {
           try {
             const {problemId: problemId, result: result} = JSON.parse(payload || "{}");
             if (resp && (resp.code === 0 || resp.success)) actions.onAnswerProblem(problemId, result);
           } catch (e) {
-            console.error("[雨课堂助手] 解析答题响应失败:", e);
+            console.error("[雨课堂助手][ERR] 解析答题响应失败:", e);
           }
         });
         return;
@@ -2985,7 +2986,7 @@
         });
         return;
       }
-      if (pathname.includes("/api/")) console.log("[雨课堂助手] 其他API:", method, pathname);
+      if (pathname.includes("/api/")) console.log("[雨课堂助手][WARN] 其他API:", method, pathname);
     });
     gm.uw.XMLHttpRequest = MyXHR;
   }
@@ -3228,20 +3229,20 @@
       return;
     }
     if (Date.now() >= status.endTime) {
-      console.log("[AutoAnswer] 跳过：已超时");
+      console.log("[雨课堂助手][WARN][AutoAnswer] 跳过：已超时");
       return;
     }
     status.answering = true;
     try {
-      console.log("[AutoAnswer] =================================");
-      console.log("[AutoAnswer] 开始自动答题");
-      console.log("[AutoAnswer] 题目ID:", problem.problemId);
-      console.log("[AutoAnswer] 题目类型:", PROBLEM_TYPE_MAP[problem.problemType]);
-      console.log("[AutoAnswer] 题目内容:", problem.body?.slice(0, 50) + "...");
+      console.log("[雨课堂助手][INFO][AutoAnswer] =================================");
+      console.log("[雨课堂助手][INFO][AutoAnswer] 开始自动答题");
+      console.log("[雨课堂助手][INFO][AutoAnswer] 题目ID:", problem.problemId);
+      console.log("[雨课堂助手][INFO][AutoAnswer] 题目类型:", PROBLEM_TYPE_MAP[problem.problemType]);
+      console.log("[雨课堂助手][INFO][AutoAnswer] 题目内容:", problem.body?.slice(0, 50) + "...");
       if (!ui.config.ai.kimiApiKey) {
         // ✅ 无 API Key：使用本地默认答案直接提交，确保流程不中断
         const parsed = makeDefaultAnswer(problem);
-        console.log("[AutoAnswer] 无 API Key，使用本地默认答案:", JSON.stringify(parsed));
+        console.log("[雨课堂助手][WARN][AutoAnswer] 无 API Key，使用本地默认答案:", JSON.stringify(parsed));
         // 提交答案（根据时限自动选择 answer/retry 逻辑）
                 await submitAnswer(problem, parsed, {
           startTime: status.startTime,
@@ -3253,49 +3254,45 @@
                 actions.onAnswerProblem(problem.problemId, parsed);
         status.done = true;
         status.answering = false;
-        ui.toast("✅ 使用默认答案完成作答（未配置 API Key）", 3e3);
+        ui.toast("使用默认答案完成作答（未配置 API Key）", 3e3);
         showAutoAnswerPopup(problem, "（本地默认答案：无 API Key）");
-        console.log("[AutoAnswer] ✅ 默认答案提交流程结束");
+        console.log("[雨课堂助手][INFO][AutoAnswer] 默认答案提交流程结束");
         return;
  // 提前返回，避免继续走图像+AI流程
             }
       const slideId = status.slideId;
-      console.log("[AutoAnswer] 题目所在幻灯片:", slideId);
-      console.log("[AutoAnswer] =================================");
-      // ✅ 关键修复：直接使用幻灯片的cover图片，而不是截图DOM
-            console.log("[AutoAnswer] 使用融合模式分析（文本+幻灯片图片）...");
+      console.log("[雨课堂助手][INFO][AutoAnswer] 题目所在幻灯片:", slideId);
+      console.log("[雨课堂助手][INFO][AutoAnswer] =================================");
+      console.log("[雨课堂助手][INFO][AutoAnswer] 使用融合模式分析（文本+幻灯片图片）...");
       let imageBase64 = await captureSlideImage(slideId);
-      // ✅ 如果获取幻灯片图片失败，回退到DOM截图
+      // 如果获取幻灯片图片失败，回退到DOM截图
             if (!imageBase64) {
-        console.log("[AutoAnswer] 无法获取幻灯片图片，尝试使用DOM截图...");
+        console.log("[雨课堂助手][WARN][AutoAnswer] 无法获取幻灯片图片，尝试使用DOM截图...");
         const fallbackImage = await captureProblemForVision();
         if (!fallbackImage) {
           status.answering = false;
-          console.error("[AutoAnswer] 所有截图方法都失败");
+          console.error("[雨课堂助手][ERR][AutoAnswer] 所有截图方法都失败");
           return ui.toast("无法获取题目图像，跳过自动作答", 3e3);
         }
         imageBase64 = fallbackImage;
-        console.log("[AutoAnswer] ✅ DOM截图成功");
-      } else console.log("[AutoAnswer] ✅ 幻灯片图片获取成功");
-      console.log("[AutoAnswer] 图片大小:", Math.round(imageBase64.length / 1024), "KB");
+        console.log("[雨课堂助手][INFO][AutoAnswer] DOM截图成功");
+      } else console.log("[雨课堂助手][INFO][AutoAnswer] 幻灯片图片获取成功");
       // 构建提示
             const hasTextInfo = problem.body && problem.body.trim();
       const textPrompt = formatProblemForVision(problem, PROBLEM_TYPE_MAP, hasTextInfo);
-      console.log("[AutoAnswer] 文本信息:", hasTextInfo ? "有" : "无");
-      console.log("[AutoAnswer] 提示长度:", textPrompt.length);
       // 调用 AI
             ui.toast("AI 正在分析题目...", 2e3);
       const aiAnswer = await queryKimiVision(imageBase64, textPrompt, ui.config.ai);
-      console.log("[AutoAnswer] ✅ AI回答:", aiAnswer);
+      console.log("[雨课堂助手][INFO][AutoAnswer] AI回答:", aiAnswer);
       // 解析答案
             const parsed = parseAIAnswer(problem, aiAnswer);
-      console.log("[AutoAnswer] 解析结果:", parsed);
+      console.log("[雨课堂助手][INFO][AutoAnswer] 解析结果:", parsed);
       if (!parsed) {
         status.answering = false;
-        console.error("[AutoAnswer] 解析失败，AI回答格式不正确");
+        console.error("[雨课堂助手][ERR][AutoAnswer] 解析失败，AI回答格式不正确");
         return ui.toast("无法解析AI答案，请检查格式", 3e3);
       }
-      console.log("[AutoAnswer] ✅ 准备提交答案:", JSON.stringify(parsed));
+      console.log("[雨课堂助手][INFO][AutoAnswer] 准备提交答案:", JSON.stringify(parsed));
       // 提交答案
             await submitAnswer(problem, parsed, {
         startTime: status.startTime,
@@ -3303,16 +3300,16 @@
         forceRetry: false,
         lessonId: repo.currentLessonId
       });
-      console.log("[AutoAnswer] ✅ 提交成功");
+      console.log("[雨课堂助手][INFO][AutoAnswer] 提交成功");
       // 更新状态
             actions.onAnswerProblem(problem.problemId, parsed);
       status.done = true;
       status.answering = false;
-      ui.toast(`✅ 自动作答完成`, 3e3);
+      ui.toast(`自动作答完成`, 3e3);
       showAutoAnswerPopup(problem, aiAnswer);
     } catch (e) {
-      console.error("[AutoAnswer] ❌ 失败:", e);
-      console.error("[AutoAnswer] 错误堆栈:", e.stack);
+      console.error("[雨课堂助手][ERR][AutoAnswer] 失败:", e);
+      console.error("[雨课堂助手][ERR][AutoAnswer] 错误堆栈:", e.stack);
       status.answering = false;
       ui.toast(`自动作答失败: ${e.message}`, 4e3);
     }
@@ -3337,13 +3334,13 @@
       const problem = repo.problems.get(data.prob);
       const slide = repo.slides.get(data.sid);
       if (!problem || !slide) {
-        console.log("[onUnlockProblem] 题目或幻灯片不存在");
+        console.log("[雨课堂助手][ERR][onUnlockProblem] 题目或幻灯片不存在");
         return;
       }
-      console.log("[onUnlockProblem] 题目解锁");
-      console.log("[onUnlockProblem] 题目ID:", data.prob);
-      console.log("[onUnlockProblem] 幻灯片ID:", data.sid);
-      console.log("[onUnlockProblem] 课件ID:", data.pres);
+      console.log("[雨课堂助手][DBG][onUnlockProblem] 题目解锁");
+      console.log("[雨课堂助手][DBG][onUnlockProblem] 题目ID:", data.prob);
+      console.log("[雨课堂助手][DBG][onUnlockProblem] 幻灯片ID:", data.sid);
+      console.log("[雨课堂助手][DBG][onUnlockProblem] 课件ID:", data.pres);
       const status = {
         presentationId: data.pres,
         slideId: data.sid,
@@ -3355,14 +3352,14 @@
       };
       repo.problemStatus.set(data.prob, status);
       if (Date.now() > status.endTime || problem.result) {
-        console.log("[onUnlockProblem] 题目已过期或已作答，跳过");
+        console.log("[雨课堂助手][WARN][onUnlockProblem] 题目已过期或已作答，跳过");
         return;
       }
       if (ui.config.notifyProblems) ui.notifyProblem(problem, slide);
       if (ui.config.autoAnswer) {
         const delay = ui.config.autoAnswerDelay + randInt(0, ui.config.autoAnswerRandomDelay);
         status.autoAnswerTime = Date.now() + delay;
-        console.log(`[onUnlockProblem] 将在 ${Math.floor(delay / 1e3)} 秒后自动作答`);
+        console.log(`[雨课堂助手][INFO][onUnlockProblem] 将在 ${Math.floor(delay / 1e3)} 秒后自动作答`);
         ui.toast(`将在 ${Math.floor(delay / 1e3)} 秒后使用融合模式自动作答`, 3e3);
       }
       ui.updateActiveProblems();
@@ -3434,7 +3431,7 @@
       const path = window.location.pathname;
       const m = path.match(/\/lesson\/fullscreen\/v3\/([^/]+)/);
       repo.currentLessonId = m ? m[1] : null;
-      if (repo.currentLessonId) console.log(`[雨课堂助手] 检测到课堂页面 lessonId: ${repo.currentLessonId}`);
+      if (repo.currentLessonId) console.log(`[雨课堂助手][DBG] 检测到课堂页面 lessonId: ${repo.currentLessonId}`);
       if (typeof window.GM_getTab === "function" && typeof window.GM_saveTab === "function" && repo.currentLessonId) window.GM_getTab(tab => {
         tab.type = "lesson";
         tab.lessonId = repo.currentLessonId;
@@ -3478,11 +3475,11 @@
             if (!lessonId || status !== 1) continue;
             if (repo.isLessonConnected(lessonId)) continue;
  // 已有连接
-                        console.log("[AutoJoin] 检测到正在上课的课堂，准备进入:", lessonId);
+                        console.log("[雨课堂助手][INFO][AutoJoin] 检测到正在上课的课堂，准备进入:", lessonId);
             try {
               const {token: token, setAuth: setAuth} = await checkinClass(lessonId);
               if (!token) {
-                console.warn("[AutoJoin] 未获取到 lessonToken，跳过:", lessonId);
+                console.warn("[雨课堂助手][WARN][AutoJoin] 未获取到 lessonToken，跳过:", lessonId);
                 continue;
               }
               // 建立 WS 并发送 hello（消息会走 ws-interceptor 统一分发）
@@ -3492,15 +3489,13 @@
               });
               // 标记该课堂为“自动进入”
                             repo.markLessonAutoJoined(lessonId, true);
-              // 若设置为“自动进入课堂默认自动答题”，为该课放开自动答题判定
-                            if (ui.config.autoAnswerOnAutoJoin) repo.forceAutoAnswerLessons.add(lessonId);
-              // 说明：该标记只作为“shouldAutoAnswer”判定的一个加项，不直接改全局 autoAnswer
-                        } catch (e) {
-              console.error("[AutoJoin] 进入课堂失败:", lessonId, e);
+              if (ui.config.autoAnswerOnAutoJoin) repo.forceAutoAnswerLessons.add(lessonId);
+            } catch (e) {
+              console.error("[雨课堂助手][ERR][AutoJoin] 进入课堂失败:", lessonId, e);
             }
           }
         } catch (e) {
-          console.error("[AutoJoin] 拉取正在上课失败:", e);
+          console.error("[雨课堂助手][ERR][AutoJoin] 拉取正在上课失败:", e);
         } finally {
           // 5 秒一轮，保证多课堂时彼此独立、互不阻塞
           setTimeout(loop, 5e3);
@@ -3565,7 +3560,7 @@
                     if (!on) {
             const withId = arr.find(x => x && (x.lessonId || x.lesson_id || x.id));
             if (withId) {
-              console.warn("[AutoJoin][API] 没有 status===1，但存在 lessonId，使用回退项：", {
+              console.warn("[雨课堂助手][WARN][AutoJoin][API] 没有 status===1，但存在 lessonId，使用回退项：", {
                 status: withId.status,
                 keys: Object.keys(withId || {}),
                 sample: withId
@@ -3576,7 +3571,7 @@
           if (!on) {
             // 详细日志：环境、主机、列表长度与前 3 项
             try {
-              console.warn("[AutoJoin][API] EMPTY on-lesson list", {
+              console.warn("[雨课堂助手][ERR][AutoJoin][API] EMPTY on-lesson list", {
                 host: location.hostname,
                 path: location.pathname,
                 length: Array.isArray(list) ? list.length : -1,
@@ -3589,8 +3584,7 @@
           const lessonId = on.lessonId || on.lesson_id || on.id;
           let target = null;
           if (lessonId) target = `/lesson/fullscreen/v3/${lessonId}`; else target = `/v2/web/lesson/${lessonId}`;
- // 兜底：让站内自己跳转
-                    if (location.pathname === target) {
+          if (location.pathname === target) {
             _autoOnLessonClickInProgress = false;
             return true;
           }
@@ -3599,7 +3593,7 @@
           location.assign(target);
           return true;
         } catch (e) {
-          console.warn("[AutoJoin][API] 跳转失败：", e, {
+          console.warn("[雨课堂助手][ERR][AutoJoin][API] 跳转失败：", e, {
             host: location.hostname,
             path: location.pathname
           });
@@ -3612,7 +3606,7 @@
         if (!bar || bar.__ykt_guard_bound__) return false;
         if (_autoOnLessonClickInProgress) return false;
         bar.__ykt_guard_bound__ = true;
-        console.log("[AutoJoin][DOM] 发现 onlesson 条，接管点击（捕获阶段）");
+        console.log("[雨课堂助手][INFO][AutoJoin][DOM] 发现 onlesson 条，接管点击（捕获阶段）");
         const handler = async ev => {
           ev.preventDefault();
           ev.stopImmediatePropagation?.();
@@ -3624,7 +3618,7 @@
             if (d) await new Promise(r => setTimeout(r, d));
             if (await tryApiJumpFirst()) return;
           }
-          console.warn("[AutoJoin][DOM] on-lesson 接口仍为空，放弃本次点击");
+          console.warn("[雨课堂助手][WARN][AutoJoin][DOM] on-lesson 接口仍为空，放弃本次点击");
           try {
             console.group("%c[AutoJoin][DOM] on-lesson 仍为空，放弃本次点击", "color:#f60");
             console.log("env:", {
@@ -3684,11 +3678,11 @@
       let envType = "unknown";
       if (hostname === "www.yuketang.cn") {
         envType = "standard";
-        console.log("[雨课堂助手] 检测到标准雨课堂环境");
+        console.log("[雨课堂助手][INFO] 检测到标准雨课堂环境");
       } else if (hostname === "pro.yuketang.cn") {
         envType = "pro";
-        console.log("[雨课堂助手] 检测到荷塘雨课堂环境");
-      } else console.log("[雨课堂助手] 未知环境:", hostname);
+        console.log("[雨课堂助手][INFO] 检测到荷塘雨课堂环境");
+      } else console.log("[雨课堂助手][INFO] 未知环境:", hostname);
       return envType;
     }
     class MyWebSocket extends WebSocket {
@@ -3731,42 +3725,42 @@
     // });
         MyWebSocket.addHandler((ws, url) => {
       const envType = detectEnvironmentAndAdaptAPI();
-      console.log("[雨课堂助手] 拦截WebSocket通信 - 环境:", envType);
-      console.log("[雨课堂助手] WebSocket连接尝试:", url.href);
+      console.log("[雨课堂助手][INFO] 拦截WebSocket通信 - 环境:", envType);
+      console.log("[雨课堂助手][INFO] WebSocket连接尝试:", url.href);
       // 更宽松的路径匹配
             const wsPath = url.pathname || "";
       const isRainClassroomWS = wsPath === "/wsapp/" || wsPath.includes("/ws") || wsPath.includes("/websocket") || url.href.includes("websocket");
       if (!isRainClassroomWS) {
-        console.log("[雨课堂助手] ❌ 非雨课堂WebSocket:", wsPath);
+        console.log("[雨课堂助手][ERR] 非雨课堂WebSocket:", wsPath);
         return;
       }
-      console.log("[雨课堂助手] ✅ 检测到雨课堂WebSocket连接:", wsPath);
+      console.log("[雨课堂助手][INFO] 检测到雨课堂WebSocket连接:", wsPath);
       // 发送侧拦截（可用于调试）
             ws.intercept(message => {
-        console.log("[雨课堂助手] WebSocket发送:", message);
+        console.log("[雨课堂助手][INFO] WebSocket发送:", message);
       });
       // 接收侧统一分发
             ws.listen(message => {
         try {
-          console.log("[雨课堂助手] WebSocket接收:", message);
+          console.log("[雨课堂助手][INFO] WebSocket接收:", message);
           switch (message.op) {
            case "fetchtimeline":
-            console.log("[雨课堂助手] 收到时间线:", message.timeline);
+            console.log("[雨课堂助手][INFO] 收到时间线:", message.timeline);
             actions.onFetchTimeline(message.timeline);
             break;
 
            case "unlockproblem":
-            console.log("[雨课堂助手] 收到解锁问题:", message.problem);
+            console.log("[雨课堂助手][INFO] 收到解锁问题:", message.problem);
             actions.onUnlockProblem(message.problem);
             break;
 
            case "lessonfinished":
-            console.log("[雨课堂助手] 课程结束");
+            console.log("[雨课堂助手][INFO] 课程结束");
             actions.onLessonFinished();
             break;
 
            default:
-            console.log("[雨课堂助手] 未知WebSocket操作:", message.op, message);
+            console.log("[雨课堂助手][WARN] 未知WebSocket操作:", message.op, message);
           }
           // 监听后端传递的url
                     const url = function findUrl(obj) {
@@ -3793,10 +3787,10 @@
             }));
             // 如需持久化到 repo，请取消下一行注释（确保已在 repo 定义该字段）
                         repo.currentSelectedUrl = url;
-            console.debug("[雨课堂助手] 当前选择 URL:", url);
+            console.debug("[雨课堂助手][INFO] 当前选择 URL:", url);
           }
         } catch (e) {
-          console.debug("[雨课堂助手] 解析WebSocket消息失败", e, message);
+          console.debug("[雨课堂助手][ERR] 解析WebSocket消息失败", e, message);
         }
       });
     });
@@ -3805,7 +3799,7 @@
   // ===== 主动为某个课堂建立/复用 WebSocket 连接 =====
     function connectOrAttachLessonWS({lessonId: lessonId, auth: auth}) {
     if (!lessonId || !auth) {
-      console.warn("[雨课堂助手][AutoJoin] 缺少 lessonId 或 auth，放弃建链");
+      console.warn("[雨课堂助手][WARN] 缺少 lessonId 或 auth，放弃建链");
       return null;
     }
     if (repo.isLessonConnected(lessonId)) return repo.lessonSockets.get(lessonId);
@@ -3824,16 +3818,16 @@
           lessonid: lessonId
         };
         ws.send(JSON.stringify(hello));
-        console.log("[雨课堂助手][AutoJoin] 已发送 hello 握手:", hello);
+        console.log("[雨课堂助手][INFO][AutoJoin] 已发送 hello 握手:", hello);
       } catch (e) {
-        console.error("[雨课堂助手][AutoJoin] 发送 hello 失败:", e);
+        console.error("[雨课堂助手][INFO][AutoJoin] 发送 hello 失败:", e);
       }
     });
     ws.addEventListener("close", () => {
-      console.log("[雨课堂助手][AutoJoin] 课堂 WS 关闭:", lessonId);
+      console.log("[雨课堂助手][WARN][AutoJoin] 课堂 WS 关闭:", lessonId);
     });
     ws.addEventListener("error", e => {
-      console.error("[雨课堂助手][AutoJoin] 课堂 WS 错误:", lessonId, e);
+      console.error("[雨课堂助手][ERR][AutoJoin] 课堂 WS 错误:", lessonId, e);
     });
     repo.markLessonConnected(lessonId, ws, auth);
     return ws;
@@ -3860,7 +3854,7 @@
       const [input, init] = args;
       const url = typeof input === "string" ? input : input?.url || "";
       // === (1) 打印调试日志，可观察哪些接口走 fetch ===
-            if (url.includes("lesson") || url.includes("slide") || url.includes("problem")) console.log("[YKT][fetch-interceptor] 捕获请求:", url);
+            if (url.includes("lesson") || url.includes("slide") || url.includes("problem")) console.log("[雨课堂助手][INFO][fetch-interceptor] 捕获请求:", url);
       const resp = await rawFetch.apply(this, args);
       try {
         // === (2) 只拦截 Rain Classroom 的 JSON 接口 ===
@@ -3880,16 +3874,16 @@
                 filled++;
               }
             }
-            console.log(`[YKT][fetch-interceptor] 已填充 slides ${filled}/${slides.length}`);
+            console.log(`雨课堂助手][INFO][fetch-interceptor] 已填充 slides ${filled}/${slides.length}`);
           }
         }
       } catch (e) {
-        console.warn("[YKT][fetch-interceptor] 解析响应失败:", e);
+        console.warn("[雨课堂助手][ERR][fetch-interceptor] 解析响应失败:", e);
       }
       return resp;
  // 一定要返回原始 Response
         };
-    console.log("[YKT][fetch-interceptor] ✅ fetch() 已被拦截");
+    console.log("[雨课堂助手][INFO][fetch-interceptor] ✅ fetch() 已被拦截");
   })();
   var css = '/* ===== 通用 & 修复 ===== */\r\n#watermark_layer { display: none !important; visibility: hidden !important; }\r\n.hidden { display: none !important; }\r\n\r\n:root{\r\n  --ykt-z: 10000000;\r\n  --ykt-border: #ddd;\r\n  --ykt-border-strong: #ccc;\r\n  --ykt-bg: #fff;\r\n  --ykt-fg: #222;\r\n  --ykt-muted: #607190;\r\n  --ykt-accent: #1d63df;\r\n  --ykt-hover: #1e3050;\r\n  --ykt-shadow: 0 10px 30px rgba(0,0,0,.18);\r\n}\r\n\r\n/* ===== 工具栏 ===== */\r\n#ykt-helper-toolbar{\r\n  position: fixed; z-index: calc(var(--ykt-z) + 1);\r\n  left: 15px; bottom: 15px;\r\n  /* 移除固定宽度，让内容自适应 */\r\n  height: 36px; padding: 5px;\r\n  display: flex; gap: 6px; align-items: center;\r\n  background: var(--ykt-bg);\r\n  border: 1px solid var(--ykt-border-strong);\r\n  border-radius: 4px;\r\n  box-shadow: 0 1px 4px 3px rgba(0,0,0,.1);\r\n}\r\n\r\n#ykt-helper-toolbar .btn{\r\n  display: inline-block; padding: 4px; cursor: pointer;\r\n  color: var(--ykt-muted); line-height: 1;\r\n}\r\n#ykt-helper-toolbar .btn:hover{ color: var(--ykt-hover); }\r\n#ykt-helper-toolbar .btn.active{ color: var(--ykt-accent); }\r\n\r\n/* ===== 面板通用样式 ===== */\r\n.ykt-panel{\r\n  position: fixed; right: 20px; bottom: 60px;\r\n  width: 560px; max-height: 72vh; overflow: auto;\r\n  background: var(--ykt-bg); color: var(--ykt-fg);\r\n  border: 1px solid var(--ykt-border-strong); border-radius: 8px;\r\n  box-shadow: var(--ykt-shadow);\r\n  display: none; \r\n  /* 提高z-index，确保后打开的面板在最上层 */\r\n  z-index: var(--ykt-z);\r\n}\r\n.ykt-panel.visible{ \r\n  display: block; \r\n  /* 动态提升z-index */\r\n  z-index: calc(var(--ykt-z) + 10);\r\n}\r\n\r\n.panel-header{\r\n  display: flex; align-items: center; justify-content: space-between;\r\n  gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);\r\n}\r\n.panel-header h3{ margin: 0; font-size: 16px; font-weight: 600; }\r\n.panel-body{ padding: 10px 12px; }\r\n.close-btn{ cursor: pointer; color: var(--ykt-muted); }\r\n.close-btn:hover{ color: var(--ykt-hover); }\r\n\r\n/* ===== 设置面板 (#ykt-settings-panel) ===== */\r\n#ykt-settings-panel .settings-content{ display: flex; flex-direction: column; gap: 14px; }\r\n#ykt-settings-panel .setting-group{ border: 1px dashed var(--ykt-border); border-radius: 6px; padding: 10px; }\r\n#ykt-settings-panel .setting-group h4{ margin: 0 0 8px 0; font-size: 14px; }\r\n#ykt-settings-panel .setting-item{ display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }\r\n#ykt-settings-panel label{ font-size: 13px; }\r\n#ykt-settings-panel input[type="text"],\r\n#ykt-settings-panel input[type="number"]{\r\n  height: 30px; border: 1px solid var(--ykt-border-strong);\r\n  border-radius: 4px; padding: 0 8px; min-width: 220px;\r\n}\r\n#ykt-settings-panel small{ color: #666; }\r\n#ykt-settings-panel .setting-actions{ display: flex; gap: 8px; margin-top: 6px; }\r\n#ykt-settings-panel button{\r\n  height: 30px; padding: 0 12px; border-radius: 6px;\r\n  border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\r\n}\r\n#ykt-settings-panel button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\r\n\r\n/* 自定义复选框（与手写脚本一致的视觉语义） */\r\n#ykt-settings-panel .checkbox-label{ position: relative; padding-left: 26px; cursor: pointer; user-select: none; }\r\n#ykt-settings-panel .checkbox-label input{ position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }\r\n#ykt-settings-panel .checkbox-label .checkmark{\r\n  position: absolute; left: 0; top: 50%; transform: translateY(-50%);\r\n  height: 16px; width: 16px; border:1px solid var(--ykt-border-strong); border-radius: 3px; background: #fff;\r\n}\r\n#ykt-settings-panel .checkbox-label input:checked ~ .checkmark{\r\n  background: var(--ykt-accent); border-color: var(--ykt-accent);\r\n}\r\n#ykt-settings-panel .checkbox-label .checkmark:after{\r\n  content: ""; position: absolute; display: none;\r\n  left: 5px; top: 1px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);\r\n}\r\n#ykt-settings-panel .checkbox-label input:checked ~ .checkmark:after{ display: block; }\r\n\r\n/* ===== AI 解答面板 (#ykt-ai-answer-panel) ===== */\r\n#ykt-ai-answer-panel .ai-question{\r\n  white-space: pre-wrap; background: #fafafa; border: 1px solid var(--ykt-border);\r\n  padding: 8px; border-radius: 6px; margin-bottom: 8px; max-height: 160px; overflow: auto;\r\n}\r\n#ykt-ai-answer-panel .ai-loading{ color: var(--ykt-accent); margin-bottom: 6px; }\r\n#ykt-ai-answer-panel .ai-error{ color: #b00020; margin-bottom: 6px; }\r\n#ykt-ai-answer-panel .ai-answer{ white-space: pre-wrap; margin-top: 4px; }\r\n#ykt-ai-answer-panel .ai-actions{ margin-top: 10px; }\r\n#ykt-ai-answer-panel .ai-actions button{\r\n  height: 30px; padding: 0 12px; border-radius: 6px;\r\n  border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\r\n}\r\n#ykt-ai-answer-panel .ai-actions button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\r\n\r\n/* ===== 课件浏览面板 (#ykt-presentation-panel) ===== */\r\n#ykt-presentation-panel{ width: 900px; }\r\n#ykt-presentation-panel .panel-controls{ display: flex; align-items: center; gap: 8px; }\r\n#ykt-presentation-panel .panel-body{\r\n  display: grid; grid-template-columns: 300px 1fr; gap: 10px;\r\n}\r\n#ykt-presentation-panel .presentation-title{\r\n  font-weight: 600; padding: 6px 0; border-bottom: 1px solid var(--ykt-border);\r\n}\r\n#ykt-presentation-panel .slide-thumb-list{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }\r\n#ykt-presentation-panel .slide-thumb{\r\n  border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa;\r\n  min-height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 4px; text-align: center;\r\n}\r\n#ykt-presentation-panel .slide-thumb:hover{ border-color: var(--ykt-accent); background: #eef3ff; }\r\n#ykt-presentation-panel .slide-thumb img{ max-width: 100%; max-height: 120px; object-fit: contain; display: block; }\r\n\r\n#ykt-presentation-panel .slide-view{\r\n  position: relative; border: 1px solid var(--ykt-border); border-radius: 8px; min-height: 360px; background: #fff; overflow: hidden;\r\n}\r\n#ykt-presentation-panel .slide-cover{ display: flex; align-items: center; justify-content: center; min-height: 360px; }\r\n#ykt-presentation-panel .slide-cover img{ max-width: 100%; max-height: 100%; object-fit: contain; display: block; }\r\n\r\n#ykt-presentation-panel .problem-box{\r\n  position: absolute; left: 12px; right: 12px; bottom: 12px;\r\n  background: rgba(255,255,255,.96); border: 1px solid var(--ykt-border);\r\n  border-radius: 8px; padding: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.12);\r\n}\r\n#ykt-presentation-panel .problem-head{ font-weight: 600; margin-bottom: 6px; }\r\n#ykt-presentation-panel .problem-options{ display: grid; grid-template-columns: 1fr; gap: 4px; }\r\n#ykt-presentation-panel .problem-option{ padding: 6px 8px; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa; }\r\n\r\n/* ===== 题目列表面板 (#ykt-problem-list-panel) ===== */\r\n#ykt-problem-list{ display: flex; flex-direction: column; gap: 10px; }\r\n#ykt-problem-list .problem-row{\r\n  border: 1px solid var(--ykt-border); border-radius: 8px; padding: 8px; background: #fafafa;\r\n}\r\n#ykt-problem-list .problem-title{ font-weight: 600; margin-bottom: 4px; }\r\n#ykt-problem-list .problem-meta{ color: #666; font-size: 12px; margin-bottom: 6px; }\r\n#ykt-problem-list .problem-actions{ display: flex; gap: 8px; align-items: center; }\r\n#ykt-problem-list .problem-actions button{\r\n  height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\r\n}\r\n#ykt-problem-list .problem-actions button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\r\n#ykt-problem-list .problem-done{ color: #0a7a2f; font-weight: 600; }\r\n\r\n/* ===== 活动题目列表（右下角小卡片） ===== */\r\n#ykt-active-problems-panel.ykt-active-wrapper{\r\n  position: fixed; right: 20px; bottom: 60px; z-index: var(--ykt-z);\r\n}\r\n#ykt-active-problems{ display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow: auto; }\r\n#ykt-active-problems .active-problem-card{\r\n  width: 320px; background: #fff; border: 1px solid var(--ykt-border);\r\n  border-radius: 8px; box-shadow: var(--ykt-shadow); padding: 10px;\r\n}\r\n#ykt-active-problems .ap-title{ font-weight: 600; margin-bottom: 4px; }\r\n#ykt-active-problems .ap-info{ color: #666; font-size: 12px; margin-bottom: 8px; }\r\n#ykt-active-problems .ap-actions{ display: flex; gap: 8px; }\r\n#ykt-active-problems .ap-actions button{\r\n  height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer;\r\n}\r\n#ykt-active-problems .ap-actions button:hover{ background: #eef3ff; border-color: var(--ykt-accent); }\r\n\r\n/* ===== 教程面板 (#ykt-tutorial-panel) ===== */\r\n#ykt-tutorial-panel .tutorial-content h4{ margin: 8px 0 6px; }\r\n#ykt-tutorial-panel .tutorial-content p,\r\n#ykt-tutorial-panel .tutorial-content li{ line-height: 1.5; }\r\n#ykt-tutorial-panel .tutorial-content a{ color: var(--ykt-accent); text-decoration: none; }\r\n#ykt-tutorial-panel .tutorial-content a:hover{ text-decoration: underline; }\r\n\r\n/* ===== 小屏适配 ===== */\r\n@media (max-width: 1200px){\r\n  #ykt-presentation-panel{ width: 760px; }\r\n  #ykt-presentation-panel .panel-body{ grid-template-columns: 260px 1fr; }\r\n}\r\n@media (max-width: 900px){\r\n  .ykt-panel{ right: 12px; left: 12px; width: auto; }\r\n  #ykt-presentation-panel{ width: auto; }\r\n  #ykt-presentation-panel .panel-body{ grid-template-columns: 1fr; }\r\n}\r\n\r\n/* ===== 自动作答成功弹窗 ===== */\r\n.auto-answer-popup{\r\n  position: fixed; inset: 0; z-index: calc(var(--ykt-z) + 2);\r\n  background: rgba(0,0,0,.2);\r\n  display: flex; align-items: flex-end; justify-content: flex-end;\r\n  opacity: 0; transition: opacity .18s ease;\r\n}\r\n.auto-answer-popup.visible{ opacity: 1; }\r\n\r\n.auto-answer-popup .popup-content{\r\n  width: min(560px, 96vw);\r\n  background: #fff; border: 1px solid var(--ykt-border-strong);\r\n  border-radius: 10px; box-shadow: var(--ykt-shadow);\r\n  margin: 16px; overflow: hidden;\r\n}\r\n\r\n.auto-answer-popup .popup-header{\r\n  display: flex; align-items: center; justify-content: space-between;\r\n  gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--ykt-border);\r\n}\r\n.auto-answer-popup .popup-header h4{ margin: 0; font-size: 16px; }\r\n.auto-answer-popup .close-btn{ cursor: pointer; color: var(--ykt-muted); }\r\n.auto-answer-popup .close-btn:hover{ color: var(--ykt-hover); }\r\n\r\n.auto-answer-popup .popup-body{ padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }\r\n.auto-answer-popup .popup-row{ display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: start; }\r\n.auto-answer-popup .label{ color: #666; font-size: 12px; line-height: 1.8; }\r\n.auto-answer-popup .content{ white-space: normal; word-break: break-word; }\r\n\r\n/* ===== 1.16.6: 课件浏览面板：固定右侧详细视图，左侧独立滚动 ===== */\r\n#ykt-presentation-panel {\r\n  --ykt-panel-max-h: 72vh;           /* 与 .ykt-panel 的最大高度保持一致 */\r\n}\r\n\r\n/* 两列布局：左列表 + 右详细视图 */\r\n#ykt-presentation-panel .panel-body{\r\n  display: grid;\r\n  grid-template-columns: 300px 1fr;  /* 左列宽度可按需调整 */\r\n  gap: 12px;\r\n  overflow: hidden;                  /* 避免内部再出现双滚动条 */\r\n  align-items: start;\r\n}\r\n\r\n/* 左侧：只让左列滚动，限制在面板可视高度内 */\r\n#ykt-presentation-panel .panel-left{\r\n  max-height: var(--ykt-panel-max-h);\r\n  overflow: auto;\r\n  min-width: 0;                      /* 防止子元素撑破 */\r\n}\r\n\r\n/* 右侧：粘性定位为“固定”，始终在面板可视区内 */\r\n#ykt-presentation-panel .panel-right{\r\n  position: sticky;\r\n  top: 0;                            /* 相对可滚动祖先（面板）吸顶 */\r\n  align-self: start;\r\n}\r\n\r\n/* 右侧详细视图自身也限制高度并允许内部滚动 */\r\n#ykt-presentation-panel .slide-view{\r\n  max-height: var(--ykt-panel-max-h);\r\n  overflow: auto;\r\n  border: 1px solid var(--ykt-border);\r\n  border-radius: 8px;\r\n  background: #fff;\r\n}\r\n\r\n/* 小屏自适配：堆叠布局时取消 sticky，避免遮挡 */\r\n@media (max-width: 900px){\r\n  #ykt-presentation-panel .panel-body{\r\n    grid-template-columns: 1fr;\r\n  }\r\n  #ykt-presentation-panel .panel-right{\r\n    position: static;\r\n  }\r\n}\r\n\r\n/* 在现有样式基础上添加 */\r\n\r\n.text-status {\r\n  font-size: 12px;\r\n  padding: 4px 8px;\r\n  border-radius: 4px;\r\n  margin: 4px 0;\r\n  display: inline-block;\r\n}\r\n\r\n.text-status.success {\r\n  background-color: #d4edda;\r\n  color: #155724;\r\n  border: 1px solid #c3e6cb;\r\n}\r\n\r\n.text-status.warning {\r\n  background-color: #fff3cd;\r\n  color: #856404;\r\n  border: 1px solid #ffeaa7;\r\n}\r\n\r\n.ykt-question-display {\r\n  background: #f8f9fa;\r\n  border: 1px solid #dee2e6;\r\n  border-radius: 4px;\r\n  padding: 8px;\r\n  margin: 4px 0;\r\n  max-height: 150px;\r\n  overflow-y: auto;\r\n  font-family: monospace;\r\n  font-size: 13px;\r\n  line-height: 1.4;\r\n}\r\n\r\n/* 在现有样式基础上添加 */\r\n\r\n.ykt-custom-prompt {\r\n  width: 100%;\r\n  min-height: 60px;\r\n  padding: 8px;\r\n  border: 1px solid #ddd;\r\n  border-radius: 4px;\r\n  font-family: inherit;\r\n  font-size: 13px;\r\n  line-height: 1.4;\r\n  resize: vertical;\r\n  background-color: #fff;\r\n  transition: border-color 0.3s ease;\r\n}\r\n\r\n.ykt-custom-prompt:focus {\r\n  outline: none;\r\n  border-color: #007bff;\r\n  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);\r\n}\r\n\r\n.ykt-custom-prompt::placeholder {\r\n  color: #999;\r\n  font-style: italic;\r\n}\r\n\r\n.ykt-custom-prompt:empty::before {\r\n  content: attr(placeholder);\r\n  color: #999;\r\n  font-style: italic;\r\n  pointer-events: none;\r\n}\r\n\r\n/* 确保输入框在暗色主题下也能正常显示 */\r\n.ykt-panel.dark .ykt-custom-prompt {\r\n  background-color: #2d3748;\r\n  border-color: #4a5568;\r\n  color: #e2e8f0;\r\n}\r\n\r\n.ykt-panel.dark .ykt-custom-prompt::placeholder {\r\n  color: #a0aec0;\r\n}\r\n\r\n.ykt-panel.dark .ykt-custom-prompt:focus {\r\n  border-color: #63b3ed;\r\n  box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.25);\r\n}\r\n\r\n/* ===== Markdown-like 样式（作用域限定在 AI 结果区）===== */\r\n.ai-answer {\r\n  white-space: normal;\r\n  line-height: 1.6;\r\n  font-size: 14px;\r\n  color: inherit;\r\n}\r\n\r\n/* 段落和标题间距 */\r\n.ai-answer p { margin: 8px 0; }\r\n.ai-answer h1, .ai-answer h2, .ai-answer h3,\r\n.ai-answer h4, .ai-answer h5, .ai-answer h6 {\r\n  margin: 12px 0 6px;\r\n  line-height: 1.35;\r\n  font-weight: 600;\r\n}\r\n.ai-answer h1 { font-size: 20px; }\r\n.ai-answer h2 { font-size: 18px; }\r\n.ai-answer h3 { font-size: 16px; }\r\n.ai-answer h4 { font-size: 15px; }\r\n.ai-answer h5, .ai-answer h6 { font-size: 14px; }\r\n\r\n/* 链接 */\r\n.ai-answer a {\r\n  text-decoration: underline;\r\n  cursor: pointer;\r\n}\r\n\r\n/* 引用块 */\r\n.ai-answer blockquote {\r\n  margin: 8px 0;\r\n  padding: 6px 10px;\r\n  border-left: 3px solid rgba(0,0,0,0.2);\r\n  background: rgba(0,0,0,0.03);\r\n}\r\n\r\n/* 水平线 */\r\n.ai-answer hr {\r\n  border: 0;\r\n  border-top: 1px solid rgba(0,0,0,0.15);\r\n  margin: 10px 0;\r\n}\r\n\r\n/* 代码块与行内代码 */\r\n.ai-answer pre.ykt-md-code {\r\n  margin: 8px 0;\r\n  padding: 10px;\r\n  overflow: auto;\r\n  border: 1px solid rgba(0,0,0,0.15);\r\n  border-radius: 6px;\r\n  background: #f7f8fa;\r\n}\r\n.ai-answer pre.ykt-md-code code {\r\n  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;\r\n  font-size: 12px;\r\n}\r\n.ai-answer code.ykt-md-inline {\r\n  padding: 1px 4px;\r\n  border: 1px solid rgba(0,0,0,0.15);\r\n  border-radius: 4px;\r\n  background: #f7f8fa;\r\n  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;\r\n  font-size: 12px;\r\n}\r\n\r\n/* 列表：优先启用浏览器原生圆点/数字 */\r\n.ai-answer ul, .ai-answer ol {\r\n  margin: 6px 0 6px 22px;   /* 左缩进 */\r\n}\r\n.ai-answer ul { list-style: disc; }\r\n.ai-answer ol { list-style: decimal; }\r\n\r\n/* 表格（如果 LLM 生成了表格 Markdown） */\r\n.ai-answer table {\r\n  border-collapse: collapse;\r\n  margin: 8px 0;\r\n  width: 100%;\r\n  max-width: 100%;\r\n}\r\n.ai-answer th, .ai-answer td {\r\n  border: 1px solid rgba(0,0,0,0.15);\r\n  padding: 6px 8px;\r\n  text-align: left;\r\n}\r\n.ai-answer thead th {\r\n  background: rgba(0,0,0,0.05);\r\n  font-weight: 600;\r\n}\r\n\r\n/* 适配深色（如面板有暗色主题） */\r\n@media (prefers-color-scheme: dark) {\r\n  .ai-answer blockquote {\r\n    border-left-color: rgba(255,255,255,0.35);\r\n    background: rgba(255,255,255,0.06);\r\n  }\r\n  .ai-answer pre.ykt-md-code,\r\n  .ai-answer code.ykt-md-inline {\r\n    background: #111418;\r\n    border-color: rgba(255,255,255,0.2);\r\n  }\r\n  .ai-answer hr { border-top-color: rgba(255,255,255,0.2); }\r\n  .ai-answer th, .ai-answer td { border-color: rgba(255,255,255,0.2); }\r\n  .ai-answer thead th { background: rgba(255,255,255,0.08); }\r\n}\r\n\r\n#ykt-ai-answer.tex-enabled svg { vertical-align: middle; }\r\n#ykt-ai-answer.tex-enabled .MathJax { line-height: 1; }\r\n#ykt-ai-answer .mjx-svg { color: currentColor; }';
   // src/ui/styles.js

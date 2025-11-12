@@ -39,7 +39,7 @@ export function updateActiveProblems() {
     
     // ✅ 如果倒计时结束（剩余时间为0），跳过显示这个卡片
     if (remain <= 0) {
-      console.log(`[ActiveProblems] 题目 ${pid} 倒计时已结束，移除卡片`);
+      console.log(`[雨课堂助手][INFO][ActiveProblems] 题目 ${pid} 倒计时已结束，移除卡片`);
       return;
     }
 

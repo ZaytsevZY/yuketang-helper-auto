@@ -23,25 +23,25 @@ export function installXHRInterceptor() {
 
   function detectEnvironmentAndAdaptAPI() {
     const hostname = location.hostname;
-    if (hostname === 'www.yuketang.cn') { console.log('[雨课堂助手] 检测到标准雨课堂环境'); return 'standard'; }
-    if (hostname === 'pro.yuketang.cn') { console.log('[雨课堂助手] 检测到荷塘雨课堂环境'); return 'pro'; }
-    console.log('[雨课堂助手] 未知环境:', hostname); return 'unknown';
+    if (hostname === 'www.yuketang.cn') { console.log('[雨课堂助手][INFO] 检测到标准雨课堂环境'); return 'standard'; }
+    if (hostname === 'pro.yuketang.cn') { console.log('[雨课堂助手][INFO] 检测到荷塘雨课堂环境'); return 'pro'; }
+    console.log('[雨课堂助手][ERR] 未知环境:', hostname); return 'unknown';
   }
 
   MyXHR.addHandler((xhr, method, url) => {
     const envType = detectEnvironmentAndAdaptAPI();
     const pathname = url.pathname || '';
-    console.log('[雨课堂助手] XHR请求:', method, pathname, url.search);
+    console.log('[雨课堂助手][INFO] XHR请求:', method, pathname, url.search);
 
     // 课件：精确路径或包含关键字
     if (
       pathname === '/api/v3/lesson/presentation/fetch' ||
       (pathname.includes('presentation') && pathname.includes('fetch'))
     ) {
-      console.log('[雨课堂助手] ✅ 拦截课件请求');
+      console.log('[雨课堂助手][INFO] 拦截课件请求');
       xhr.intercept((resp) => {
         const id = url.searchParams.get('presentation_id');
-        console.log('[雨课堂助手] 课件响应:', resp);
+        console.log('[雨课堂助手][INFO] 课件响应:', resp);
         if (resp && (resp.code === 0 || resp.success)) {
           actions.onPresentationLoaded(id, resp.data || resp.result);
         }
@@ -54,7 +54,7 @@ export function installXHRInterceptor() {
       pathname === '/api/v3/lesson/problem/answer' ||
       (pathname.includes('problem') && pathname.includes('answer'))
     ) {
-      console.log('[雨课堂助手] ✅ 拦截答题请求');
+      console.log('[雨课堂助手][INFO] 拦截答题请求');
       xhr.intercept((resp, payload) => {
         try {
           const { problemId, result } = JSON.parse(payload || '{}');
@@ -62,7 +62,7 @@ export function installXHRInterceptor() {
             actions.onAnswerProblem(problemId, result);
           }
         } catch (e) {
-          console.error('[雨课堂助手] 解析答题响应失败:', e);
+          console.error('[雨课堂助手][ERR] 解析答题响应失败:', e);
         }
       });
       return;
@@ -82,7 +82,7 @@ export function installXHRInterceptor() {
       return;
     }
     if (pathname.includes('/api/')) {
-      console.log('[雨课堂助手] 其他API:', method, pathname);
+      console.log('[雨课堂助手][WARN] 其他API:', method, pathname);
     }
   });
 
@@ -292,13 +292,13 @@ export async function getActivePresentationId(lessonId) {
         fromData.presentation_id ||
         (Array.isArray(fromData) && (fromData[0]?.presentationId || fromData[0]?.presentation_id));
       if (pid) {
-        console.log('[getActivePresentationId] OK', { url, presentationId: pid });
+        console.log('[雨课堂助手][DBG][getActivePresentationId] OK', { url, presentationId: pid });
         return String(pid);
       }
     } catch (e) {
       // 忽略，试下一个
     }
   }
-  console.warn('[getActivePresentationId] no pid found for lesson', lessonId);
+  console.warn('[雨课堂助手][WARN][getActivePresentationId] no pid found for lesson', lessonId);
   return null;
 }

@@ -175,7 +175,7 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
       err.details = { startTime, endTime, now };
       throw err;
     }
-  console.log('[YKT][INFO][answer] 已触发补交分支 (/retry)', {
+  console.log('[雨课堂助手][INFO][answer] 已触发补交分支 (/retry)', {
     problemId: problem.problemId,
     dt,
     pastDeadline,

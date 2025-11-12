@@ -16,6 +16,7 @@ export const meta = `
 // @match        https://pro.yuketang.cn/lesson/fullscreen/v3/*
 // @match        https://pro.yuketang.cn/v2/web/*
 // @match        https://pro.yuketang.cn/v2/web/index
+// @match        https://pro.yuketang.cn/v2/web/student-lesson-report/*
 // @grant        GM_addStyle
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest

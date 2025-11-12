@@ -4,8 +4,8 @@ import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
 import { submitAnswer } from '../../tsm/answer.js';
 
-const L = (...a) => console.log('[YKT][DBG][problem-list]', ...a);
-const W = (...a) => console.warn('[YKT][WARN][problem-list]', ...a);
+const L = (...a) => console.log('[雨课堂助手][DBG][problem-list]', ...a);
+const W = (...a) => console.warn('[雨课堂助手][WARN][problem-list]', ...a);
 
 function $(sel) { return document.querySelector(sel); }
 function create(tag, cls){ const n=document.createElement(tag); if(cls) n.className=cls; return n; }

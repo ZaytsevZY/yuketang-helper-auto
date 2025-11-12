@@ -13,8 +13,8 @@ function findSlideAcrossPresentations(idStr) {
   return null;
 }
 
-const L = (...a) => console.log('[YKT][DBG][presentation]', ...a);
-const W = (...a) => console.warn('[YKT][WARN][presentation]', ...a);
+const L = (...a) => console.log('[雨课堂助手][DBG][presentation]', ...a);
+const W = (...a) => console.warn('[雨课堂助手][WARN][presentation]', ...a);
 
 function $(sel) { return document.querySelector(sel); }
 
