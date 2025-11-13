@@ -6,15 +6,16 @@ import { ensureHtml2Canvas, ensureJsPDF } from '../../core/env.js';
 
 let mounted = false;
 let host;
-
+// 是不是结束课程页
+let staticReportReady = false;
 // 在 repo.slides miss 时，跨所有 presentations 的 slides 做兜底搜索
 function findSlideAcrossPresentations(idStr) {
   for (const [, pres] of repo.presentations) { const arr = pres?.slides || []; const hit = arr.find(s => String(s.id) === idStr); if (hit) return hit; }
   return null;
 }
 
-const L = (...a) => console.log('[YKT][DBG][presentation]', ...a);
-const W = (...a) => console.warn('[YKT][WARN][presentation]', ...a);
+const L = (...a) => console.log('[雨课堂助手][DBG][presentation]', ...a);
+const W = (...a) => console.warn('[雨课堂助手][WARN][presentation]', ...a);
 
 function $(sel) { return document.querySelector(sel); }
 
@@ -53,6 +54,160 @@ function getSlideByAny(id) {
   if (cross) { repo.slides.set(sid, cross); return { slide: cross, hit: 'cross-fill' }; }
   return { slide: null, hit: 'miss' };
 }
+
+// fetch静态PPT
+function isStudentLessonReportPage() {
+  return /\/v2\/web\/student-lesson-report\//.test(window.location.pathname);
+}
+
+function extractCoverIndex(url) {
+  try {
+    const m = decodeURIComponent(url).match(/cover(\d+)[_.]/i);
+    if (m) return parseInt(m[1], 10);
+  } catch {}
+  return null;
+}
+
+function getSlidesDocument() {
+  if (document.querySelector('#content-page-wrap')) {
+    return document;
+  }
+  for (let i = 0; i < window.frames.length; i++) {
+    try {
+      const d = window.frames[i].document;
+      if (d && d.querySelector('#content-page-wrap')) {
+        console.log('[雨课堂助手][DBG][presentation][static-report] 在子 frame 中找到了 content-page-wrap');
+        return d;
+      }
+    } catch (e) {
+    }
+  }
+
+  console.log('[雨课堂助手][DBG][presentation][static-report] 所有 frame 中都没有 content-page-wrap，退回顶层 document');
+  return document;
+}
+
+function debugCheckSingleSlideImg() {
+  const selector = "#content-page-wrap > div > aside > div.left-panel-scroll > div.left-panel-tab-content > div > section.slides-list > div.slide-item.f13.active-slide-item > div > img";
+  const doc = getSlidesDocument();
+  const img = doc.querySelector(selector);
+  console.log('[雨课堂助手][DBG][presentation][static-report][debugCheck]', {
+    href: window.location.href,
+    hasContentPageWrap: !!document.querySelector('#content-page-wrap'),
+    imgFound: !!img,
+    selector
+  });
+  if (img) {
+    console.log('[雨课堂助手][DBG][presentation][static-report][debugCheck] img.outerHTML =', img.outerHTML);
+    console.log('[雨课堂助手][DBG][presentation][static-report][debugCheck] img.src =', img.currentSrc || img.src || img.getAttribute('src'));
+  }
+  return img;
+}
+
+function collectStaticSlideURLsFromDom() {
+  const urls = new Set();
+
+  // 先跑一遍最精确的 path 来看看当前 frame 到底有没有这张图
+  const debugImg = debugCheckSingleSlideImg();
+  if (debugImg) {
+    const src = debugImg.currentSrc || debugImg.src || debugImg.getAttribute('src') || '';
+    if (src &&
+        /thu-private-qn\.yuketang\.cn\/slide\/\d+\//.test(src) &&
+        /\.(png|jpg|jpeg|webp)(\?|#|$)/i.test(src)) {
+      urls.add(src);
+    }
+  }
+
+  const doc = getSlidesDocument();
+  const candidates = doc.querySelectorAll(
+    'section.slides-list img, .slides-list img,' +
+    'div.slide-item img,' +
+    'img[alt="cover"]'
+  );
+
+  console.log('[雨课堂助手][DBG][presentation][static-report] DOM 候选 img 数量 =', candidates.length);
+
+  candidates.forEach((img, idx) => {
+    const src = img.currentSrc || img.src || img.getAttribute('src') || '';
+
+    console.log('[雨课堂助手][DBG][presentation][static-report] 检查 img#' + idx, {
+      className: img.className,
+      outerHTML: img.outerHTML.slice(0, 200) + (img.outerHTML.length > 200 ? '…' : ''),
+      src
+    });
+
+    if (!src) return;
+
+    if (/thu-private-qn\.yuketang\.cn\/slide\/\d+\//.test(src) &&
+        /\.(png|jpg|jpeg|webp)(\?|#|$)/i.test(src)) {
+      urls.add(src);
+    }
+  });
+
+  const arr = [...urls];
+  console.log('[雨课堂助手][DBG][presentation][static-report] DOM 收集到 slide URL：', arr);
+  return arr;
+}
+
+
+function ensureStaticReportPresentation() {
+  if (!isStudentLessonReportPage()) return false;
+
+  const pid = `static:${window.location.pathname}`;
+
+  // 如果已经注入过，就不再重复扫描 & 打印日志，直接返回 false
+  if (staticReportReady && repo.presentations.has(pid)) {
+    return false;
+  }
+
+  const urlsFromDom = collectStaticSlideURLsFromDom();
+  const urls = Array.from(new Set([...urlsFromDom]));
+
+  if (!urls.length) {
+    console.log('[雨课堂助手][DBG][presentation][static-report] 依然没有发现任何 slide URL');
+    return false;
+  }
+
+  const withIndex = urls.map((u, i) => ({ u, idx: extractCoverIndex(u) ?? (i + 1) }));
+  withIndex.sort((a, b) => a.idx - b.idx);
+
+  const slides = withIndex.map(({ u, idx }) => {
+    const id = `static-${idx}`;
+    return { id, index: idx, title: `第 ${idx} 页`, thumbnail: u, image: u, problem: null };
+  });
+
+  const titleFromPage =
+    document.querySelector('.lesson-title, .title, h1, .header-title')?.textContent?.trim() ||
+    '静态课件（报告页）';
+
+  const presentation = { id: pid, title: titleFromPage, slides };
+  const existed = repo.presentations.has(pid);
+  repo.presentations.set(pid, presentation);
+
+  let filled = 0;
+  for (const s of slides) {
+    const sid = String(s.id);
+    if (!repo.slides.has(sid)) {
+      repo.slides.set(sid, s);
+      filled++;
+    }
+  }
+  if (!repo.currentPresentationId) repo.currentPresentationId = pid;
+
+  staticReportReady = true; // ★ 标记为已完成
+
+  console.log('[雨课堂助手][DBG][presentation][static-report] 已注入/更新 presentation', {
+    pid,
+    title: presentation.title,
+    slideCount: slides.length,
+    newSlidesFilled: filled,
+    existed,
+    sample: slides.slice(0, 3).map(s => s.image)
+  });
+
+  return true;
+}
+
 
 export function mountPresentationPanel() {
   if (mounted) return host;
@@ -102,7 +257,8 @@ export function mountPresentationPanel() {
 export function showPresentationPanel(visible = true) {
   mountPresentationPanel();
   host.classList.toggle('visible', !!visible);
-  if (visible) updatePresentationList();
+  if (visible) {
+    updatePresentationList();}
 
   const presBtn = document.getElementById('ykt-btn-pres');
   if (presBtn) presBtn.classList.toggle('active', !!visible);
@@ -111,6 +267,43 @@ export function showPresentationPanel(visible = true) {
 
 export function updatePresentationList() {
   mountPresentationPanel();
+
+  try {
+    if (isStudentLessonReportPage()) {
+      ensureStaticReportPresentation();
+    }
+  } catch (e) {
+    W('[static-report] 检测/注入失败：', e);
+  }
+
+  if (!window.__ykt_static_dom_mo) {
+    window.__ykt_static_dom_mo = true;
+    let times = 0;
+
+    const mo = new MutationObserver(() => {
+      if (!isStudentLessonReportPage()) return;
+      if (++times > 20) return; 
+
+      console.log('[雨课堂助手][DBG][presentation][static-report] DOM 变更，尝试重新收集 slide URL (times =', times, ')');
+      const injected = ensureStaticReportPresentation();
+      if (injected) {
+        console.log('[雨课堂助手][DBG][presentation][static-report] DOM 中已找到 slide，停止监听并刷新面板');
+        try { mo.disconnect(); } catch (e) {}
+        updatePresentationList();
+      }
+    });
+
+    const rootSelector = "#content-page-wrap > div > aside > div.left-panel-scroll > div.left-panel-tab-content > div > section.slides-list";
+    let target = document.querySelector(rootSelector) || document.querySelector('section.slides-list') || document.body;
+
+    console.log('[雨课堂助手][DBG][presentation][static-report] MutationObserver 监听目标：', {
+      useBody: target === document.body,
+      hasSlidesList: target !== document.body
+    });
+
+    mo.observe(target, { childList: true, subtree: true });
+  }
+
   const listEl = document.getElementById('ykt-presentation-list');
   if (!listEl) { W('updatePresentationList: 缺少容器'); return; }
 
@@ -217,7 +410,6 @@ export function updatePresentationList() {
         repo.currentPresentationId = presIdStr;
         repo.currentSlideId = slideIdStr;
 
-        // 高亮切换 & 打印 DOM 现状
         slidesWrap.querySelectorAll('.slide-thumb.active').forEach(el => el.classList.remove('active'));
         thumb.classList.add('active');
         const actives = slidesWrap.querySelectorAll('.slide-thumb.active');
@@ -226,12 +418,10 @@ export function updatePresentationList() {
 
         updateSlideView();
 
-        // 确保当前选中页已写入 repo.slides（即便上面 hydrate 漏了，这里也兜一次）
         if (!repo.slides.has(slideIdStr)) {
           const cross = findSlideAcrossPresentations(slideIdStr); if (cross) { repo.slides.set(slideIdStr, cross); L('click-fill repo.slides <- cross', { slideIdStr }); }
         }
 
-        // 打印 repo.slides 的键分布
         try {
           const keysSample = Array.from(repo.slides.keys()).slice(0, 8);
           const typeDist = keysSample.reduce((m, k) => (m[typeof k] = (m[typeof k] || 0) + 1, m), {});

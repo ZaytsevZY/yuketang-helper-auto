@@ -4,7 +4,7 @@ export const meta = `
 // ==UserScript==
 // @name         AI雨课堂助手（JS版）
 // @namespace    https://github.com/ZaytsevZY/yuketang-helper-auto
-// @version      1.19.1
+// @version      1.19.2
 // @description  课堂习题提示，AI解答习题
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
@@ -16,6 +16,7 @@ export const meta = `
 // @match        https://pro.yuketang.cn/lesson/fullscreen/v3/*
 // @match        https://pro.yuketang.cn/v2/web/*
 // @match        https://pro.yuketang.cn/v2/web/index
+// @match        https://pro.yuketang.cn/v2/web/student-lesson-report/*
 // @grant        GM_addStyle
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest

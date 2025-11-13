@@ -2,9 +2,9 @@
  * Vuex 辅助工具 - 用于获取雨课堂主界面状态（附加调试日志）
  */
 
-const L = (...a) => console.log('[YKT][DBG][vuex-helper]', ...a);
-const W = (...a) => console.warn('[YKT][WARN][vuex-helper]', ...a);
-const E = (...a) => console.error('[YKT][ERR][vuex-helper]', ...a);
+const L = (...a) => console.log('[雨课堂助手][DBG][vuex-helper]', ...a);
+const W = (...a) => console.warn('[雨课堂助手][WARN][vuex-helper]', ...a);
+const E = (...a) => console.error('[雨课堂助手][ERR][vuex-helper]', ...a);
 
 export function getVueApp() {
   try {
@@ -69,7 +69,7 @@ export function watchMainPageChange(callback) {
     },
     { deep: false }
   );
-  L('✅ 已启动主界面页面切换监听');
+  L('已启动主界面页面切换监听');
   return unwatch;
 }
 

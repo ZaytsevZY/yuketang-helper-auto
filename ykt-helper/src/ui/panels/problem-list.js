@@ -4,8 +4,8 @@ import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
 import { submitAnswer } from '../../tsm/answer.js';
 
-const L = (...a) => console.log('[YKT][DBG][problem-list]', ...a);
-const W = (...a) => console.warn('[YKT][WARN][problem-list]', ...a);
+const L = (...a) => console.log('[雨课堂助手][DBG][problem-list]', ...a);
+const W = (...a) => console.warn('[雨课堂助手][WARN][problem-list]', ...a);
 
 function $(sel) { return document.querySelector(sel); }
 function create(tag, cls){ const n=document.createElement(tag); if(cls) n.className=cls; return n; }
@@ -227,7 +227,6 @@ function updateRow(row, e, prob){
   const meta = row.querySelector('.problem-meta');
   const status = prob?.status || e.status || {};
   const answered = !!(prob?.result || status?.answered || status?.myAnswer);
-  const endTime = Number(status?.endTime || prob?.endTime || e.endTime || 0) || undefined;
   meta.textContent = `PID: ${e.problemId} / 类型: ${e.problemType} / 状态: ${answered ? '已作答' : '未作答'} / 截止: ${endTime ? new Date(endTime).toLocaleString() : '未知'}`;
 
   // 容器
@@ -265,7 +264,13 @@ function updateRow(row, e, prob){
   submitBar.appendChild(btnSaveLocal);
 
   // 正常提交（过期则提示是否补交）
-  const startTime = Number(status?.startTime || prob?.startTime || e.startTime || 0) || undefined;
+  const ps = repo.problemStatus?.get?.(e.problemId);
+  const startTime = Number(
+    status?.startTime ?? prob?.startTime ?? e.startTime ?? ps?.startTime ?? 0
+  ) || undefined;
+  const endTime = Number(
+    status?.endTime   ?? prob?.endTime   ?? e.endTime   ?? ps?.endTime   ?? 0
+  ) || undefined;
   const btnSubmit = create('button'); btnSubmit.textContent = '提交';
   btnSubmit.onclick = async () => {
     try{

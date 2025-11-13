@@ -121,12 +121,16 @@
 }
 #ykt-presentation-panel .slide-thumb-list{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
 #ykt-presentation-panel .slide-thumb{
-  border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa;
+  position: relative; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa;
   min-height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 4px; text-align: center;
 }
 #ykt-presentation-panel .slide-thumb:hover{ border-color: var(--ykt-accent); background: #eef3ff; }
 #ykt-presentation-panel .slide-thumb img{ max-width: 100%; max-height: 120px; object-fit: contain; display: block; }
-
+.ykt-presentation-panel .slide-index {
+  position: absolute; top: 4px; left: 4px; z-index: 2;               
+  padding: 2px 6px; border-radius: 4px; font-size: 12px; line-height: 1;
+  background: rgba(0, 0, 0, 0.6); color: #fff; pointer-events: none;
+}
 #ykt-presentation-panel .slide-view{
   position: relative; border: 1px solid var(--ykt-border); border-radius: 8px; min-height: 360px; background: #fff; overflow: hidden;
 }
