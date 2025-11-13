@@ -73,3 +73,13 @@
 - 针对 [#9](https://github.com/ZaytsevZY/yuketang-helper-auto/issues/9)，增加了markdown渲染器
 
 - 维护了edge兼容性
+
+1.19.2
+
+- 再次尝试把补交逻辑加回来
+
+- 增加了从子frame获取静态PPT的方法
+
+- 修改了日志格式，现在控制台日志更规范了
+
+- 修复了一些已知问题
