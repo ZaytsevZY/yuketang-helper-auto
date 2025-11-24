@@ -9,6 +9,7 @@ export const meta = `
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
 // @match        https://pro.yuketang.cn/web/*
+// @match        https://changjiang.yuketang.cn/web/*
 // @match        https://*.yuketang.cn/lesson/fullscreen/v3/*
 // @match        https://*.yuketang.cn/v2/web/*
 // @match        https://www.yuketang.cn/lesson/fullscreen/v3/*
@@ -17,6 +18,10 @@ export const meta = `
 // @match        https://pro.yuketang.cn/v2/web/*
 // @match        https://pro.yuketang.cn/v2/web/index
 // @match        https://pro.yuketang.cn/v2/web/student-lesson-report/*
+// @match        https://changjiang.yuketang.cn/lesson/fullscreen/v3/*
+// @match        https://changjiang.yuketang.cn/v2/web/*
+// @match        https://changjiang.yuketang.cn/v2/web/index
+// @match        https://changjiang.yuketang.cn/v2/web/student-lesson-report/*
 // @grant        GM_addStyle
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
