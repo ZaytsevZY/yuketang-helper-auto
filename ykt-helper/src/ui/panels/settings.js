@@ -1,3 +1,7 @@
+// =========================
+// settings.js (new version)
+// =========================
+
 import tpl from './settings.html';
 import { ui } from '../ui-api.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
@@ -6,190 +10,333 @@ import { storage } from '../../core/storage.js';
 let mounted = false;
 let root;
 
+// ---- AI Profile helpers ----
+function ensureAIProfiles(configAI) {
+  if (!configAI) return;
+
+  // 只有 kimiApiKey 时创建第一个 profile
+  if (!Array.isArray(configAI.profiles) || configAI.profiles.length === 0) {
+    const legacyKey = configAI.kimiApiKey || configAI.apiKey || storage.get('kimiApiKey') || '';
+    configAI.profiles = [
+      {
+        id: 'default',
+        name: 'Kimi',
+        baseUrl: 'https://api.moonshot.cn/v1/chat/completions',
+        apiKey: legacyKey,
+        model: 'moonshot-v1-8k',
+        visionModel: 'moonshot-v1-8k-vision-preview',
+      },
+    ];
+    configAI.activeProfileId = 'default';
+  }
+
+  if (!configAI.activeProfileId) {
+    configAI.activeProfileId = configAI.profiles[0].id;
+  }
+}
+
+function getActiveProfile(configAI) {
+  ensureAIProfiles(configAI);
+  const list = configAI.profiles;
+  const id = configAI.activeProfileId;
+  return list.find(p => p.id === id) || list[0];
+}
+
+// ------------------------------
+
 export function mountSettingsPanel() {
   if (mounted) return root;
+
+  // 注入 HTML
   root = document.createElement('div');
   root.innerHTML = tpl;
   document.body.appendChild(root.firstElementChild);
   root = document.getElementById('ykt-settings-panel');
 
-  // 初始化表单
+  const aiCfg = ui.config.ai || (ui.config.ai = {});
+  ensureAIProfiles(aiCfg);
+
+  // === 获取所有 AI Profile 相关的 DOM ===
+  const $profileSelect = root.querySelector('#ykt-ai-profile-select');
+  const $profileAdd = root.querySelector('#ykt-ai-profile-add');
+  const $profileDel = root.querySelector('#ykt-ai-profile-del');
+
+  const $profileName = root.querySelector('#ykt-ai-profile-name');
+  const $baseUrl = root.querySelector('#ykt-ai-base-url');
   const $api = root.querySelector('#kimi-api-key');
+  const $model = root.querySelector('#ykt-ai-model');
+  const $visionModel = root.querySelector('#ykt-ai-vision-model');
+
+  // === 其他 UI 原有字段 ===
   const $auto = root.querySelector('#ykt-input-auto-answer');
   const $autoJoin = root.querySelector('#ykt-input-auto-join');
   const $autoJoinAutoAnswer = root.querySelector('#ykt-input-auto-join-auto-answer');
   const $autoAnalyze = root.querySelector('#ykt-input-ai-auto-analyze');
   const $delay = root.querySelector('#ykt-input-answer-delay');
   const $rand = root.querySelector('#ykt-input-random-delay');
-  const $priorityRadios = root.querySelector('#ykt-ai-pick-main-first');
+  const $priority = root.querySelector('#ykt-ai-pick-main-first');
   const $notifyDur = root.querySelector('#ykt-input-notify-duration');
   const $notifyVol = root.querySelector('#ykt-input-notify-volume');
+  const $iftex = root.querySelector('#ykt-ui-tex');
+
   const $audioFile = root.querySelector('#ykt-input-notify-audio-file');
   const $audioUrl  = root.querySelector('#ykt-input-notify-audio-url');
   const $applyUrl  = root.querySelector('#ykt-btn-apply-audio-url');
   const $preview   = root.querySelector('#ykt-btn-preview-audio');
   const $clear     = root.querySelector('#ykt-btn-clear-audio');
   const $audioName = root.querySelector('#ykt-tip-audio-name');
-  const $iftex = root.querySelector('#ykt-ui-tex');
 
-  $api.value = ui.config.ai.kimiApiKey || '';
-  if (typeof ui.config.autoJoinEnabled === 'undefined') ui.config.autoJoinEnabled = false;
-  if (typeof ui.config.autoAnswerOnAutoJoin === 'undefined') ui.config.autoAnswerOnAutoJoin = true;
+  //--------------------------
+  //       Profile UI
+  //--------------------------
+
+  function refreshProfileSelect() {
+    const ai = ui.config.ai;
+    $profileSelect.innerHTML = '';
+    ai.profiles.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name || p.id;
+      if (p.id === ai.activeProfileId) opt.selected = true;
+      $profileSelect.appendChild(opt);
+    });
+  }
+
+  function loadProfileToForm(profileId) {
+    const p = ui.config.ai.profiles.find(x => x.id === profileId);
+    if (!p) return;
+
+    ui.config.ai.activeProfileId = p.id;
+
+    $profileName.value = p.name || '';
+    $baseUrl.value = p.baseUrl || '';
+    $api.value = p.apiKey || '';
+    $model.value = p.model || '';
+    $visionModel.value = p.visionModel || '';
+  }
+
+  // 初始化 Profile 下拉框
+  refreshProfileSelect();
+  loadProfileToForm(ui.config.ai.activeProfileId);
+
+  // 切换 profile
+  $profileSelect.addEventListener('change', () => {
+    loadProfileToForm($profileSelect.value);
+  });
+
+  // 添加 profile
+  $profileAdd.addEventListener('click', () => {
+    const id = `p_${Date.now().toString(36)}`;
+    const newP = {
+      id,
+      name: '新配置',
+      baseUrl: 'https://api.openai.com/...',
+      apiKey: '',
+      model: 'gpt-4o-mini',
+      visionModel: '',
+    };
+    ui.config.ai.profiles.push(newP);
+    ui.config.ai.activeProfileId = id;
+
+    refreshProfileSelect();
+    loadProfileToForm(id);
+  });
+
+  // 删除 profile
+  $profileDel.addEventListener('click', () => {
+    const ai = ui.config.ai;
+    if (ai.profiles.length <= 1) {
+      ui.toast('至少保留一个配置', 2500);
+      return;
+    }
+    const id = ai.activeProfileId;
+    ai.profiles = ai.profiles.filter(p => p.id !== id);
+    ai.activeProfileId = ai.profiles[0].id;
+
+    refreshProfileSelect();
+    loadProfileToForm(ai.activeProfileId);
+  });
+
+  //--------------------------------------
+  //         初始化原有 UI 配置
+  //--------------------------------------
+
   $autoJoin.checked = !!ui.config.autoJoinEnabled;
   $autoJoinAutoAnswer.checked = !!ui.config.autoAnswerOnAutoJoin;
   $auto.checked = !!ui.config.autoAnswer;
   $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
+
   $iftex.checked = !!ui.config.iftex;
-  $delay.value = Math.floor(ui.config.autoAnswerDelay / 1000);
-  $rand.value = Math.floor(ui.config.autoAnswerRandomDelay / 1000);
-  const curPriority = ui.config.aiSlidePickPriority || 'main';
-  $priorityRadios.checked = (ui.config.aiSlidePickMainFirst !== false);
-  $notifyDur.value = Math.max(2, Math.floor((+ui.config.notifyPopupDuration || 5000) / 1000));
-  $notifyVol.value = Math.round(100 * Math.max(0, Math.min(1, +ui.config.notifyVolume ?? 0.6)));
-  if (ui.config.customNotifyAudioName || ui.config.customNotifyAudioSrc) {
-    $audioName.textContent = `当前：${ui.config.customNotifyAudioName || '(自定义URL)'}`;
+
+  $delay.value = Math.floor((ui.config.autoAnswerDelay || 3000) / 1000);
+  $rand.value = Math.floor((ui.config.autoAnswerRandomDelay || 1500) / 1000);
+
+  $priority.checked = (ui.config.aiSlidePickPriority !== false);
+
+  $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5000) / 1000);
+  $notifyVol.value = Math.round(100 * (ui.config.notifyVolume ?? 0.6));
+
+  if (ui.config.customNotifyAudioName) {
+    $audioName.textContent = `当前：${ui.config.customNotifyAudioName}`;
   } else {
     $audioName.textContent = '当前：使用内置“叮-咚”提示音';
   }
 
-  root.querySelector('#ykt-settings-close').addEventListener('click', () => showSettingsPanel(false));
+  //--------------------------------------
+  //            保存设置
+  //--------------------------------------
 
   root.querySelector('#ykt-btn-settings-save').addEventListener('click', () => {
-    ui.config.ai.kimiApiKey = $api.value.trim();
+    // --- 保存当前 Profile ---
+    const ai = ui.config.ai;
+    const pid = ai.activeProfileId;
+    const p = ai.profiles.find(x => x.id === pid);
+    if (p) {
+      p.name = $profileName.value.trim() || p.name;
+      p.baseUrl = $baseUrl.value.trim() || p.baseUrl;
+      p.apiKey = $api.value.trim();
+      p.model = $model.value.trim() || p.model;
+      p.visionModel = $visionModel.value.trim() || p.visionModel;
+      const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
+    if (curOpt) curOpt.textContent = p.name || p.id;
+    }
+
+    // 为兼容旧逻辑（例如 actions.js 还有检测）
+    ai.kimiApiKey = p.apiKey;
+    storage.set('kimiApiKey', p.apiKey);
+
+    // --- 保存原有设置 ---
     ui.config.autoJoinEnabled = !!$autoJoin.checked;
     ui.config.autoAnswerOnAutoJoin = !!$autoJoinAutoAnswer.checked;
     ui.config.autoAnswer = !!$auto.checked;
     ui.config.aiAutoAnalyze = !!$autoAnalyze.checked;
+
     ui.config.autoAnswerDelay = Math.max(1000, (+$delay.value || 0) * 1000);
     ui.config.autoAnswerRandomDelay = Math.max(0, (+$rand.value || 0) * 1000);
-    ui.config.iftex = !!$iftex.checked;
-    ui.config.aiSlidePickPriority = !!$priorityRadios.checked;
-    ui.config.notifyPopupDuration = Math.max(2000, (+$notifyDur.value || 0) * 1000);
-    ui.config.notifyVolume = Math.max(0, Math.min(1, (+$notifyVol.value || 0) / 100));
 
-    storage.set('kimiApiKey', ui.config.ai.kimiApiKey);
+    ui.config.iftex = !!$iftex.checked;
+
+    ui.config.aiSlidePickPriority = !!$priority.checked;
+
+    ui.config.notifyPopupDuration = Math.max(2000, (+$notifyDur.value || 0) * 1000);
+    ui.config.notifyVolume = Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100));
+
     ui.saveConfig();
     ui.updateAutoAnswerBtn();
     ui.toast('设置已保存');
-
-    if (!before && ui.config.autoJoinEnabled) {
-      try {
-        const { actions } = require('../../state/actions.js'); 
-        actions.maybeStartAutoJoin?.();
-      } catch {}
-    }
   });
+
+  //--------------------------------------
+  //            重置为默认
+  //--------------------------------------
 
   root.querySelector('#ykt-btn-settings-reset').addEventListener('click', () => {
     if (!confirm('确定要重置为默认设置吗？')) return;
-    Object.assign(ui.config, DEFAULT_CONFIG);
-    ui.config.ai.kimiApiKey = '';
-    ui.config.autoJoinEnabled = false;
-    ui.config.autoAnswerOnAutoJoin = true;
-    ui.config.aiAutoAnalyze = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
-    ui.config.aiSlidePickPriority = (DEFAULT_CONFIG.aiSlidePickPriority ?? true);
-    ui.config.notifyPopupDuration = 5000;
-    ui.config.notifyVolume = 0.6;
-    ui.config.iftex = true;
-    ui.setCustomNotifyAudio({ src: '', name: '' });
-    storage.set('kimiApiKey', '');
-    ui.saveConfig();
-    ui.updateAutoAnswerBtn();
 
-    $api.value = '';
-    $autoJoin.checked = true;
+    Object.assign(ui.config, JSON.parse(JSON.stringify(DEFAULT_CONFIG)));
+
+    ensureAIProfiles(ui.config.ai);
+
+    const active = getActiveProfile(ui.config.ai);
+
+    // 更新表单
+    refreshProfileSelect();
+    loadProfileToForm(active.id);
+
+    $autoJoin.checked = false;
     $autoJoinAutoAnswer.checked = true;
-    $auto.checked = DEFAULT_CONFIG.autoAnswer;
+    $auto.checked = ui.config.autoAnswer;
+    $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
     $iftex.checked = !!ui.config.iftex;
-    $delay.value = Math.floor(DEFAULT_CONFIG.autoAnswerDelay / 1000);
-    $rand.value = Math.floor(DEFAULT_CONFIG.autoAnswerRandomDelay / 1000);
-    $autoAnalyze.checked = !!(DEFAULT_CONFIG.aiAutoAnalyze ?? false);
-    $priorityRadios.checked = (DEFAULT_CONFIG.aiSlidePickPriority ?? true)
+
+    $delay.value = Math.floor(ui.config.autoAnswerDelay / 1000);
+    $rand.value = Math.floor(ui.config.autoAnswerRandomDelay / 1000);
+    $priority.checked = !!ui.config.aiSlidePickPriority;
+
     $notifyDur.value = 5;
     $notifyVol.value = 60;
     $audioName.textContent = '当前：使用内置“叮-咚”提示音';
 
+    storage.set('kimiApiKey', '');
+
+    ui.saveConfig();
+    ui.updateAutoAnswerBtn();
     ui.toast('设置已重置');
   });
 
-  // === 新增：自定义音频 - 文件上传 ===
+  //--------------------------------------
+  //        下面是音频设置（原逻辑）
+  //--------------------------------------
+
+  const MAX_SIZE = 2 * 1024 * 1024;
+
   if ($audioFile) {
-    $audioFile.addEventListener('change', async (e) => {
+    $audioFile.addEventListener('change', (e) => {
       const f = e.target.files?.[0];
       if (!f) return;
-      // 简单体积限制，避免 localStorage 过大（如 storage 基于 localStorage）
-      const MAX = 2 * 1024 * 1024; // 2MB
-      if (f.size > MAX) {
-        ui.toast('音频文件过大（>2MB），请压缩或使用URL方式', 3000);
+      if (f.size > MAX_SIZE) {
+        ui.toast('音频文件过大（>2MB）', 3000);
         return;
       }
       const reader = new FileReader();
       reader.onload = () => {
-        const src = reader.result; // data URL
+        const src = reader.result;
         ui.setCustomNotifyAudio({ src, name: f.name });
         $audioName.textContent = `当前：${f.name}`;
-        // 立即试播，满足浏览器的“用户手势”政策
-        ui._playNotifySound(Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100)));
-        ui.toast('已应用自定义提示音（文件）');
+        ui._playNotifySound(ui.config.notifyVolume);
+        ui.toast('已应用自定义提示音');
       };
-      reader.onerror = () => ui.toast('读取音频文件失败', 2500);
       reader.readAsDataURL(f);
     });
   }
 
-  // === 新增：自定义音频 - 应用URL ===
   if ($applyUrl) {
     $applyUrl.addEventListener('click', () => {
       const url = ($audioUrl.value || '').trim();
-      if (!url) { ui.toast('请输入音频 URL', 2000); return; }
+      if (!url) return ui.toast('请输入音频URL');
+
       if (!/^https?:\/\/|^data:audio\//i.test(url)) {
-        ui.toast('URL 必须以 http/https 或 data:audio/ 开头', 3000);
+        ui.toast('URL 必须以 http/https 或 data:audio/ 开头');
         return;
       }
+
       ui.setCustomNotifyAudio({ src: url, name: '' });
       $audioName.textContent = '当前：（自定义URL）';
-      // 立即试播
-      ui._playNotifySound(Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100)));
-      ui.toast('已应用自定义提示音（URL）');
+      ui._playNotifySound(ui.config.notifyVolume);
+      ui.toast('已应用自定义音频URL');
     });
   }
 
-  // === 新增：预览当前提示音 ===
   if ($preview) {
     $preview.addEventListener('click', () => {
-      ui._playNotifySound(Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100)));
+      ui._playNotifySound(ui.config.notifyVolume);
     });
   }
 
-  // === 新增：清除自定义音频 ===
   if ($clear) {
     $clear.addEventListener('click', () => {
       ui.setCustomNotifyAudio({ src: '', name: '' });
       $audioName.textContent = '当前：使用内置“叮-咚”提示音';
-      ui.toast('已清除自定义提示音');
+      ui.toast('已清除自定义音频');
     });
   }
 
-  // === 新增：测试习题提醒按钮 ===
+  // 测试提醒
   const $btnTest = root.querySelector('#ykt-btn-test-notify');
   if ($btnTest) {
     $btnTest.addEventListener('click', () => {
-      // 构造一个小示例
       const mockProblem = {
         problemId: 'TEST-001',
-        body: '【测试题】下列哪个选项是质数？',
-        options: [
-          { key: 'A', value: '12' },
-          { key: 'B', value: '17' },
-          { key: 'C', value: '21' },
-          { key: 'D', value: '28' },
-        ],
+        body: '【测试题】这是一个测试提醒',
+        options: [],
       };
-      const mockSlide = { thumbnail: null };
-      ui.notifyProblem(mockProblem, mockSlide);
-      ui.toast('已触发测试提醒（请留意右下角弹窗与提示音）', 2500);
+      ui.notifyProblem(mockProblem, { thumbnail: null });
     });
   }
+
+  // 关闭按钮
+  root.querySelector('#ykt-settings-close')
+      .addEventListener('click', () => showSettingsPanel(false));
 
   mounted = true;
   return root;

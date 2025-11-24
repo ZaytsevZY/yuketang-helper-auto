@@ -6,6 +6,7 @@ import { repo } from './repo.js';
 import { ui } from '../ui/ui-api.js';
 import { submitAnswer, retryAnswer } from '../tsm/answer.js';
 import { queryKimi, queryKimiVision } from '../ai/kimi.js';
+import { queryAI, queryAIVision} from '../ai/openai.js';
 import { showAutoAnswerPopup } from '../ui/panels/auto-answer-popup.js';
 import { formatProblemForAI, formatProblemForDisplay, formatProblemForVision, parseAIAnswer } from '../tsm/ai-format.js';
 import { captureSlideImage, captureProblemForVision } from '../capture/screenshoot.js';  // ✅ 添加 captureSlideImage
@@ -36,6 +37,18 @@ function makeDefaultAnswer(problem) {
   }
 }
 
+export function hasActiveAIProfile(aiCfg) {
+  const cfg = aiCfg || {};
+  const profiles = Array.isArray(cfg.profiles) ? cfg.profiles : [];
+  if (profiles.length > 0) {
+    const activeId = cfg.activeProfileId;
+    const p = profiles.find(x => x.id === activeId) || profiles[0];
+    return !!(p && p.apiKey);
+  }
+  // 兼容旧版
+  return !!cfg.kimiApiKey;
+}
+
 // 内部自动答题处理函数 - 融合模式（文本+图像）
 async function handleAutoAnswerInternal(problem) {
   const status = repo.problemStatus.get(problem.problemId);
@@ -62,7 +75,7 @@ async function handleAutoAnswerInternal(problem) {
     console.log('[雨课堂助手][INFO][AutoAnswer] 题目类型:', PROBLEM_TYPE_MAP[problem.problemType]);
     console.log('[雨课堂助手][INFO][AutoAnswer] 题目内容:', problem.body?.slice(0, 50) + '...');
     
-    if (!ui.config.ai.kimiApiKey) {
+    if (!hasActiveAIProfile(ui.config.ai)) {
     // ✅ 无 API Key：使用本地默认答案直接提交，确保流程不中断
     // 
       const parsed = makeDefaultAnswer(problem);
@@ -118,7 +131,7 @@ async function handleAutoAnswerInternal(problem) {
     
     // 调用 AI
     ui.toast('AI 正在分析题目...', 2000);
-    const aiAnswer = await queryKimiVision(imageBase64, textPrompt, ui.config.ai);
+    const aiAnswer = await queryAIVision(imageBase64, textPrompt, ui.config.ai);
     console.log('[雨课堂助手][INFO][AutoAnswer] AI回答:', aiAnswer);
     
     // 解析答案

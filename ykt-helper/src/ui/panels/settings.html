@@ -1,18 +1,52 @@
 <div id="ykt-settings-panel" class="ykt-panel">
   <div class="panel-header">
     <h3>AI雨课堂助手设置</h3>
+    <div class="setting-actions">
+        <button id="ykt-btn-settings-save">保存设置</button>
+        <button id="ykt-btn-settings-reset">重置为默认</button>
+    </div>
     <span class="close-btn" id="ykt-settings-close"><i class="fas fa-times"></i></span>
   </div>
 
   <div class="panel-body">
     <div class="settings-content">
       <div class="setting-group">
-        <h4>AI配置</h4>
-          <div class="setting-item">
-              <label for="kimi-api-key">Kimi API Key:</label>
-              <input type="password" id="kimi-api-key" placeholder="输入您的 Kimi API Key">
-              <small>从 <a href="https://platform.moonshot.cn/" target="_blank">Kimi开放平台</a> 获取</small>
-          </div>
+      <h4>AI配置</h4>
+
+        <!-- 当前 profile 选择 -->
+        <div class="setting-item">
+          <label for="ykt-ai-profile-select">当前配置：</label>
+          <select id="ykt-ai-profile-select"></select>
+          <button id="ykt-ai-profile-add">新增配置</button>
+          <button id="ykt-ai-profile-del">删除当前</button>
+        </div>
+
+        <!-- 具体配置字段：针对当前 profile -->
+        <div class="setting-item">
+          <label for="ykt-ai-profile-name">名称:</label>
+          <input type="text" id="ykt-ai-profile-name" placeholder="例如：Kimi 8k / OpenAI GPT-4o">
+        </div>
+
+        <div class="setting-item">
+          <label for="ykt-ai-base-url">URL:</label>
+          <input type="text" id="ykt-ai-base-url" placeholder="例如：https://api.moonshot.cn">
+          <small>任意兼容 OpenAI 协议的服务端，例如 api.openai.com / api.moonshot.cn / 自建代理。</small>
+        </div>
+
+        <div class="setting-item">
+          <label for="kimi-api-key">API Key:</label>
+          <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key">
+        </div>
+
+        <div class="setting-item">
+          <label for="ykt-ai-model">文本模型 ID:</label>
+          <input type="text" id="ykt-ai-model" placeholder="例如：moonshot-v1-8k / gpt-4o-mini">
+        </div>
+
+        <div class="setting-item">
+          <label for="ykt-ai-vision-model">图像模型 ID:</label>
+          <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与文本模型相同">
+        </div>
       </div>
 
       <div class="setting-group">
@@ -105,11 +139,6 @@
           <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>
           <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>
         </div>
-      </div>
-
-      <div class="setting-actions">
-        <button id="ykt-btn-settings-save">保存设置</button>
-        <button id="ykt-btn-settings-reset">重置为默认</button>
       </div>
     </div>
   </div>
