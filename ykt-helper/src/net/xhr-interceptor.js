@@ -25,6 +25,7 @@ export function installXHRInterceptor() {
     const hostname = location.hostname;
     if (hostname === 'www.yuketang.cn') { console.log('[雨课堂助手][INFO] 检测到标准雨课堂环境'); return 'standard'; }
     if (hostname === 'pro.yuketang.cn') { console.log('[雨课堂助手][INFO] 检测到荷塘雨课堂环境'); return 'pro'; }
+    if (hostname === 'changjiang.yuketang.cn') { console.log('[雨课堂助手][INFO] 检测到长江雨课堂环境'); return 'changjiang'; }
     console.log('[雨课堂助手][ERR] 未知环境:', hostname); return 'unknown';
   }
 

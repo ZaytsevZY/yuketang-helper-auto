@@ -168,36 +168,48 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
   const now = Date.now();
   const pastDeadline = typeof endTime === 'number' && now >= endTime;
 
-  if (pastDeadline) {
-    if (!forceRetry) {
-      const err = new Error('DEADLINE_PASSED');
-      err.name = 'DeadlineError';
-      err.details = { startTime, endTime, now };
-      throw err;
+  if (pastDeadline || forceRetry) {
+
+    console.group('[雨课堂助手][DEBUG][answer] >>> 进入补交分支判断');
+    console.log('problemId:', problem.problemId);
+    console.log('pastDeadline:', pastDeadline, '(now=', now, ', endTime=', endTime, ')');
+    console.log('forceRetry:', forceRetry);
+    console.log('传入 startTime:', startTime, '传入 endTime:', endTime);
+
+    const ps = repo?.problemStatus?.get?.(problem.problemId);
+    console.log('从 repo.problemStatus 获取:', ps);
+
+    const st = Number.isFinite(startTime) ? startTime : (ps?.startTime);
+    const et = Number.isFinite(endTime)   ? endTime   : (ps?.endTime);
+    console.log('最终用于 retry 的 st=', st, ' et=', et);
+
+    // 计算 dt
+    const off  = Math.max(0, retryDtOffsetMs);
+    let dt;
+
+    if (Number.isFinite(st)) {
+      dt = st + off;
+      console.log('补交 dt = startTime + offset =', dt);
+    } else if (Number.isFinite(et)) {
+      dt = Math.max(0, et - Math.max(off, 5000));
+      console.log('补交 dt = near endTime window =', dt);
+    } else {
+      dt = Date.now() - off;
+      console.log('补交 dt = fallback =', dt);
     }
-  console.log('[雨课堂助手][INFO][answer] 已触发补交分支 (/retry)', {
-    problemId: problem.problemId,
-    dt,
-    pastDeadline,
-    forceRetry: opts.forceRetry,
-  });
-  const ps = repo?.problemStatus?.get?.(problem.problemId);
-  const st = Number.isFinite(startTime) ? startTime : (ps?.startTime);
-  const et = Number.isFinite(endTime)   ? endTime   : (ps?.endTime);
 
-  // 计算一个稳定的 dt：优先 st+offset；缺失时退到 et-安全边界；再不行才用 now-offset
-  const off  = Math.max(0, retryDtOffsetMs);
-  let dt;
-  if (Number.isFinite(st)) {
-    dt = st + off;
-  } else if (Number.isFinite(et)) {
-    dt = Math.max(0, et - Math.max(off, 5000)); // 窗口靠前，避免越过截止
-  } else {
-    dt = Date.now() - off; // 最后兜底
-  }
+    console.log('>>> 即将调用 retryAnswer()');
+    console.groupEnd();
 
-  const resp = await retryAnswer(problem, result, dt, { headers });
-    return { route: 'retry', resp };
+    try {
+      const resp = await retryAnswer(problem, result, dt, { headers });
+      console.log('[雨课堂助手][INFO][answer] 补交成功 (/retry)', { problemId: problem.problemId, dt, pastDeadline, forceRetry });
+      return { route: 'retry', resp };
+    } catch (e) {
+      console.error('[雨课堂助手][ERR][answer] 补交失败 (/retry)：', e);
+      console.error('[雨课堂助手][ERR][answer] 失败参数：', { st, et, dt, pastDeadline, forceRetry });
+      throw e;
+    }
   }
 
   const resp = await answerProblem(problem, result, { headers, dt: now });

@@ -23,6 +23,17 @@ export const DEFAULT_CONFIG = {
     temperature: 0.3,
     maxTokens: 1000,
   },
+  profiles: [
+    {
+      id: 'default',
+      name: 'Kimi',
+      baseUrl: 'https://api.moonshot.cn/v1/chat/completions', // OpenAI 协议兼容
+      apiKey: '',                          // 从旧 kimiApiKey 迁移
+      model: 'moonshot-v1-8k',
+      visionModel: 'moonshot-v1-8k-vision-preview',
+    },
+  ],
+  activeProfileId: 'default',
   showAllSlides: false,
   maxPresentations: 5,
 };

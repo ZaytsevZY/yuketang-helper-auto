@@ -2,10 +2,12 @@ import tpl from './ai.html';
 import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
 import { queryKimi, queryKimiVision } from '../../ai/kimi.js';
+import { queryAI, queryAIVision} from '../../ai/openai.js';
 import { submitAnswer } from '../../tsm/answer.js';
 import { showAutoAnswerPopup } from '../panels/auto-answer-popup.js';
 import { captureSlideImage } from '../../capture/screenshoot.js';
 import { parseAIAnswer } from '../../tsm/ai-format.js';
+import { hasActiveAIProfile} from '../../state/actions.js'
 import { getCurrentMainPageSlideId, waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
 
 const L = (...a) => console.log('[雨课堂助手][DBG][ai]', ...a);
@@ -423,7 +425,7 @@ function renderQuestion() {
 export async function askAIFusionMode() {
   setAIError(''); setAILoading(true); setAIAnswer('');
   try {
-    if (!ui.config.ai?.kimiApiKey) throw new Error('请先在设置中配置 Kimi API Key');
+    if (!hasActiveAIProfile(ui.config.ai)) throw new Error('请先在设置中配置 API Key');
 
     let currentSlideId = null;
     let slide = null;
@@ -507,7 +509,7 @@ export async function askAIFusionMode() {
 
     ui.toast(`正在分析${selectionSource}内容...`, 3000);
     L('[ask] 调用 Vision API...');
-    const aiContent = await queryKimiVision(imageBase64, textPrompt, ui.config.ai);
+    const aiContent = await queryAIVision(imageBase64, textPrompt, ui.config.ai);
 
     setAILoading(false);
     L('[ask] Vision API调用成功, 内容长度=', aiContent?.length);

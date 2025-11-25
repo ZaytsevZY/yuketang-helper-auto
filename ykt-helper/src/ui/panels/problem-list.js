@@ -219,15 +219,25 @@ function bindRowActions(row, e, prob){
 }
 
 function updateRow(row, e, prob){
-  // 标题
+   // 标题
   const title = row.querySelector('.problem-title');
   title.textContent = (prob?.body || e.body || prob?.title || `题目 ${e.problemId}`).slice(0, 120);
 
+  // 先拿 status & 时窗
+  const status = prob?.status || e.status || {};
+  const ps = repo.problemStatus?.get?.(e.problemId);
+  const startTime = Number(
+    status?.startTime ?? prob?.startTime ?? e.startTime ?? ps?.startTime ?? 0
+  ) || undefined;
+  const endTime = Number(
+    status?.endTime   ?? prob?.endTime   ?? e.endTime   ?? ps?.endTime   ?? 0
+  ) || undefined;
+
   // 元信息（含截止时间）
   const meta = row.querySelector('.problem-meta');
-  const status = prob?.status || e.status || {};
-  const answered = !!(prob?.result || status?.answered || status?.myAnswer);
-  meta.textContent = `PID: ${e.problemId} / 类型: ${e.problemType} / 状态: ${answered ? '已作答' : '未作答'} / 截止: ${endTime ? new Date(endTime).toLocaleString() : '未知'}`;
+  const answered = !!(prob?.result || status?.myAnswer || status?.answered);
+  meta.textContent =
+    `PID: ${e.problemId} / 类型: ${e.problemType} / 状态: ${answered ? '已作答' : '未作答'} / 截止: ${endTime ? new Date(endTime).toLocaleString() : '未知'}`;
 
   // 容器
   let detail = row.querySelector('.problem-detail');
@@ -254,7 +264,7 @@ function updateRow(row, e, prob){
   const btnSaveLocal = create('button'); btnSaveLocal.textContent = '保存(本地)';
   btnSaveLocal.onclick = () => {
     try{
-      const parsed = JSON.parse(textarea.value || '{}');
+      const parsed = JSON.parse(textarea.value || '[""]');
       const merged = Object.assign({}, prob||{}, { result: parsed });
       repo.problems.set(e.problemId, merged);
       ui.toast('已保存到本地列表');
@@ -264,17 +274,10 @@ function updateRow(row, e, prob){
   submitBar.appendChild(btnSaveLocal);
 
   // 正常提交（过期则提示是否补交）
-  const ps = repo.problemStatus?.get?.(e.problemId);
-  const startTime = Number(
-    status?.startTime ?? prob?.startTime ?? e.startTime ?? ps?.startTime ?? 0
-  ) || undefined;
-  const endTime = Number(
-    status?.endTime   ?? prob?.endTime   ?? e.endTime   ?? ps?.endTime   ?? 0
-  ) || undefined;
   const btnSubmit = create('button'); btnSubmit.textContent = '提交';
   btnSubmit.onclick = async () => {
     try{
-      const result = JSON.parse(textarea.value || '{}');
+      const result = JSON.parse(textarea.value || '[""]');
       row.classList.add('loading');
       const { route } = await submitAnswer(
         { problemId: e.problemId, problemType: e.problemType },

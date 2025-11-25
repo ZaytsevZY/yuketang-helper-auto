@@ -15,6 +15,9 @@ export function installWSInterceptor() {
     } else if (hostname === 'pro.yuketang.cn') {
       envType = 'pro';
       console.log('[雨课堂助手][INFO] 检测到荷塘雨课堂环境');
+    } else if (hostname === 'changjiang.yuketang.cn'){
+      envType = 'changjiang';
+      console.log('[雨课堂助手][INFO] 检测到长江雨课堂环境');
     } else {
       console.log('[雨课堂助手][INFO] 未知环境:', hostname);
     }
