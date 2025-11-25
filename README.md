@@ -20,7 +20,7 @@
     </h3>
 </html>
 
-> 最后更新时间：2025.11.13
+> 最后更新时间：2025.11.25
 
 ## 项目说明
 
@@ -75,7 +75,7 @@
 
 - 继承原版脚本的上课/下课/习题提示，防止上课摸鱼错过习题。（需要打开浏览器）
 
-- 若要查看这堂课的所有习题信息，可以点击工具栏的「查看课件和幻灯片」:receipt: 图标。
+- 若要查看这堂课的所有习题信息，可以点击工具栏的「查看课件和幻灯片」 :receipt: 图标。
 
 - 可以在设置 :gear: 中修改习题提醒的方式。
 
@@ -93,17 +93,16 @@
 
 ![](./static/5.png)
 
-
 ### 3. 自动作答习题
 
 ![](./static/auto.png)
 
 - 可以在设置 :gear: 界面设置是否自动作答，以及自动作答的延迟时间
 - 自动作答支持所有题型，包括单选，多选，填空，简答，投票
-  - 如果未打开问题列表，会默认解答最新的题目（你可以在:gear:中调整）
+  - 如果未打开问题列表，会默认解答最新的题目（可自动进行）（你可以在 :gear: 中调整）
   - 如果已打开问题列表并选择了某个问题，会解答选中的问题
   - 目前暂时不支持从左侧边栏中选择要回答的问题
-- 自动作答成功后，建议手动刷新一次界面，纯挂机后果自负
+- 自动作答成功后，建议不定时手动刷新一次界面，纯挂机后果自负
 - 自动作答可能有误，可能作答失败。本插件不对可能造成的成绩影响负责
 - 在没有配置Apikey而且全程挂机的情况下，本插件将随机作答
 
@@ -142,6 +141,8 @@
 
 ---
 
+- 1.20.0: 增加更多AI支持
+
 - 1.19.2: 增加从子frame获取ppt的功能
 
 - 1.19.1: 增加了markdown渲染器
@@ -178,12 +179,27 @@
 
 - 1.13.0: 加入了自动作答
 
-- 1.12.0: 可以实现ai作答
+- 1.12.0: 可以实现AI作答
 
 ---
 
-## 附录1 Kimi API 申请方法
+## 附录1 API 申请方法
+
+默认支持Kimi API：
 
 1. 访问[月之暗面开放平台](https://platform.moonshot.cn/)，进行注册登录
 2. 点击左侧API keys一栏，点击创建API key，命名后会生成一串以sk开头的随机字符，就是key。保管好这个key，你可以将他复制到本地安全的地方。这个key不能再次生成或查看！如果丢了，需要重新生成新的key。（生成key不需要任何花费）
 3. 充值任意金额后，这个key就可以使用了。你可以将key设置到本项目中进行使用，或使用其他方式调用。
+
+目前支持的比较稳定的VLM如下表所示：
+
+|API提供商|url|ID（VLM）|购买KEY|
+|---|---|---|---|
+|MoonShot（默认）|https://api.moonshot.cn/v1/chat/completions|moonshot-v1-8k-vision-preview|[月之暗面API平台](https://platform.moonshot.cn/)|
+|硅基流动|https://api.siliconflow.cn/v1/chat/completions|Qwen/Qwen3-VL-32B-Instruct [获取更多](https://cloud.siliconflow.cn/me/models)|[硅基流动](https://cloud.siliconflow.cn/me/models)|
+|阿里云|https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions|qwen3-vl-plus [获取更多](https://bailian.console.aliyun.com/?tab=model#/model-market)|[阿里云百炼](https://bailian.console.aliyun.com/)|
+|并行科技|https://ai.paratera.com//v1/chat/completions|GLM-4V-Plus [获取更多](https://ai.paratera.com/#/lms/model)|[清华](easycompute.cs.tsinghua.edu.cn/home) / [其他学校](https://ai.paratera.com/#/lms/api)|
+
+可以在设置中管理所有API-KEY和当前使用的API-KEY：
+
+![](./static/7.png)

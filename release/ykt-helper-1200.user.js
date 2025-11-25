@@ -6,6 +6,7 @@
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
 // @match        https://pro.yuketang.cn/web/*
+// @match        https://changjiang.yuketang.cn/web/*
 // @match        https://*.yuketang.cn/lesson/fullscreen/v3/*
 // @match        https://*.yuketang.cn/v2/web/*
 // @match        https://www.yuketang.cn/lesson/fullscreen/v3/*
@@ -14,6 +15,10 @@
 // @match        https://pro.yuketang.cn/v2/web/*
 // @match        https://pro.yuketang.cn/v2/web/index
 // @match        https://pro.yuketang.cn/v2/web/student-lesson-report/*
+// @match        https://changjiang.yuketang.cn/lesson/fullscreen/v3/*
+// @match        https://changjiang.yuketang.cn/v2/web/*
+// @match        https://changjiang.yuketang.cn/v2/web/index
+// @match        https://changjiang.yuketang.cn/v2/web/student-lesson-report/*
 // @grant        GM_addStyle
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
@@ -789,39 +794,57 @@
     }
     const now = Date.now();
     const pastDeadline = typeof endTime === "number" && now >= endTime;
-    if (pastDeadline) {
-      if (!forceRetry) {
-        const err = new Error("DEADLINE_PASSED");
-        err.name = "DeadlineError";
-        err.details = {
-          startTime: startTime,
-          endTime: endTime,
-          now: now
-        };
-        throw err;
-      }
-      console.log("[雨课堂助手][INFO][answer] 已触发补交分支 (/retry)", {
-        problemId: problem.problemId,
-        dt: dt,
-        pastDeadline: pastDeadline,
-        forceRetry: opts.forceRetry
-      });
+    if (pastDeadline || forceRetry) {
+      console.group("[雨课堂助手][DEBUG][answer] >>> 进入补交分支判断");
+      console.log("problemId:", problem.problemId);
+      console.log("pastDeadline:", pastDeadline, "(now=", now, ", endTime=", endTime, ")");
+      console.log("forceRetry:", forceRetry);
+      console.log("传入 startTime:", startTime, "传入 endTime:", endTime);
       const ps = repo?.problemStatus?.get?.(problem.problemId);
+      console.log("从 repo.problemStatus 获取:", ps);
       const st = Number.isFinite(startTime) ? startTime : ps?.startTime;
       const et = Number.isFinite(endTime) ? endTime : ps?.endTime;
-      // 计算一个稳定的 dt：优先 st+offset；缺失时退到 et-安全边界；再不行才用 now-offset
+      console.log("最终用于 retry 的 st=", st, " et=", et);
+      // 计算 dt
             const off = Math.max(0, retryDtOffsetMs);
       let dt;
-      if (Number.isFinite(st)) dt = st + off; else if (Number.isFinite(et)) dt = Math.max(0, et - Math.max(off, 5e3)); // 窗口靠前，避免越过截止
-       else dt = Date.now() - off;
- // 最后兜底
-            const resp = await retryAnswer(problem, result, dt, {
-        headers: headers
-      });
-      return {
-        route: "retry",
-        resp: resp
-      };
+      if (Number.isFinite(st)) {
+        dt = st + off;
+        console.log("补交 dt = startTime + offset =", dt);
+      } else if (Number.isFinite(et)) {
+        dt = Math.max(0, et - Math.max(off, 5e3));
+        console.log("补交 dt = near endTime window =", dt);
+      } else {
+        dt = Date.now() - off;
+        console.log("补交 dt = fallback =", dt);
+      }
+      console.log(">>> 即将调用 retryAnswer()");
+      console.groupEnd();
+      try {
+        const resp = await retryAnswer(problem, result, dt, {
+          headers: headers
+        });
+        console.log("[雨课堂助手][INFO][answer] 补交成功 (/retry)", {
+          problemId: problem.problemId,
+          dt: dt,
+          pastDeadline: pastDeadline,
+          forceRetry: forceRetry
+        });
+        return {
+          route: "retry",
+          resp: resp
+        };
+      } catch (e) {
+        console.error("[雨课堂助手][ERR][answer] 补交失败 (/retry)：", e);
+        console.error("[雨课堂助手][ERR][answer] 失败参数：", {
+          st: st,
+          et: et,
+          dt: dt,
+          pastDeadline: pastDeadline,
+          forceRetry: forceRetry
+        });
+        throw e;
+      }
     }
     const resp = await answerProblem(problem, result, {
       headers: headers,
@@ -2589,10 +2612,14 @@
     // 标题
     const title = row.querySelector(".problem-title");
     title.textContent = (prob?.body || e.body || prob?.title || `题目 ${e.problemId}`).slice(0, 120);
+    // 先拿 status & 时窗
+        const status = prob?.status || e.status || {};
+    const ps = repo.problemStatus?.get?.(e.problemId);
+    const startTime = Number(status?.startTime ?? prob?.startTime ?? e.startTime ?? ps?.startTime ?? 0) || void 0;
+    const endTime = Number(status?.endTime ?? prob?.endTime ?? e.endTime ?? ps?.endTime ?? 0) || void 0;
     // 元信息（含截止时间）
         const meta = row.querySelector(".problem-meta");
-    const status = prob?.status || e.status || {};
-    const answered = !!(prob?.result || status?.answered || status?.myAnswer);
+    const answered = !!(prob?.result || status?.myAnswer || status?.answered);
     meta.textContent = `PID: ${e.problemId} / 类型: ${e.problemType} / 状态: ${answered ? "已作答" : "未作答"} / 截止: ${endTime ? new Date(endTime).toLocaleString() : "未知"}`;
     // 容器
         let detail = row.querySelector(".problem-detail");
@@ -2639,10 +2666,7 @@
     };
     submitBar.appendChild(btnSaveLocal);
     // 正常提交（过期则提示是否补交）
-        const ps = repo.problemStatus?.get?.(e.problemId);
-    const startTime = Number(status?.startTime ?? prob?.startTime ?? e.startTime ?? ps?.startTime ?? 0) || void 0;
-    const endTime = Number(status?.endTime ?? prob?.endTime ?? e.endTime ?? ps?.endTime ?? 0) || void 0;
-    const btnSubmit = create("button");
+        const btnSubmit = create("button");
     btnSubmit.textContent = "提交";
     btnSubmit.onclick = async () => {
       try {
@@ -3207,6 +3231,10 @@
       if (hostname === "pro.yuketang.cn") {
         console.log("[雨课堂助手][INFO] 检测到荷塘雨课堂环境");
         return "pro";
+      }
+      if (hostname === "changjiang.yuketang.cn") {
+        console.log("[雨课堂助手][INFO] 检测到长江雨课堂环境");
+        return "changjiang";
       }
       console.log("[雨课堂助手][ERR] 未知环境:", hostname);
       return "unknown";
@@ -3956,6 +3984,9 @@
       } else if (hostname === "pro.yuketang.cn") {
         envType = "pro";
         console.log("[雨课堂助手][INFO] 检测到荷塘雨课堂环境");
+      } else if (hostname === "changjiang.yuketang.cn") {
+        envType = "changjiang";
+        console.log("[雨课堂助手][INFO] 检测到长江雨课堂环境");
       } else console.log("[雨课堂助手][INFO] 未知环境:", hostname);
       return envType;
     }
