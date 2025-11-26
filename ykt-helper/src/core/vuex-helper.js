@@ -1,7 +1,3 @@
-/**
- * Vuex 辅助工具 - 用于获取雨课堂主界面状态（附加调试日志）
- */
-
 const L = (...a) => console.log('[雨课堂助手][DBG][vuex-helper]', ...a);
 const W = (...a) => console.warn('[雨课堂助手][WARN][vuex-helper]', ...a);
 const E = (...a) => console.error('[雨课堂助手][ERR][vuex-helper]', ...a);
@@ -17,9 +13,7 @@ export function getVueApp() {
   }
 }
 
-/**
- * 统一返回「字符串」，并打印原始类型
- */
+// 统一返回「字符串」，并打印原始类型
 export function getCurrentMainPageSlideId() {
   try {
     const app = getVueApp();

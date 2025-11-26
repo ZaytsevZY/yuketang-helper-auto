@@ -26,7 +26,7 @@ export async function captureProblemScreenshot() {
 }
 
 /**
- * ✅ 新方法：获取指定幻灯片的截图
+ * 获取指定幻灯片的截图
  * @param {string} slideId - 幻灯片ID
  * @returns {Promise<string|null>} base64图片数据
  */
@@ -40,7 +40,7 @@ export async function captureSlideImage(slideId) {
       return null;
     }
     
-    // ✅ 使用 cover 或 coverAlt 图片URL
+    // 使用 cover 或 coverAlt 图片URL
     const imageUrl = slide.coverAlt || slide.cover;
     if (!imageUrl) {
       console.error('[captureSlideImage] 幻灯片没有图片URL');
@@ -49,7 +49,7 @@ export async function captureSlideImage(slideId) {
     
     console.log('[captureSlideImage] 图片URL:', imageUrl);
     
-    // ✅ 下载图片并转换为base64
+    // 下载图片并转换为base64
     const base64 = await downloadImageAsBase64(imageUrl);
     
     if (!base64) {
@@ -67,7 +67,7 @@ export async function captureSlideImage(slideId) {
 }
 
 /**
- * ✅ 下载图片并转换为base64
+ * 下载图片并转换为base64
  * @param {string} url - 图片URL
  * @returns {Promise<string|null>}
  */
@@ -75,7 +75,7 @@ async function downloadImageAsBase64(url) {
   return new Promise((resolve) => {
     try {
       const img = new Image();
-      img.crossOrigin = 'anonymous'; // ✅ 允许跨域
+      img.crossOrigin = 'anonymous'; 
       
       img.onload = () => {
         try {
@@ -85,40 +85,37 @@ async function downloadImageAsBase64(url) {
           
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0);
-          
-          // ✅ 转换为JPEG格式，压缩质量0.8
           const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
           
-          // ✅ 如果图片太大，进一步压缩
-          if (base64.length > 1000000) { // 1MB
-            console.log('[downloadImageAsBase64] 图片过大，进行压缩...');
+          if (base64.length > 1000000) {
+            console.log('[雨课堂助手][INFO][downloadImageAsBase64] 图片过大，进行压缩...');
             const compressed = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-            console.log('[downloadImageAsBase64] 压缩后大小:', Math.round(compressed.length / 1024), 'KB');
+            console.log('[雨课堂助手][INFO][downloadImageAsBase64] 压缩后大小:', Math.round(compressed.length / 1024), 'KB');
             resolve(compressed);
           } else {
             resolve(base64);
           }
         } catch (e) {
-          console.error('[downloadImageAsBase64] Canvas处理失败:', e);
+          console.error('[雨课堂助手][ERR][downloadImageAsBase64] Canvas处理失败:', e);
           resolve(null);
         }
       };
       
       img.onerror = (e) => {
-        console.error('[downloadImageAsBase64] 图片加载失败:', e);
+        console.error('[雨课堂助手][ERR][downloadImageAsBase64] 图片加载失败:', e);
         resolve(null);
       };
       
       img.src = url;
       
     } catch (e) {
-      console.error('[downloadImageAsBase64] 失败:', e);
+      console.error('[雨课堂助手][ERR][downloadImageAsBase64] 失败:', e);
       resolve(null);
     }
   });
 }
 
-// 原有的 captureProblemForVision 保留作为后备方案
+// 原有的 captureProblemForVision
 export async function captureProblemForVision() {
   try {
     console.log('[captureProblemForVision] 开始截图...');

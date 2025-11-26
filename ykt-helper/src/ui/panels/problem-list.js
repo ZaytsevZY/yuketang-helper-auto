@@ -11,7 +11,6 @@ function $(sel) { return document.querySelector(sel); }
 function create(tag, cls){ const n=document.createElement(tag); if(cls) n.className=cls; return n; }
 function pretty(obj){ try{ return JSON.stringify(obj, null, 2); }catch{ return String(obj); } }
 
-// ========== 兼容新老端点的题目详情拉取（用于“刷新题目”按钮） ==========
 const HEADERS = () => ({
   'Content-Type': 'application/json',
   'xtbz': 'ykt',
@@ -50,7 +49,6 @@ async function fetchProblemDetail(problemId){
   throw new Error('无法获取题目信息');
 }
 
-// ========== 关键修复：从 presentations/slides 懒加载灌入题目 ==========
 /**
  * 将所有可见课件中的题目页灌入 repo.problems / repo.encounteredProblems
  * 目的：绕过 XHR/fetch 拦截失效，直接从现有内存结构构建题目列表
@@ -75,7 +73,6 @@ function hydrateProblemsFromPresentations() {
 
         // 填充 repo.problems
         if (!repo.problems.has(pidStr)) {
-          // 归一化一个最小 problem 对象
           const normalized = {
             problemId: pidStr,
             problemType: s.problem.problemType || s.problem.type || s.problem.questionType || 'unknown',
@@ -92,7 +89,7 @@ function hydrateProblemsFromPresentations() {
           filledProblems++;
         }
 
-        // 填充 repo.encounteredProblems（供 UI 构建列表）
+        // 填充 repo.encounteredProblems
         if (!seen.has(pidStr)) {
           seen.add(pidStr);
           (repo.encounteredProblems || (repo.encounteredProblems = [])).push({
@@ -110,7 +107,7 @@ function hydrateProblemsFromPresentations() {
       }
     }
 
-    // 稍微稳定一下顺序：按 presentationId+slide.index 排序
+    // 按 presentationId+slide.index 排序
     if (repo.encounteredProblems && repo.encounteredProblems.length) {
       repo.encounteredProblems.sort((a,b)=>{
         if (a.presentationId !== b.presentationId) return String(a.presentationId).localeCompare(String(b.presentationId));
@@ -198,7 +195,7 @@ function bindRowActions(row, e, prob){
   };
   actionsBar.appendChild(btnAI);
 
-  // 刷新题目：从接口拉一次（用于补齐详情/答案状态）
+  // 修改后刷新题目
   const btnRefresh = create('button'); btnRefresh.textContent = '刷新题目';
   btnRefresh.onclick = async () => {
     row.classList.add('loading');
@@ -356,7 +353,7 @@ export function mountProblemListPanel() {
 
   mounted = true;
 
-  // ★ 关键：首次挂载时就做一次灌入
+  // 首次挂载时就做一次灌入
   hydrateProblemsFromPresentations();
   updateProblemList();
   return root;
@@ -366,7 +363,7 @@ export function showProblemListPanel(visible = true) {
   mountProblemListPanel();
   root.classList.toggle('visible', !!visible);
   if (visible) {
-    // 面板打开时再做一次灌入（确保课程切换后也能补齐）
+    // 面板打开时再做一次灌入
     hydrateProblemsFromPresentations();
     updateProblemList();
   }
@@ -377,7 +374,7 @@ export function updateProblemList() {
   const container = $('#ykt-problem-list');
   container.innerHTML = '';
 
-  // 如果还是空，再兜一次（以防外层刚刚把 presentations 更新完）
+  // 兜底刷新
   if (!repo.encounteredProblems || repo.encounteredProblems.length === 0) {
     hydrateProblemsFromPresentations();
   }
@@ -394,13 +391,11 @@ export function updateProblemList() {
   }
 
   list.forEach((e) => {
-    // 若 repo.problems 没有，跨课件兜底找一次并回写
     let prob = repo.problems.get(e.problemId) || null;
     if (!prob) {
       const cross = crossFindProblem(String(e.problemId));
       if (cross) {
         prob = cross.problem;
-        // 同步补全跳转信息
         e.presentationId = e.presentationId || cross.presentationId;
         e.slide = e.slide || cross.slide;
         e.slideId = e.slideId || cross.slide?.id;

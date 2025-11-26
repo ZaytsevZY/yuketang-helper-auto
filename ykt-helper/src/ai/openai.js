@@ -98,8 +98,8 @@ export async function queryAI(question, aiCfg) {
       }),
       onload: (res) => {
         try {
-          console.log('[AI OpenAI] Status:', res.status);
-          console.log('[AI OpenAI] Response:', res.responseText);
+          console.log('[雨课堂助手][AI OpenAI] Status:', res.status);
+          console.log('[雨课堂助手][AI OpenAI] Response:', res.responseText);
 
           if (res.status !== 200) {
             reject(new Error(`AI 接口请求失败: ${res.status}`));
@@ -163,9 +163,9 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg) {
   ];
 
   return new Promise((resolve, reject) => {
-    console.log('[AI OpenAI Vision] 发送请求...');
-    console.log('[AI OpenAI Vision] 模型:', visionModel);
-    console.log('[AI OpenAI Vision] 图片数据长度:', cleanBase64.length);
+    console.log('[雨课堂助手][AI OpenAI Vision] 发送请求...');
+    console.log('[雨课堂助手][AI OpenAI Vision] 模型:', visionModel);
+    console.log('[雨课堂助手][AI OpenAI Vision] 图片数据长度:', cleanBase64.length);
 
     gm.xhr({
       method: 'POST',
@@ -181,8 +181,8 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg) {
       }),
       onload: (res) => {
         try {
-          console.log('[AI OpenAI Vision] Status:', res.status);
-          console.log('[AI OpenAI Vision] Response:', res.responseText);
+          console.log('[雨课堂助手][AI OpenAI Vision] Status:', res.status);
+          console.log('[雨课堂助手][AI OpenAI Vision] Response:', res.responseText);
 
           if (res.status !== 200) {
             let errorMessage = `AI Vision 请求失败: ${res.status}`;
@@ -210,12 +210,12 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg) {
             reject(new Error('AI返回内容为空'));
           }
         } catch (e) {
-          console.error('[AI OpenAI Vision] 解析响应失败:', e);
+          console.error('[雨课堂助手][AI OpenAI Vision] 解析响应失败:', e);
           reject(new Error(`解析API响应失败: ${e.message}`));
         }
       },
       onerror: (err) => {
-        console.error('[AI OpenAI Vision] 网络请求失败:', err);
+        console.error('[雨课堂助手][AI OpenAI Vision] 网络请求失败:', err);
         reject(new Error('网络请求失败'));
       },
       timeout: 60000,

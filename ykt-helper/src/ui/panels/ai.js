@@ -1,10 +1,7 @@
 import tpl from './ai.html';
 import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
-import { queryKimi, queryKimiVision } from '../../ai/kimi.js';
 import { queryAI, queryAIVision} from '../../ai/openai.js';
-import { submitAnswer } from '../../tsm/answer.js';
-import { showAutoAnswerPopup } from '../panels/auto-answer-popup.js';
 import { captureSlideImage } from '../../capture/screenshoot.js';
 import { parseAIAnswer } from '../../tsm/ai-format.js';
 import { hasActiveAIProfile} from '../../state/actions.js'
@@ -15,8 +12,7 @@ const W = (...a) => console.warn('[雨课堂助手][WARN][ai]', ...a);
 
 let mounted = false;
 let root;
-// 来自 presentation 的一次性优先
-let preferredSlideFromPresentation = null;
+let preferredSlideFromPresentation = null; // 启用来自presentation的页面
 
 function ensureMathJax() {
   const mj = window.MathJax;
@@ -79,8 +75,7 @@ function mdToHtml(mdRaw = '') {
     return `<blockquote>${inner}</blockquote>`;
   });
 
-  // 无序列表 -/*/+
-  // 先把连续的列表块整体替换
+  // 无序列表 
   md = md.replace(
     /(^(-|\*|\+)\s+.+(\n(?!\n).+)*)/gm,
     (block) => {
@@ -94,7 +89,7 @@ function mdToHtml(mdRaw = '') {
     }
   );
 
-  // 有序列表 1. 2. ...
+  // 有序列表
   md = md.replace(
     /(^\d+\.\s+.+(\n(?!\n).+)*)/gm,
     (block) => {
@@ -108,7 +103,7 @@ function mdToHtml(mdRaw = '') {
     }
   );
 
-  // 粗体/斜体（注意顺序）
+  // 粗体/斜体
   md = md.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
   md = md.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
   md = md.replace(/__([^_]+?)__/g, '<strong>$1</strong>');
@@ -148,7 +143,7 @@ function findSlideAcrossPresentations(idStr) {
   return null;
 }
 
-/** —— 运行时自愈：把 repo.slides 的数字键迁移为字符串键 —— */
+// —— 运行时自愈：把 repo.slides 的数字键迁移为字符串键
 function normalizeRepoSlidesKeys(tag = 'ai.mount') {
   try {
     if (!repo || !repo.slides || !(repo.slides instanceof Map)) {
@@ -198,10 +193,8 @@ function getSlideByAny(id) {
   const sid = id == null ? null : String(id);
   if (!sid) return { slide: null, hit: 'none' };
   if (repo.slides.has(sid)) return { slide: repo.slides.get(sid), hit: 'string' };
-  // 141 下 repo.slides 可能未灌入，跨 presentations 搜索并写回
   const cross = findSlideAcrossPresentations(sid);
   if (cross) { repo.slides.set(sid, cross); return { slide: cross, hit: 'cross-fill' }; }
-  // 早期版本兼容（很少见）
   const asNum = Number.isNaN(Number(sid)) ? null : Number(sid);
   if (asNum != null && repo.slides.has(asNum)) {
     const v = repo.slides.get(asNum); repo.slides.set(sid, v);

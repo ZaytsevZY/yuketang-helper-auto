@@ -5,7 +5,7 @@ import { repo } from '../state/repo.js';
 
 export function installWSInterceptor() {
 
-  // 环境识别（标准/荷塘/未知），主要用于日志和后续按需适配
+  // 环境识别（标准/荷塘/长江/未知），主要用于日志和后续按需适配
   function detectEnvironmentAndAdaptAPI() {
     const hostname = location.hostname;
     let envType = 'unknown';
@@ -39,17 +39,6 @@ export function installWSInterceptor() {
     listen(cb) { this.addEventListener('message', (e) => { try { cb(JSON.parse(e.data)); } catch {} }); }
   }
 
-  // MyWebSocket.addHandler((ws, url) => {
-  //   if (url.pathname === '/wsapp/') {
-  //     ws.listen((msg) => {
-  //       switch (msg.op) {
-  //         case 'fetchtimeline': actions.onFetchTimeline(msg.timeline); break;
-  //         case 'unlockproblem': actions.onUnlockProblem(msg.problem); break;
-  //         case 'lessonfinished': actions.onLessonFinished(); break;
-  //       }
-  //     });
-  //   }
-  // });
 MyWebSocket.addHandler((ws, url) => {
     const envType = detectEnvironmentAndAdaptAPI();
     console.log('[雨课堂助手][INFO] 拦截WebSocket通信 - 环境:', envType);
@@ -167,7 +156,6 @@ function getUserIdSafe() {
     // 常见挂载点（不同环境可能不同）
     if (window?.YktUser?.id) return window.YktUser.id;
     if (window?.__INITIAL_STATE__?.user?.userId) return window.__INITIAL_STATE__.user.userId;
-    // 兜底：从本地存储或 cookie 中猜
     const m = document.cookie.match(/(?:^|;\s*)user_id=(\d+)/);
     if (m) return Number(m[1]);
   } catch {}

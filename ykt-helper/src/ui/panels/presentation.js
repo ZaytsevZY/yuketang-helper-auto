@@ -6,9 +6,7 @@ import { ensureHtml2Canvas, ensureJsPDF } from '../../core/env.js';
 
 let mounted = false;
 let host;
-// 是不是结束课程页
-let staticReportReady = false;
-// 在 repo.slides miss 时，跨所有 presentations 的 slides 做兜底搜索
+let staticReportReady = false; //已结束课程
 function findSlideAcrossPresentations(idStr) {
   for (const [, pres] of repo.presentations) { const arr = pres?.slides || []; const hit = arr.find(s => String(s.id) === idStr); if (hit) return hit; }
   return null;
@@ -45,7 +43,7 @@ function normalizeRepoSlidesKeys(tag = 'presentation.mount') {
   }
 }
 
-// Map 查找（string 优先），miss 时跨 presentations 查找并写回 repo.slides
+// Map 查找
 function getSlideByAny(id) {
   const sid = id == null ? null : String(id);
   if (!sid) return { slide: null, hit: 'none' };

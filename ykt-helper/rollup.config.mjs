@@ -14,9 +14,9 @@ export default {
     file: OUT_FILE,
     format: 'iife',         // Userscript 友好
     sourcemap: false,
-    // ✅ 把 Userscript 头部固定注入到产物顶部
+    // 把 Userscript 头部固定注入到产物顶部
     banner: () => meta,
-    // ✅ 强制禁用代码分割，将所有代码打包到一个文件
+    // 强制禁用代码分割，将所有代码打包到一个文件
     inlineDynamicImports: true
   },
   plugins: [
@@ -27,12 +27,12 @@ export default {
     resolve({ 
       browser: true, 
       preferBuiltins: false,
-      // ✅ 确保所有依赖都被内联
+      // 确保所有依赖都被内联
       exportConditions: ['browser']
     }),
     commonjs(),
 
-    // 编译期替换（可保留你已有变量）
+    // 编译期替换
     replace({
       preventAssignment: true,
       values: {
@@ -41,7 +41,7 @@ export default {
       }
     }),
 
-    // ✅ 仅做"美化 + 保留注释"，禁止激进压缩/混淆
+    // 仅做"美化 + 保留注释"，禁止激进压缩/混淆
     terser({
       mangle: false,                 // 不混淆，便于阅读/调试
       compress: {
@@ -50,17 +50,17 @@ export default {
         sequences: false            // 禁止合并为 a(),b() 这种逗号表达式
       },
       format: {
-        beautify: true,              // ✅ 多行可读
+        beautify: true,              // 多行可读
         indent_level: 2,
-        comments: 'all'              // ✅ 保留全部注释（尤其是 Userscript 头）
+        comments: 'all'              // 保留全部注释（尤其是 Userscript 头）
       }
     })
   ],
   
-  // ✅ 关键配置：禁用代码分割相关功能
+  // 关键配置：禁用代码分割相关功能
   external: [],  // 不外部化任何模块
   
-  // ✅ 如果有 treeshaking 问题，可以适当调整
+  // 如果有 treeshaking 问题，可以适当调整
   treeshake: {
     moduleSideEffects: true  // 保持模块副作用，避免过度摇树
   }

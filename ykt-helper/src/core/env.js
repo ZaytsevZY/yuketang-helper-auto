@@ -30,7 +30,7 @@ export function loadScriptOnce(src) {
 }
 
 export async function ensureHtml2Canvas() {
-  const w = gm.uw || window;                         // ★ 用页面 window
+  const w = gm.uw || window;                         
   if (typeof w.html2canvas === 'function') return w.html2canvas;
   await loadScriptOnce('https://html2canvas.hertzen.com/dist/html2canvas.min.js');
   const h2c = w.html2canvas?.default || w.html2canvas;

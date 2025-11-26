@@ -8,12 +8,7 @@ function esc(s) {
   }[c]));
 }
 
-/**
- * 显示自动作答成功弹窗
- * @param {object} problem - 题目对象（保留参数以兼容现有调用）
- * @param {string} aiAnswer - AI 回答文本
- * @param {object} [cfg] - 可选配置
- */
+// 显示自动作答成功弹窗
 export function showAutoAnswerPopup(problem, aiAnswer, cfg = {}) {
   // 避免重复
   const existed = document.getElementById('ykt-auto-answer-popup');

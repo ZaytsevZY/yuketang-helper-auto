@@ -198,7 +198,7 @@
 |MoonShot（默认）|https://api.moonshot.cn/v1/chat/completions|moonshot-v1-8k-vision-preview|[月之暗面API平台](https://platform.moonshot.cn/)|
 |硅基流动|https://api.siliconflow.cn/v1/chat/completions|Qwen/Qwen3-VL-32B-Instruct [获取更多](https://cloud.siliconflow.cn/me/models)|[硅基流动](https://cloud.siliconflow.cn/me/models)|
 |阿里云|https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions|qwen3-vl-plus [获取更多](https://bailian.console.aliyun.com/?tab=model#/model-market)|[阿里云百炼](https://bailian.console.aliyun.com/)|
-|并行科技|https://ai.paratera.com//v1/chat/completions|GLM-4V-Plus [获取更多](https://ai.paratera.com/#/lms/model)|[清华](easycompute.cs.tsinghua.edu.cn/home) / [其他学校](https://ai.paratera.com/#/lms/api)|
+|并行科技|https://ai.paratera.com/v1/chat/completions|GLM-4V-Plus [获取更多](https://ai.paratera.com/#/lms/model)|[清华](easycompute.cs.tsinghua.edu.cn/home) / [其他学校](https://ai.paratera.com/#/lms/api)|
 
 可以在设置中管理所有API-KEY和当前使用的API-KEY：
 

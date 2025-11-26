@@ -1,16 +1,3 @@
-// src/tsm/answer.js
-// Refactored from v1.16.1 userscript to module style.
-// Exposes three primary APIs:
-//   - answerProblem(problem, result, options)
-//   - retryAnswer(problem, result, dt, options)
-//   - submitAnswer(problem, result, submitOptions)  // orchestrates answer vs retry
-//
-// Differences vs userscript:
-// - No global UI (confirm/Toast). Callers control UX.
-// - Uses options to pass deadline window and behavior flags.
-// - Allows header overrides for testing and non-browser envs.
-
-// === 新增：设置与课堂上下文（仅内部使用，不导出） ===
 import { ui } from '../ui/ui-api.js';
 import { repo } from '../state/repo.js';
 
@@ -21,12 +8,9 @@ function calcAutoWaitMs() {
   return base + (rand ? Math.floor(Math.random() * rand) : 0);
 }
 function shouldAutoAnswerForLesson_(lessonId) {
-  // 全局开关优先
   if (ui?.config?.autoAnswer) return true;
   if (!lessonId) return false;
-  // 对“自动进入”的课堂，若开启“默认自动答题”，也允许
   if (repo?.autoJoinedLessons?.has(lessonId) && ui?.config?.autoAnswerOnAutoJoin) return true;
-  // 上层可在特定课堂放行一次
   if (repo?.forceAutoAnswerLessons?.has(lessonId)) return true;
   return false;
 }
@@ -143,7 +127,6 @@ export async function retryAnswer(problem, result, dt, options = {}) {
  * @param {number} [submitOptions.waitMs]          - 覆盖自动等待时间；未提供时按设置计算
  */
 export async function submitAnswer(problem, result, submitOptions = {}) {
-  // 安全解构：避免别名，避免空对象问题
   const startTime = submitOptions?.startTime;
   const endTime = submitOptions?.endTime;
   const forceRetry = submitOptions?.forceRetry ?? false;
@@ -153,13 +136,11 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
   const waitMs = submitOptions?.waitMs;
   const lessonIdFromOpts = submitOptions && 'lessonId' in submitOptions ? submitOptions.lessonId : undefined;
 
-   // 统一拿 lessonId（优先用传入，其次 repo.currentLessonId）
+   // 统一拿 lessonId
    const lessonId = (lessonIdFromOpts ?? repo?.currentLessonId ?? null);
-  // 仅当 autoGate=true 时才应用“自动进入课堂/默认自动答题”的逻辑；保持老调用方不受影响
   if (autoGate && shouldAutoAnswerForLesson_(lessonId)) {
     const ms = typeof waitMs === 'number' ? Math.max(0, waitMs) : calcAutoWaitMs();
     if (ms > 0) {
-      // 如果设置了截止时间，避免把等待拖到截止之后（预留 80ms 安全边界）
       const guard = (typeof endTime === 'number') ? Math.max(0, endTime - Date.now() - 80) : ms;
       await sleep(Math.min(ms, guard));
     }

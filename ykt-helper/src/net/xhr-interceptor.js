@@ -92,10 +92,6 @@ export function installXHRInterceptor() {
 }
 
 // ===== 自动进入课堂所需的最小 API 封装 =====
-// 说明：使用 fetch，浏览器自动带上 cookie；与拦截器互不影响
-
-/** 拉取“正在上课”的课堂列表 */
-/** 拉取“正在上课”的课堂列表（多端候选 + 详细日志） */
 export async function getOnLesson() {
   const origin = location.origin;
   const same = (p) => new URL(p, origin).toString();
@@ -142,7 +138,7 @@ export async function getOnLesson() {
     }
   }
 
-  // 统一打印调试信息（折叠组，方便查看）
+  // 调试信息
   try {
     console.groupCollapsed(
       `%c[getOnLesson] host=%s  result=%s  candidates=%d`,
@@ -269,7 +265,6 @@ export async function checkinClass(lessonId, opts = {}) {
 export async function getActivePresentationId(lessonId) {
   const origin = location.origin;
   const same = (p) => new URL(p, origin).toString();
-  // 常见候选：不同环境接口命名不一，这里都试一下
   const qs = (id) => `?lessonId=${encodeURIComponent(id)}`;
   const candidates = [
     same(`/api/v3/lesson/presentation/active${qs(lessonId)}`),

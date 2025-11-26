@@ -1,6 +1,5 @@
 import tpl from './active-problems.html';
 import { repo } from '../../state/repo.js';
-import { ui } from '../ui-api.js';
 import { actions } from '../../state/actions.js';
 
 let mounted = false;
@@ -29,7 +28,7 @@ export function updateActiveProblems() {
   box.innerHTML = '';
 
   const now = Date.now();
-  let hasActiveProblems = false; // ✅ 跟踪是否有活跃题目
+  let hasActiveProblems = false; // 跟踪是否有活跃题目
 
   repo.problemStatus.forEach((status, pid) => {
     const p = repo.problems.get(pid);
@@ -37,13 +36,13 @@ export function updateActiveProblems() {
 
     const remain = Math.max(0, Math.floor((status.endTime - now) / 1000));
     
-    // ✅ 如果倒计时结束（剩余时间为0），跳过显示这个卡片
+    // 如果倒计时结束（剩余时间为0），跳过显示这个卡片
     if (remain <= 0) {
       console.log(`[雨课堂助手][INFO][ActiveProblems] 题目 ${pid} 倒计时已结束，移除卡片`);
       return;
     }
 
-    // ✅ 有至少一个活跃题目
+    // 有至少一个活跃题目
     hasActiveProblems = true;
 
     const card = document.createElement('div');
@@ -76,7 +75,7 @@ export function updateActiveProblems() {
     box.appendChild(card);
   });
 
-  // ✅ 如果没有活跃题目，隐藏整个面板容器
+  // 如果没有活跃题目，隐藏整个面板容器
   if (!hasActiveProblems) {
     root.style.display = 'none';
   } else {

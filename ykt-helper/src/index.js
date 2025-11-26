@@ -5,9 +5,8 @@ import  './net/fetch-interceptor.js';
 import { injectStyles } from './ui/styles.js';
 import { installToolbar } from './ui/toolbar.js';
 import { actions } from './state/actions.js';
-import { ui } from './ui/ui-api.js'; // ✅ 补：导入 ui
+import { ui } from './ui/ui-api.js'; 
 
-// 可选：统一放到 core/env.js 的 ensureFontAwesome；这里保留现有注入方式也可以
 (function loadFA() {
   const link = document.createElement('link');
   link.rel = 'stylesheet';
@@ -16,22 +15,22 @@ import { ui } from './ui/ui-api.js'; // ✅ 补：导入 ui
 })();
 
 (function main() {
-  // 1) 样式/图标
+  // 样式/图标
   injectStyles();
 
-  // 2) 先挂 UI（面板、事件桥接）
-  ui._mountAll?.();  // ✅ 现在 ui 已导入，确保执行到位
+  // 挂 UI
+  ui._mountAll?.();  
 
-  // 3) 再装网络拦截
+  // 再装网络拦截
   installWSInterceptor();
   installXHRInterceptor();
 
-  // 4) 装工具条（按钮会用到 ui.config 状态）
+  // 加载工具条
   installToolbar();
 
-  // 5) 启动自动作答轮询（替代原来的 tickAutoAnswer 占位）
+  // 启动自动作答轮询
   actions.startAutoAnswerLoop();
 
-  // 6)1.16.4 更新课件加载
+  // 更新课件加载
   actions.launchLessonHelper();
 })();

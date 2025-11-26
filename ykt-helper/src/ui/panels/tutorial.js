@@ -27,7 +27,6 @@ export function toggleTutorialPanel() {
   const vis = root.classList.contains('visible');
   showTutorialPanel(!vis);
 
-  // 同步工具条按钮激活态（如果存在）
   const helpBtn = document.getElementById('ykt-btn-help');
   if (helpBtn) helpBtn.classList.toggle('active', !vis);
 }
