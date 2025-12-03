@@ -1,16 +1,14 @@
 // src/state/actions.js
 import { PROBLEM_TYPE_MAP } from '../core/types.js';
-import { storage } from '../core/storage.js';
 import { randInt, gm } from '../core/env.js'
 import { repo } from './repo.js';
 import { ui } from '../ui/ui-api.js';
-import { submitAnswer, retryAnswer } from '../tsm/answer.js';
-import { queryKimi, queryKimiVision } from '../ai/kimi.js';
+import { submitAnswer, retryAnswer } from '../tsm/answer.js';;
 import { queryAI, queryAIVision} from '../ai/openai.js';
 import { showAutoAnswerPopup } from '../ui/panels/auto-answer-popup.js';
-import { formatProblemForAI, formatProblemForDisplay, formatProblemForVision, parseAIAnswer } from '../tsm/ai-format.js';
-import { captureSlideImage, captureProblemForVision } from '../capture/screenshoot.js';  // ✅ 添加 captureSlideImage
-import { getOnLesson, checkinClass, getActivePresentationId } from '../net/xhr-interceptor.js';
+import { formatProblemForVision, parseAIAnswer } from '../tsm/ai-format.js';
+import { captureSlideImage, captureProblemForVision } from '../capture/screenshoot.js';  
+import { getOnLesson, checkinClass } from '../net/xhr-interceptor.js';
 import { connectOrAttachLessonWS } from '../net/ws-interceptor.js';
 
 let _autoLoopStarted = false;
@@ -19,7 +17,7 @@ let _autoOnLessonClickStarted = false;
 let _autoOnLessonClickInProgress = false;
 let _routerHooked = false;
 
-// 1.18.5: 本地默认答案生成（无 API Key 时使用，保持 AutoAnswer 流程通畅）
+// 无AI默认答案生成
 function makeDefaultAnswer(problem) {
   switch (problem.problemType) {
     case 1: // 单选
@@ -49,7 +47,7 @@ export function hasActiveAIProfile(aiCfg) {
   return !!cfg.kimiApiKey;
 }
 
-// 内部自动答题处理函数 - 融合模式（文本+图像）
+// 融合模式自动答题
 async function handleAutoAnswerInternal(problem) {
   const status = repo.problemStatus.get(problem.problemId);
   if (!status || status.answering || problem.result) {
@@ -287,7 +285,7 @@ export const actions = {
     const result = this.parseManual(problem.problemType, content);
     await submitAnswer(problem, result,{
       lessonId: repo.currentLessonId,
-      autoGate: false  // 手动提交：保持旧行为，不触发自动等待/判定
+      autoGate: false  // 手动提交
     });
     this.onAnswerProblem(problem.problemId, result);
   },
@@ -324,8 +322,8 @@ export const actions = {
       });
     }
     repo.loadStoredPresentations();
-    this.maybeStartAutoJoin();            // ← 改成统一入口
-    this.installRouterRearm();            // ← 监听路由变化，自动重挂
+    this.maybeStartAutoJoin();           
+    this.installRouterRearm();            
   },
   
     startAutoAnswerLoop() {
@@ -346,7 +344,7 @@ export const actions = {
     }, 500);
   },
 
-  // ===== 自动进入课堂：轮询“正在上课”并为每个课堂独立建链 =====
+  // 自动进入课堂
   startAutoJoinLoop() {
     if (_autoJoinStarted) return;
     _autoJoinStarted = true;
@@ -370,7 +368,6 @@ export const actions = {
               console.warn('[雨课堂助手][WARN][AutoJoin] 未获取到 lessonToken，跳过:', lessonId);
               continue;
             }
-            // 建立 WS 并发送 hello（消息会走 ws-interceptor 统一分发）
             connectOrAttachLessonWS({ lessonId, auth: token });
             // 标记该课堂为“自动进入”
             repo.markLessonAutoJoined(lessonId, true);
@@ -384,7 +381,6 @@ export const actions = {
       } catch (e) {
           console.error('[雨课堂助手][ERR][AutoJoin] 拉取正在上课失败:', e);
       } finally {
-        // 5 秒一轮，保证多课堂时彼此独立、互不阻塞
         setTimeout(loop, 5000);
       }
     };

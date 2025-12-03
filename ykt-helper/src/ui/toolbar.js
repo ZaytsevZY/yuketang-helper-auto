@@ -1,7 +1,5 @@
 // src/ui/toolbar.js
-import { gm } from '../core/env.js';
 import { ui } from './ui-api.js';
-import { actions } from '../state/actions.js';
 
 export function installToolbar() {
   // 仅创建容器与按钮；具体面板之后用 HTML/Vue 接入
@@ -29,7 +27,7 @@ export function installToolbar() {
     bar.querySelector('#ykt-btn-bell')?.classList.toggle('active', ui.config.notifyProblems);
   });
 
-  // 修改课件浏览按钮 - 切换显示/隐藏
+  // 课件浏览按钮
   bar.querySelector('#ykt-btn-pres')?.addEventListener('click', () => {
     const btn = bar.querySelector('#ykt-btn-pres');
     const isActive = btn.classList.contains('active');
@@ -37,7 +35,7 @@ export function installToolbar() {
     btn.classList.toggle('active', !isActive);
   });
 
-  // 修改AI按钮 - 切换显示/隐藏
+  // AI按钮
   bar.querySelector('#ykt-btn-ai')?.addEventListener('click', () => {
     const btn = bar.querySelector('#ykt-btn-ai');
     const isActive = btn.classList.contains('active');

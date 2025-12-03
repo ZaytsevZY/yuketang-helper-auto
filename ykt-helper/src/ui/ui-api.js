@@ -18,17 +18,16 @@ _config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
 if (typeof _config.autoJoinEnabled === 'undefined') _config.autoJoinEnabled = false;
 if (typeof _config.autoAnswerOnAutoJoin === 'undefined') _config.autoAnswerOnAutoJoin = true;
 if (typeof _config.iftex === 'undefined') _config.iftex = true;
-if (typeof _config.notifyProblems === 'undefined') _config.notifyProblems = true;           // 是否开启提醒
-if (typeof _config.notifyPopupDuration === 'undefined') _config.notifyPopupDuration = 5000; // 弹窗时长(ms)
-if (typeof _config.notifyVolume === 'undefined') _config.notifyVolume = 0.6;                // 提示音量(0~1)
-if (typeof _config.customNotifyAudioSrc === 'undefined') _config.customNotifyAudioSrc = ''; // '' 表示未设置
-if (typeof _config.customNotifyAudioName === 'undefined') _config.customNotifyAudioName = ''; // 仅用于显示
+if (typeof _config.notifyProblems === 'undefined') _config.notifyProblems = true;           
+if (typeof _config.notifyPopupDuration === 'undefined') _config.notifyPopupDuration = 5000; 
+if (typeof _config.notifyVolume === 'undefined') _config.notifyVolume = 0.6;                
+if (typeof _config.customNotifyAudioSrc === 'undefined') _config.customNotifyAudioSrc = ''; 
+if (typeof _config.customNotifyAudioName === 'undefined') _config.customNotifyAudioName = ''; 
 _config.autoJoinEnabled = !!_config.autoJoinEnabled;
 _config.autoAnswerOnAutoJoin = !!_config.autoAnswerOnAutoJoin;
 
 function saveConfig() { 
   try {
-      // 只持久化需要的字段，避免循环引用
       storage.set('config', {
         ...this.config,
         autoJoinEnabled: !!this.config.autoJoinEnabled,
@@ -112,7 +111,7 @@ export const ui = {
     window.addEventListener('ykt:open-ai', () => this.showAIPanel(true));
   },
 
-  // === 新增：题目提醒（弹窗 + 声音）===
+  // 题目提醒
   notifyProblem(problem, slide) {
     try {
       // 1) 原生通知（如果可用，备用，不阻碍自定义弹窗）
@@ -211,7 +210,7 @@ export const ui = {
       // 3) 播放提示音（WebAudio 简单“叮咚”）
       this._playNotifySound(+this.config.notifyVolume || 0.6);
     } catch (e) {
-      console.warn('[ui.notifyProblem] failed:', e);
+      console.warn('[雨课堂助手][WARN][ui.notifyProblem] failed:', e);
     }
   },
 
@@ -220,7 +219,6 @@ export const ui = {
     const src = (this.config.customNotifyAudioSrc || '').trim();
     if (src) {
       try {
-        // 采用 <audio> 元素，避免跨域 / MIME 导致的 WebAudio 解码问题
         if (!this.__notifyAudioEl) {
           this.__notifyAudioEl = new Audio();
           this.__notifyAudioEl.preload = 'auto';
@@ -232,13 +230,13 @@ export const ui = {
         el.volume = Math.max(0, Math.min(1, volume));
         el.currentTime = 0;
         const p = el.play();
-            // 某些浏览器可能因非用户手势阻止自动播放：失败时回退
+        // 失败时回退
         if (p && typeof p.catch === 'function') {
           p.catch(() => this._playNotifyTone(volume));
         }
         return;
       } catch (e) {
-        console.warn('[ui._playNotifySound] custom audio failed, fallback to tone:', e);
+        console.warn('[雨课堂助手][WARN] custom audio failed, fallback to tone:', e);
         // 回退到合成音
       }
     }

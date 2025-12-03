@@ -1,6 +1,3 @@
-// src/tsm/ai-format.js
-
-// 预处理题目内容，去除题目类型标识
 function cleanProblemBody(body, problemType, TYPE_MAP) {
   if (!body) return '';
   
@@ -16,7 +13,6 @@ function cleanProblemBody(body, problemType, TYPE_MAP) {
 export function formatProblemForAI(problem, TYPE_MAP) {
   const problemType = TYPE_MAP[problem.problemType] || '题目';
   
-  // ✅ 清理题目内容
   const cleanBody = cleanProblemBody(problem.body, problem.problemType, TYPE_MAP);
   
   let q = `分析以下${problemType}并按格式回答：\n\n题目：${cleanBody}`;
@@ -226,7 +222,7 @@ export function parseAIAnswer(problem, aiAnswer) {
       }
       
       case 4: { // 填空题
-        // ✅ 更激进的清理策略
+        // 更激进的清理策略
         let cleanAnswer = answerLine
           .replace(/^(填空题|简答题|问答题|题目|答案是?)[:：\s]*/gi, '')
           .trim();
@@ -281,7 +277,7 @@ export function parseAIAnswer(problem, aiAnswer) {
         return null;
     }
   } catch (e) {
-    console.error('[雨课堂助手][INFO][parseAIAnswer] 解析失败', e);
+    console.error('[雨课堂助手][ERR][parseAIAnswer] 解析失败', e);
     return null;
   }
 }

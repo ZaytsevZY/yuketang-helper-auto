@@ -1,8 +1,3 @@
-/**
- * fetch 拦截器 (for Chrome 141+)
- * 作用：在站点改用 fetch() 时，仍能捕获课件数据
- */
-
 import { repo } from '../state/repo.js';
 import { actions } from '../state/actions.js';
 

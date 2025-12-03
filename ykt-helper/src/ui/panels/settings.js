@@ -1,7 +1,4 @@
-// =========================
 // settings.js (new version)
-// =========================
-
 import tpl from './settings.html';
 import { ui } from '../ui-api.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
@@ -86,10 +83,7 @@ export function mountSettingsPanel() {
   const $clear     = root.querySelector('#ykt-btn-clear-audio');
   const $audioName = root.querySelector('#ykt-tip-audio-name');
 
-  //--------------------------
-  //       Profile UI
-  //--------------------------
-
+  // Profile UI
   function refreshProfileSelect() {
     const ai = ui.config.ai;
     $profileSelect.innerHTML = '';
@@ -129,7 +123,7 @@ export function mountSettingsPanel() {
     const id = `p_${Date.now().toString(36)}`;
     const newP = {
       id,
-      name: '新配置',
+      name: 'new api key',
       baseUrl: 'https://api.openai.com/...',
       apiKey: '',
       model: 'gpt-4o-mini',
@@ -157,9 +151,7 @@ export function mountSettingsPanel() {
     loadProfileToForm(ai.activeProfileId);
   });
 
-  //--------------------------------------
-  //         初始化原有 UI 配置
-  //--------------------------------------
+  // 初始化原有 UI 配置
 
   $autoJoin.checked = !!ui.config.autoJoinEnabled;
   $autoJoinAutoAnswer.checked = !!ui.config.autoAnswerOnAutoJoin;
@@ -182,9 +174,7 @@ export function mountSettingsPanel() {
     $audioName.textContent = '当前：使用内置“叮-咚”提示音';
   }
 
-  //--------------------------------------
-  //            保存设置
-  //--------------------------------------
+  // 保存设置
 
   root.querySelector('#ykt-btn-settings-save').addEventListener('click', () => {
     // --- 保存当前 Profile ---
@@ -201,23 +191,16 @@ export function mountSettingsPanel() {
     if (curOpt) curOpt.textContent = p.name || p.id;
     }
 
-    // 为兼容旧逻辑（例如 actions.js 还有检测）
     ai.kimiApiKey = p.apiKey;
     storage.set('kimiApiKey', p.apiKey);
-
-    // --- 保存原有设置 ---
     ui.config.autoJoinEnabled = !!$autoJoin.checked;
     ui.config.autoAnswerOnAutoJoin = !!$autoJoinAutoAnswer.checked;
     ui.config.autoAnswer = !!$auto.checked;
     ui.config.aiAutoAnalyze = !!$autoAnalyze.checked;
-
     ui.config.autoAnswerDelay = Math.max(1000, (+$delay.value || 0) * 1000);
     ui.config.autoAnswerRandomDelay = Math.max(0, (+$rand.value || 0) * 1000);
-
     ui.config.iftex = !!$iftex.checked;
-
     ui.config.aiSlidePickPriority = !!$priority.checked;
-
     ui.config.notifyPopupDuration = Math.max(2000, (+$notifyDur.value || 0) * 1000);
     ui.config.notifyVolume = Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100));
 
@@ -264,10 +247,7 @@ export function mountSettingsPanel() {
     ui.toast('设置已重置');
   });
 
-  //--------------------------------------
-  //        下面是音频设置（原逻辑）
-  //--------------------------------------
-
+  // 音频设置
   const MAX_SIZE = 2 * 1024 * 1024;
 
   if ($audioFile) {

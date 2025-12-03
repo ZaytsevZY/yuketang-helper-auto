@@ -14,12 +14,12 @@ export const DEFAULT_CONFIG = {
   autoAnswerRandomDelay: 2000,
   iftex: true,
   ai: {
-    provider: 'kimi', // ✅ 改为 kimi
-    kimiApiKey: '', // ✅ 添加 kimi 专用字段
-    apiKey: '', // 保持兼容
-    endpoint: 'https://api.moonshot.cn/v1/chat/completions', // ✅ Kimi API 端点
-    model: 'moonshot-v1-8k', // ✅ 文本模型
-    visionModel: 'moonshot-v1-8k-vision-preview', // ✅ 添加 Vision 模型配置
+    provider: 'kimi', 
+    kimiApiKey: '', 
+    apiKey: '', 
+    endpoint: 'https://api.moonshot.cn/v1/chat/completions', 
+    model: 'moonshot-v1-8k', 
+    visionModel: 'moonshot-v1-8k-vision-preview', 
     temperature: 0.3,
     maxTokens: 1000,
   },
@@ -27,8 +27,8 @@ export const DEFAULT_CONFIG = {
     {
       id: 'default',
       name: 'Kimi',
-      baseUrl: 'https://api.moonshot.cn/v1/chat/completions', // OpenAI 协议兼容
-      apiKey: '',                          // 从旧 kimiApiKey 迁移
+      baseUrl: 'https://api.moonshot.cn/v1/chat/completions', 
+      apiKey: '',                     
       model: 'moonshot-v1-8k',
       visionModel: 'moonshot-v1-8k-vision-preview',
     },

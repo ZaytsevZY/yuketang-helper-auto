@@ -232,9 +232,9 @@
 /* 两列布局：左列表 + 右详细视图 */
 #ykt-presentation-panel .panel-body{
   display: grid;
-  grid-template-columns: 300px 1fr;  /* 左列宽度可按需调整 */
+  grid-template-columns: 300px 1fr;  
   gap: 12px;
-  overflow: hidden;                  /* 避免内部再出现双滚动条 */
+  overflow: hidden;                  
   align-items: start;
 }
 
@@ -242,13 +242,13 @@
 #ykt-presentation-panel .panel-left{
   max-height: var(--ykt-panel-max-h);
   overflow: auto;
-  min-width: 0;                      /* 防止子元素撑破 */
+  min-width: 0;                      
 }
 
 /* 右侧：粘性定位为“固定”，始终在面板可视区内 */
 #ykt-presentation-panel .panel-right{
   position: sticky;
-  top: 0;                            /* 相对可滚动祖先（面板）吸顶 */
+  top: 0;                            
   align-self: start;
 }
 
@@ -356,7 +356,7 @@
   box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.25);
 }
 
-/* ===== Markdown-like 样式（作用域限定在 AI 结果区）===== */
+/* ===== Markdown-like 样式 ===== */
 .ai-answer {
   white-space: normal;
   line-height: 1.6;
@@ -421,14 +421,14 @@
   font-size: 12px;
 }
 
-/* 列表：优先启用浏览器原生圆点/数字 */
+/* 列表 */
 .ai-answer ul, .ai-answer ol {
-  margin: 6px 0 6px 22px;   /* 左缩进 */
+  margin: 6px 0 6px 22px;   
 }
 .ai-answer ul { list-style: disc; }
 .ai-answer ol { list-style: decimal; }
 
-/* 表格（如果 LLM 生成了表格 Markdown） */
+/* 表格 */
 .ai-answer table {
   border-collapse: collapse;
   margin: 8px 0;
@@ -445,7 +445,7 @@
   font-weight: 600;
 }
 
-/* 适配深色（如面板有暗色主题） */
+/* 适配深色 */
 @media (prefers-color-scheme: dark) {
   .ai-answer blockquote {
     border-left-color: rgba(255,255,255,0.35);

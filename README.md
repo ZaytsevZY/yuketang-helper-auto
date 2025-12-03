@@ -20,7 +20,7 @@
     </h3>
 </html>
 
-> 最后更新时间：2025.11.25
+> 最后更新时间：2025.12.02
 
 ## 项目说明
 
@@ -41,13 +41,13 @@
 
   - 如果你需要最新版本的脚本，请在`dev-2.0`获取
 
-  - 你可以在`/release`目录获取`1.16.x-1.19.x`版本
+  - 你可以在`/release`目录获取`1.16.x-1.20.x`版本
 
   - 你可以在`/ykt-helper-allinone`获取更早的版本
 
 - 或手动创建新脚本，复制```yuketang-helper-ai-<版本号>.js```到篡改猴新建脚本中。
 
-- 目前持续更新的版本是`1.19.x`，支持：
+- 目前持续更新的版本是`1.20.x`，支持：
 
   - `141.0.7390.108-chrome`及以下的chrome
 
@@ -198,7 +198,7 @@
 |MoonShot（默认）|https://api.moonshot.cn/v1/chat/completions|moonshot-v1-8k-vision-preview|[月之暗面API平台](https://platform.moonshot.cn/)|
 |硅基流动|https://api.siliconflow.cn/v1/chat/completions|Qwen/Qwen3-VL-32B-Instruct [获取更多](https://cloud.siliconflow.cn/me/models)|[硅基流动](https://cloud.siliconflow.cn/me/models)|
 |阿里云|https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions|qwen3-vl-plus [获取更多](https://bailian.console.aliyun.com/?tab=model#/model-market)|[阿里云百炼](https://bailian.console.aliyun.com/)|
-|并行科技|https://ai.paratera.com//v1/chat/completions|GLM-4V-Plus [获取更多](https://ai.paratera.com/#/lms/model)|[清华](easycompute.cs.tsinghua.edu.cn/home) / [其他学校](https://ai.paratera.com/#/lms/api)|
+|并行科技|https://ai.paratera.com/v1/chat/completions|GLM-4V-Plus [获取更多](https://ai.paratera.com/#/lms/model)|[清华](easycompute.cs.tsinghua.edu.cn/home) / [其他学校](https://ai.paratera.com/#/lms/api)|
 
 可以在设置中管理所有API-KEY和当前使用的API-KEY：
 

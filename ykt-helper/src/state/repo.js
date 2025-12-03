@@ -13,13 +13,13 @@ export const repo = {
   currentLessonId: null,
   currentSelectedUrl: null,
 
-  // 1.16.4:按课程分组存储课件（presentations-<lessonId>）
+  // 按课程分组存储课件
   setPresentation(id, data) {
     this.presentations.set(id, { id, ...data });
     const key = this.currentLessonId ? `presentations-${this.currentLessonId}` : 'presentations';
     storage.alterMap(key, (m) => {
       m.set(id, data);
-      // 仍然做容量裁剪（向后兼容）
+      // 仍然做容量裁剪
       const max = (storage.get('config', {})?.maxPresentations ?? 5);
       const excess = m.size - max;
       if (excess > 0) [...m.keys()].slice(0, excess).forEach(k => m.delete(k));
@@ -51,7 +51,7 @@ export const repo = {
   autoJoinedLessons: new Set(),     // 被“自动进入”的课堂集合（仅标记自动进入建立的连接）
   forceAutoAnswerLessons: new Set(),// 若需要，可以对某些课强制视为“自动答题开启”
 
-  // 1.16.4:载入本课（按课程分组）在本地存储过的课件
+  // 载入本课（按课程分组）在本地存储过的课件
   loadStoredPresentations() {
     if (!this.currentLessonId) return;
     const key = `presentations-${this.currentLessonId}`;
