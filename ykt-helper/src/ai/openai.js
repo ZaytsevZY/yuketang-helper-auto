@@ -247,7 +247,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
   // -------- 0. 如果只有 VLM（或者显式关闭两步），回退到单步逻辑 --------
   if (!hasSeparateTextModel || disableTwoStep) {
     if (twoStepDebug) {
-      console.log('[aihelper][INFO][vision] use single-step vision', {
+      console.log('[雨课堂助手][INFO][vision] use single-step vision', {
         hasSeparateTextModel,
         disableTwoStep,
       });
@@ -256,7 +256,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
   }
 
   if (twoStepDebug) {
-    console.log('[aihelper][INFO][vision] use TWO-STEP pipeline', {
+    console.log('[雨课堂助手][INFO][vision] use TWO-STEP pipeline', {
       visionModel,
       textModel,
     });
@@ -332,7 +332,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
 
     const content1 = data1.choices?.[0]?.message?.content || '';
     if (twoStepDebug) {
-      console.log('[aihelper][DEBUG][vision-step1] raw content:', content1);
+      console.log('[雨课堂助手][DEBUG][vision-step1] raw content:', content1);
     }
 
     const jsonMatch = content1.match(/\{[\s\S]*\}/);
@@ -340,22 +340,22 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
 
     structuredQuestion = JSON.parse(jsonMatch[0]);
   } catch (err) {
-    console.warn('[aihelper][WARN][vision-step1] failed, fallback to single-step', err);
+    console.warn('[雨课堂助手][WARN][vision-step1] failed, fallback to single-step', err);
     return singleStepVisionCall(profile, cleanBase64, textPrompt, { timeout: timeoutMs });
   }
 
   if (!structuredQuestion || !structuredQuestion.stem) {
-    console.warn('[aihelper][WARN][vision-step1] invalid structuredQuestion, fallback');
+    console.warn('[雨课堂助手][WARN][vision-step1] invalid structuredQuestion, fallback');
     return singleStepVisionCall(profile, cleanBase64, textPrompt, { timeout: timeoutMs });
   }
 
   if (twoStepDebug) {
-    console.log('[aihelper][INFO][vision-step1] structuredQuestion:', structuredQuestion);
+    console.log('[雨课堂助手][INFO][vision-step1] structuredQuestion:', structuredQuestion);
   }
 
   // 如果模型明确表示“必须依赖原始图像才能解题”，则回退到单步 Vision，避免纯文本推理丢失关键信息
   if (structuredQuestion.requires_image_for_solution === true) {
-    console.warn('[aihelper][INFO][vision] step1 says image is essential, fallback to single-step');
+    console.warn('[雨课堂助手][INFO][vision] step1 says image is essential, fallback to single-step');
     return singleStepVisionCall(profile, cleanBase64, textPrompt, { timeout: timeoutMs });
   }
 
@@ -437,11 +437,11 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
       throw new Error('AI返回内容为空');
     }
     if (twoStepDebug) {
-      console.log('[aihelper][INFO][vision-step2] final content:', content2);
+      console.log('[雨课堂助手][INFO][vision-step2] final content:', content2);
     }
     return content2;
   } catch (err) {
-    console.warn('[aihelper][WARN][vision-step2] failed, fallback to single-step', err);
+    console.warn('[雨课堂助手][WARN][vision-step2] failed, fallback to single-step', err);
     return singleStepVisionCall(profile, cleanBase64, textPrompt, { timeout: timeoutMs });
   }
 }
