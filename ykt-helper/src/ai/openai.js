@@ -170,7 +170,7 @@ function chatCompletion(profile, payload, debugLabel = '[AI OpenAI]', timeoutMs 
   });
 }
 
-async function singleStepVisionCall(profile, cleanBase64, textPrompt, options = {}) {
+async function singleStepVisionCall(profile, cleanBase64List, textPrompt, options = {}) {
   const visionModel = profile.visionModel || profile.model;
   const timeoutMs = options.timeout || 60000;
 
@@ -179,15 +179,20 @@ async function singleStepVisionCall(profile, cleanBase64, textPrompt, options = 
     VISION_GUIDE,
   ].join('\n');
 
+  const imageBlocks = []
+  for (const b64 of cleanBase64List) {
+    imageBlocks.push({
+      type: 'image_url',
+      image_url: { url: `data:image/png;base64,${b64}` },
+    });
+  }
+
   const messages = [
     { role: 'system', content: BASE_SYSTEM_PROMPT },
     {
       role: 'user',
       content: [
-        {
-          type: 'image_url',
-          image_url: { url: `data:image/png;base64,${cleanBase64}` },
-        },
+        ...imageBlocks,
         {
           type: 'text',
           text: [
@@ -229,10 +234,13 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
     throw new Error('请先在设置中配置 AI API Key');
   }
 
-  if (!imageBase64 || typeof imageBase64 !== 'string') {
-    throw new Error('图像数据格式错误');
-  }
-  const cleanBase64 = imageBase64.replace(/^data:image\/[^;]+;base64,/, '');
+  // ===== 兼容单图 / 多图 =====
+  const inputList = Array.isArray(imageBase64) ? imageBase64 : [imageBase64];
+  const cleanBase64List = inputList
+    .filter(Boolean)
+    .map(x => String(x).replace(/^data:image\/[^;]+;base64,/, ''))
+    .filter(x => !!x);
+  if (cleanBase64List.length === 0) throw new Error('图像数据格式错误');
 
   const visionModel = profile.visionModel || profile.model;
   const textModel = profile.model;
@@ -252,7 +260,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
         disableTwoStep,
       });
     }
-    return singleStepVisionCall(profile, cleanBase64, textPrompt, { timeout: timeoutMs });
+    return singleStepVisionCall(profile, cleanBase64List, textPrompt, { timeout: timeoutMs });
   }
 
   if (twoStepDebug) {
@@ -300,10 +308,10 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
     {
       role: 'user',
       content: [
-        {
+        ...cleanBase64List.map(b64 => ({
           type: 'image_url',
-          image_url: { url: `data:image/png;base64,${cleanBase64}` },
-        },
+          image_url: { url: `data:image/png;base64,${b64}` },
+        })),
         textPrompt
           ? {
               type: 'text',
@@ -341,12 +349,12 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
     structuredQuestion = JSON.parse(jsonMatch[0]);
   } catch (err) {
     console.warn('[雨课堂助手][WARN][vision-step1] failed, fallback to single-step', err);
-    return singleStepVisionCall(profile, cleanBase64, textPrompt, { timeout: timeoutMs });
+    return singleStepVisionCall(profile, cleanBase64List, textPrompt, { timeout: timeoutMs });
   }
 
   if (!structuredQuestion || !structuredQuestion.stem) {
     console.warn('[雨课堂助手][WARN][vision-step1] invalid structuredQuestion, fallback');
-    return singleStepVisionCall(profile, cleanBase64, textPrompt, { timeout: timeoutMs });
+    return singleStepVisionCall(profile, cleanBase64List, textPrompt, { timeout: timeoutMs });
   }
 
   if (twoStepDebug) {
@@ -356,7 +364,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
   // 如果模型明确表示“必须依赖原始图像才能解题”，则回退到单步 Vision，避免纯文本推理丢失关键信息
   if (structuredQuestion.requires_image_for_solution === true) {
     console.warn('[雨课堂助手][INFO][vision] step1 says image is essential, fallback to single-step');
-    return singleStepVisionCall(profile, cleanBase64, textPrompt, { timeout: timeoutMs });
+    return singleStepVisionCall(profile, cleanBase64List, textPrompt, { timeout: timeoutMs });
   }
 
   // ===================== Step 2: Text 模型纯文本推理解题 =====================
@@ -442,7 +450,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
     return content2;
   } catch (err) {
     console.warn('[雨课堂助手][WARN][vision-step2] failed, fallback to single-step', err);
-    return singleStepVisionCall(profile, cleanBase64, textPrompt, { timeout: timeoutMs });
+    return singleStepVisionCall(profile, cleanBase64List, textPrompt, { timeout: timeoutMs });
   }
 }
 
