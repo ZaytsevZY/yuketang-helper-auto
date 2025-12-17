@@ -1,4 +1,4 @@
-// src/index.js
+﻿// src/index.js
 import { installWSInterceptor } from './net/ws-interceptor.js';
 import { installXHRInterceptor } from './net/xhr-interceptor.js';
 import  './net/fetch-interceptor.js';
@@ -14,7 +14,45 @@ import { ui } from './ui/ui-api.js';
   document.head.appendChild(link);
 })();
 
+function maybeAutoReloadOnMount() {
+  try {
+    // If the script is mounted after DOM is already ready, reload once so XHR/WS interceptors can arm early.
+    // Guarded by sessionStorage to avoid infinite reload loops.
+    const key = '__ykt_helper_auto_reload_once__';
+    if (document.readyState === 'loading') return false;
+    if (!window.sessionStorage) return false;
+    if (window.sessionStorage.getItem(key) === '1') return false;
+
+    window.sessionStorage.setItem(key, '1');
+    console.log('[YKT-Helper][INFO] Late mount detected; reloading once to arm interceptors.');
+    window.setTimeout(() => window.location.reload(), 50);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function startPeriodicReload(opts = {}) {
+  try {
+    const intervalMs = Number.isFinite(opts.intervalMs) ? opts.intervalMs : 5 * 60 * 1000;
+    const onlyWhenHidden = (opts.onlyWhenHidden !== false);
+    const skipLessonPages = (opts.skipLessonPages !== false);
+
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) return;
+
+    window.setInterval(() => {
+      try {
+        if (skipLessonPages && /\/lesson\//.test(window.location.pathname)) return;
+        if (onlyWhenHidden && !document.hidden) return;
+
+        console.log('[YKT-Helper][INFO] Periodic reload triggered to avoid zombie session.');
+        window.location.reload();
+      } catch {}
+    }, intervalMs);
+  } catch {}
+}
 (function main() {
+  if (maybeAutoReloadOnMount()) return;
+  startPeriodicReload({ intervalMs: 5 * 60 * 1000, onlyWhenHidden: true, skipLessonPages: true });
   // 样式/图标
   injectStyles();
 
@@ -34,3 +72,4 @@ import { ui } from './ui/ui-api.js';
   // 更新课件加载
   actions.launchLessonHelper();
 })();
+
