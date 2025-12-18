@@ -1,9 +1,15 @@
 <p align="center">
   <a href="https://github.com/ZaytsevZY/yuketang-helper-auto/pulls">
-    <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square" alt="PRs Welcome">
+    <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
   </a>
   <a href="https://github.com/ZaytsevZY/yuketang-helper-auto/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="license"/>
+  </a>
+  <a href="manifest.json">
+    <img src="https://img.shields.io/badge/version-1.20.2-blue.svg" alt="版本">
+  </a>
+  <a href="#">
+    <img src="https://img.shields.io/badge/platform-Chrome%20%7C%20Edge-green.svg" alt="适配平台">
   </a>
 </a>
 
@@ -20,13 +26,15 @@
     </h3>
 </html>
 
-> 最后更新时间：2025.12.02
+> 最后更新时间：2025.12.15
 
 ## 项目说明
 
 - 项目灵感来自于：[雨课堂助手](https://github.com/hotwords123/yuketang-helper.git)，本项目已兼容`ykt-helper v1.5.1`。
 
 - 项目兼容：[清华大学荷塘雨课堂助手-AI版](https://github.com/DragonAura/THU-Yuketang-Helper-AI)，但是不建议同时使用2种AI答题。
+
+- 项目正在兼容：[yuketang-assistant](https://github.com/soundstarrain/yuketang-assistant)，我们正在修复和更新一些功能。
 
 - 注意：本项目暂时不支持雨课堂最新版的**动态二维码**，如果你修读的课程使用动态二维码，我们无法提供摸鱼方面的帮助。
 
@@ -62,14 +70,14 @@
 ## 功能介绍
 
 加载成功时，进入课堂后页面左下角会出现一个工具栏：
-  - 习题提醒 :bell: ：切换是否在新习题出现时显示通知
-  - 查看课件和幻灯片 :receipt: ：进行课件操作，查看习题列表
-  - AI解答 :robot: ：使用AI解答当前习题
-  - 自动答题 :magic_wand: ：自动答题
-  - 设置 :gear: ：设置脚本行为和API密钥
-  - 使用教程 :question: ：显示详细使用说明
+  - **习题提醒** :bell: ：切换是否在新习题出现时显示通知
+  - **查看课件和幻灯片** :receipt: ：进行课件操作，查看习题列表
+  - **AI解答** :robot: ：使用AI解答当前习题
+  - **自动答题** :magic_wand: ：自动答题
+  - **设置** :gear: ：设置脚本行为和API密钥
+  - **教程** :question: ：显示详细使用说明
 
-![](./static/1.png)
+<img src="./static/1.png"/>
 
 ### 1. 课堂提示
 
@@ -79,7 +87,7 @@
 
 - 可以在设置 :gear: 中修改习题提醒的方式。
 
-![](./static/3.png)
+<img src="./static/3.png"/>
 
 ### 2. AI辅助学习
 
@@ -91,7 +99,12 @@
 - 如果你没有摸鱼，在作答结束之前你将能够修改AI作答的结果
 - 注意：对于**没有公布题干**的题目（当堂出题），请不要使用AI作答
 
-![](./static/5.png)
+<img src="./static/5.png"/>
+
+- Agent模式：在`1.20.1`以上版本会逐步引入Agent模式，预计能够根据提问的难度、预留作答时间、题目类型等调用合适的工作流以提高答题正确率。
+  - 可以通过`ctrl`/`cmd`在「查看课件和幻灯片」选中多张PPT进行提问
+
+![](./static/agent.png)
 
 ### 3. AI自动作答
 

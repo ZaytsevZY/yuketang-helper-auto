@@ -7,6 +7,7 @@ import { ensureHtml2Canvas, ensureJsPDF } from '../../core/env.js';
 let mounted = false;
 let host;
 let staticReportReady = false; //已结束课程
+const selectedSlideIds = new Set();
 function findSlideAcrossPresentations(idStr) {
   for (const [, pres] of repo.presentations) { const arr = pres?.slides || []; const hit = arr.find(s => String(s.id) === idStr); if (hit) return hit; }
   return null;
@@ -224,6 +225,23 @@ export function mountPresentationPanel() {
   });
 
   $('#ykt-ask-current')?.addEventListener('click', () => {
+    if (selectedSlideIds.size > 0) {
+      const slides = [];
+      for (const sid of selectedSlideIds) {
+        const lookup = getSlideByAny(sid);
+        const imageUrl = lookup.slide?.image || lookup.slide?.thumbnail || '';
+        if (imageUrl) slides.push({ slideId: sid, imageUrl });
+      }
+      L('点击“提问当前PPT”(多选)', { selectedCount: selectedSlideIds.size, slidesCount: slides.length });
+      if (slides.length === 0) return ui.toast('所选页面无可用图片', 2500);
+      window.dispatchEvent(new CustomEvent('ykt:ask-ai-for-slides', {
+        detail: { slides, source: 'manual' }
+      }));
+      window.dispatchEvent(new CustomEvent('ykt:open-ai'));
+      return;
+    }
+
+    // ===== 否则走旧逻辑：单页 =====
     const sid = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
     const lookup = getSlideByAny(sid);
     L('点击“提问当前PPT”', { currentSlideId: sid, lookupHit: lookup.hit, hasSlide: !!lookup.slide });
@@ -398,12 +416,24 @@ export function updatePresentationList() {
         if (s.problem.result) thumb.classList.add('answered');
       }
 
-      thumb.addEventListener('click', () => {
-        L('缩略图点击', {
-          presIdStr, slideIdStr,
-          beforeRepo: { curPres: String(repo.currentPresentationId || ''), curSlide: String(repo.currentSlideId || '') },
-          mapHasNow: repo.slides.has(slideIdStr)
-        });
+      thumb.addEventListener('click', (ev) => {
+        // ===== Ctrl/Cmd 多选：不改变 currentSlideId，不触发导航，仅切换 selected =====
+        if (ev && (ev.ctrlKey || ev.metaKey)) {
+          ev.preventDefault();
+          if (selectedSlideIds.has(slideIdStr)) {
+            selectedSlideIds.delete(slideIdStr);
+            thumb.classList.remove('selected');
+          } else {
+            selectedSlideIds.add(slideIdStr);
+            thumb.classList.add('selected');
+          }
+          L('缩略图多选切换', { slideIdStr, selectedCount: selectedSlideIds.size });
+          return;
+        }
+
+        // ===== 普通点击：沿用原逻辑，并清空多选 =====
+        selectedSlideIds.clear();
+        slidesWrap.querySelectorAll('.slide-thumb.selected').forEach(el => el.classList.remove('selected'));
 
         repo.currentPresentationId = presIdStr;
         repo.currentSlideId = slideIdStr;

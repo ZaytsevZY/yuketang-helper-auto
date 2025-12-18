@@ -13,6 +13,49 @@ const W = (...a) => console.warn('[雨课堂助手][WARN][ai]', ...a);
 let mounted = false;
 let root;
 let preferredSlideFromPresentation = null; // 启用来自presentation的页面
+let preferredSlidesFromPresentation = []; // 手动多页（仅用于“提问当前PPT”的多选）
+let manualMultiSlidesArmed = false; // 只有手动触发时才允许多图
+
+function renderSelectedPPTPreview() {
+  const box = document.getElementById('ykt-ai-selected');
+  const singleImg = document.getElementById('ykt-ai-selected-thumb');
+  const thumbs = document.getElementById('ykt-ai-selected-thumbs');
+  if (!box || !singleImg || !thumbs) return;
+
+  // 清空多图容器
+  thumbs.innerHTML = '';
+
+  // 多页优先显示（来自手动多选）
+  if (Array.isArray(preferredSlidesFromPresentation) && preferredSlidesFromPresentation.length > 0) {
+    const items = preferredSlidesFromPresentation
+      .map(s => ({ slideId: asIdStr(s.slideId), imageUrl: s.imageUrl || '' }))
+      .filter(x => !!x.imageUrl);
+
+    if (items.length > 0) {
+      singleImg.style.display = 'none';
+      for (const it of items) {
+        const img = document.createElement('img');
+        img.src = it.imageUrl;
+        img.alt = `PPT ${it.slideId || ''}`;
+        img.style.cssText = 'max-width:120px; max-height:80px; display:block; border-radius:4px;';
+        thumbs.appendChild(img);
+      }
+      box.style.display = '';
+      return;
+    }
+  }
+
+  // 单页回退
+  const url = preferredSlideFromPresentation?.imageUrl || '';
+  if (url) {
+    singleImg.src = url;
+    singleImg.style.display = '';
+    box.style.display = '';
+  } else {
+    singleImg.style.display = 'none';
+    box.style.display = 'none';
+  }
+}
 
 function ensureMathJax() {
   const mj = window.MathJax;
@@ -231,6 +274,9 @@ export function mountAIPanel() {
     const sid = asIdStr(ev?.detail?.slideId);
     const imageUrl = ev?.detail?.imageUrl || null;
     if (sid) preferredSlideFromPresentation = { slideId: sid, imageUrl };
+    // 普通选页不应该保留手动多选
+    preferredSlidesFromPresentation = [];
+    manualMultiSlidesArmed = false;
     renderQuestion();
   });
 
@@ -246,18 +292,42 @@ export function mountAIPanel() {
     L('收到“提问当前PPT”事件', { slideId, imageLen: imageUrl?.length || 0 });
     if (slideId) {
       preferredSlideFromPresentation = { slideId, imageUrl };
+      // 单页提问不应该触发多选逻辑
+      preferredSlidesFromPresentation = [];
+      manualMultiSlidesArmed = false;
       const look = getSlideByAny(slideId);
       if (look.slide && imageUrl) look.slide.image = imageUrl;
       L('提问当前PPT: lookupHit=', look.hit, 'hasSlide=', !!look.slide);
     }
     showAIPanel(true);
     renderQuestion();
-    const img = document.getElementById('ykt-ai-selected-thumb');
-    const box = document.getElementById('ykt-ai-selected');
-    if (img && box) {
-      img.src = preferredSlideFromPresentation?.imageUrl || '';
-      box.style.display = preferredSlideFromPresentation?.imageUrl ? '' : 'none';
+    renderSelectedPPTPreview();
+  });
+
+  // ===== 手动多页提问（来自课件面板多选）=====
+  window.addEventListener('ykt:ask-ai-for-slides', (ev) => {
+    const detail = ev?.detail || {};
+    const slides = Array.isArray(detail.slides) ? detail.slides : [];
+    if (!slides.length) return;
+    if (detail.source !== 'manual') return; // 只允许手动路径进入
+
+    preferredSlidesFromPresentation = slides
+      .map(s => ({ slideId: asIdStr(s.slideId), imageUrl: s.imageUrl || '' }))
+      .filter(s => !!s.slideId);
+    manualMultiSlidesArmed = preferredSlidesFromPresentation.length > 0;
+
+    // 预览仍保持单页逻辑：用第一张作为“已选择页面”的展示（不强制要求改 UI）
+    const first = preferredSlidesFromPresentation[0];
+    if (first?.slideId) {
+      preferredSlideFromPresentation = { slideId: first.slideId, imageUrl: first.imageUrl || '' };
+      const look = getSlideByAny(first.slideId);
+      if (look.slide && first.imageUrl) look.slide.image = first.imageUrl;
     }
+
+    L('收到手动多页提问事件', { count: preferredSlidesFromPresentation.length, armed: manualMultiSlidesArmed });
+    showAIPanel(true);
+    renderQuestion();
+    renderSelectedPPTPreview();
   });
 
   mounted = true;
@@ -399,12 +469,7 @@ function renderQuestion() {
   const img = document.getElementById('ykt-ai-selected-thumb');
   const box = document.getElementById('ykt-ai-selected');
   if (img && box) {
-    if (preferredSlideFromPresentation?.imageUrl) {
-      img.src = preferredSlideFromPresentation.imageUrl;
-      box.style.display = '';
-    } else {
-      box.style.display = 'none';
-    }
+    renderSelectedPPTPreview();
   }
   const statusEl = document.querySelector('#ykt-ai-text-status');
   if (statusEl) {
@@ -487,11 +552,31 @@ export async function askAIFusionMode() {
       L('[ask] 使用传入 imageUrl');
     }
 
-    L('[ask] 获取页面图片...');
-    ui.toast(`正在获取${selectionSource}图片...`, 2000);
-    const imageBase64 = await captureSlideImage(currentSlideId);
-    if (!imageBase64) throw new Error('无法获取页面图片，请确保页面已加载完成');
-    L('[ask] ✅ 页面图片获取成功，大小(KB)=', Math.round(imageBase64.length / 1024));
+     // ===== 获取图片：仅手动多选时走多图；否则保持单图 =====
+    let imageBase64OrList = null;
+    if (manualMultiSlidesArmed && Array.isArray(preferredSlidesFromPresentation) && preferredSlidesFromPresentation.length > 0) {
+      const ids = preferredSlidesFromPresentation.map(s => asIdStr(s.slideId)).filter(Boolean);
+      ui.toast(`正在获取课件多页图片（共 ${ids.length} 页）...`, 2500);
+      L('[ask] 手动多页截图开始', { ids });
+      const images = [];
+      for (const sid of ids) {
+        const b64 = await captureSlideImage(sid);
+        if (b64) images.push(b64);
+      }
+      if (images.length === 0) throw new Error('无法获取所选页面图片，请确保页面已加载完成');
+      imageBase64OrList = images;
+      // 消费一次：避免 aiAutoAnalyze 或后续调用误用多图
+      manualMultiSlidesArmed = false;
+      preferredSlidesFromPresentation = [];
+      L('[ask] ✅ 手动多页截图完成', { got: images.length });
+    } else {
+      L('[ask] 获取页面图片...');
+      ui.toast(`正在获取${selectionSource}图片...`, 2000);
+      const imageBase64 = await captureSlideImage(currentSlideId);
+      if (!imageBase64) throw new Error('无法获取页面图片，请确保页面已加载完成');
+      imageBase64OrList = imageBase64;
+      L('[ask] ✅ 页面图片获取成功，大小(KB)=', Math.round(imageBase64.length / 1024));
+    }
 
     let textPrompt = `【页面说明】当前页面可能不是题目页；请结合用户提示作答。`;
     const customPrompt = getCustomPrompt();
@@ -502,7 +587,7 @@ export async function askAIFusionMode() {
 
     ui.toast(`正在分析${selectionSource}内容...`, 3000);
     L('[ask] 调用 Vision API...');
-    const aiContent = await queryAIVision(imageBase64, textPrompt, ui.config.ai);
+    const aiContent = await queryAIVision(imageBase64OrList, textPrompt, ui.config.ai);
 
     setAILoading(false);
     L('[ask] Vision API调用成功, 内容长度=', aiContent?.length);
