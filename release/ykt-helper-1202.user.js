@@ -4433,19 +4433,19 @@
       if (!Number.isFinite(intervalMs) || intervalMs <= 0) return;
       window.setInterval(() => {
         try {
-          console.log("[YKT-Helper][DEBUG] periodic tick", {
+          console.log("[雨课堂助手]][DEBUG] periodic tick", {
             pathname: window.location.pathname,
             hidden: document.hidden
           });
           if (skipLessonPages && /\/lesson\//.test(window.location.pathname)) {
-            console.log("[YKT-Helper][DEBUG] skip reload: lesson page");
+            console.log("[雨课堂助手][DEBUG] skip reload: lesson page");
             return;
           }
           if (onlyWhenHidden && !document.hidden) {
-            console.log("[YKT-Helper][DEBUG] skip reload: page visible");
+            console.log("[雨课堂助手][DEBUG] skip reload: page visible");
             return;
           }
-          console.log("[YKT-Helper][INFO] Periodic reload triggered to avoid zombie session.");
+          console.log("[雨课堂助手][INFO] Periodic reload triggered to avoid zombie session.");
           window.location.reload();
         } catch (e) {
           console.error(e);
@@ -4458,7 +4458,7 @@
     startPeriodicReload({
       intervalMs: 1 * 60 * 1e3,
       onlyWhenHidden: false,
-      skipLessonPages: false
+      skipLessonPages: true
     });
     // 样式/图标
         injectStyles();
