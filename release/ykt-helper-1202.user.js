@@ -4433,20 +4433,32 @@
       if (!Number.isFinite(intervalMs) || intervalMs <= 0) return;
       window.setInterval(() => {
         try {
-          if (skipLessonPages && /\/lesson\//.test(window.location.pathname)) return;
-          if (onlyWhenHidden && !document.hidden) return;
+          console.log("[YKT-Helper][DEBUG] periodic tick", {
+            pathname: window.location.pathname,
+            hidden: document.hidden
+          });
+          if (skipLessonPages && /\/lesson\//.test(window.location.pathname)) {
+            console.log("[YKT-Helper][DEBUG] skip reload: lesson page");
+            return;
+          }
+          if (onlyWhenHidden && !document.hidden) {
+            console.log("[YKT-Helper][DEBUG] skip reload: page visible");
+            return;
+          }
           console.log("[YKT-Helper][INFO] Periodic reload triggered to avoid zombie session.");
           window.location.reload();
-        } catch {}
+        } catch (e) {
+          console.error(e);
+        }
       }, intervalMs);
     } catch {}
   }
   (function main() {
     if (maybeAutoReloadOnMount()) return;
     startPeriodicReload({
-      intervalMs: 5 * 60 * 1e3,
-      onlyWhenHidden: true,
-      skipLessonPages: true
+      intervalMs: 1 * 60 * 1e3,
+      onlyWhenHidden: false,
+      skipLessonPages: false
     });
     // 样式/图标
         injectStyles();
