@@ -1,6 +1,26 @@
 // src/ai/kimi.js
 import { gm } from '../core/env.js';
 
+// 将后端 problemType 数字映射为 Step1/Step2 使用的 question_type 字符串
+// 约定：
+// 1 -> single_choice   （单选）
+// 2 -> multiple_choice （多选）
+// 3 -> single_choice   （投票题按单选处理）
+// 4 -> fill_in         （填空题）
+// 5 -> subjective      （主观题 / 简答题）
+function mapProblemTypeToQuestionType(problemType) {
+  if (problemType == null) return null;
+  const n = Number(problemType);
+  switch (n) {
+    case 1: return 'single_choice';
+    case 2: return 'multiple_choice';
+    case 3: return 'single_choice';
+    case 4: return 'fill_in';
+    case 5: return 'subjective';
+    default: return null;
+  }
+}
+
 function getActiveProfile(aiCfg) {
   const cfg = aiCfg || {};
   const profiles = Array.isArray(cfg.profiles) ? cfg.profiles : [];
@@ -250,6 +270,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
     disableTwoStep = false,
     twoStepDebug = false,
     timeout: timeoutMs = 60000,
+    problemType = null,          // ← 新增：后端题型（数字或字符串都行）
   } = options || {};
 
   // -------- 0. 如果只有 VLM（或者显式关闭两步），回退到单步逻辑 --------
@@ -275,6 +296,20 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
 你是一个“题目结构化助手”。你将看到课件截图和可选的附加文本，请从中提取出清晰的题目结构，并以 JSON 格式输出。
 
 你不仅要识别文字（类似 OCR），还要理解图片里的内容（例如物体、颜色、形状、数量、相对位置等），并把这些与题目有关的信息转化为题干或补充说明的一部分。
+
+【题型识别优先级】
+1. 如果页面上出现了明确的题型标签文字，如：
+   - "单选题"、"多选题"、"投票题"、"填空题"、"主观题" 等，
+   请优先根据这些标签设置 question_type：
+   - 单选题 / 投票题 -> "single_choice"
+   - 多选题         -> "multiple_choice"
+   - 填空题         -> "fill_in"
+   - 主观题 / 简答题 / 论述题 -> "subjective"
+2. 当没有明显题型标签时，再根据题干语义和版面结构推断题型。
+
+【选项字母规则】
+- 只有在页面上出现了清晰的选项字母（通常为 "A."、"B."、"C."、"D." 等）并跟随选项内容时，才能将 question_type 设为 "single_choice" 或 "multiple_choice"（或投票题对应的 "single_choice"）。
+- 如果没有任何 A/B/C/D 这种选项字母，而问题又需要开放性自由回答，请优先将 question_type 设为 "subjective"。
 
 请尽量识别：
 - question_type: "single_choice" | "multiple_choice" | "fill_in" | "subjective" | "visual_only" | "unknown"
@@ -361,6 +396,31 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
     console.log('[雨课堂助手][INFO][vision-step1] structuredQuestion:', structuredQuestion);
   }
 
+  // ========= 题型合并逻辑：后端 problemType 优先，其次 VLM 推断，全部缺失则回退 subjective =========
+  const backendQuestionType = mapProblemTypeToQuestionType(problemType);
+  const vlmQuestionType = structuredQuestion.question_type || null;
+
+  let finalQuestionType = backendQuestionType || vlmQuestionType || null;
+
+  // 如果 VLM 返回的是 unknown / visual_only 这类不太可用的类型，也当成“缺失”
+  if (finalQuestionType === 'unknown' || finalQuestionType === 'visual_only') {
+    finalQuestionType = null;
+  }
+
+  // 当后端和 VLM 都没有给出可用题型时，统一回退为主观题
+  if (!finalQuestionType) {
+    finalQuestionType = 'subjective';
+  }
+
+  if (twoStepDebug) {
+    console.log('[雨课堂助手][INFO][vision-step1] questionType merged:', {
+      problemType,
+      backendQuestionType,
+      vlmQuestionType,
+      finalQuestionType,
+    });
+  }
+
   // 如果模型明确表示“必须依赖原始图像才能解题”，则回退到单步 Vision，避免纯文本推理丢失关键信息
   if (structuredQuestion.requires_image_for_solution === true) {
     console.warn('[雨课堂助手][INFO][vision] step1 says image is essential, fallback to single-step');
@@ -388,15 +448,15 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
     solvePrompt += '\n';
   }
 
-  solvePrompt += '请在心里逐步推理，但只按以下格式输出：\n';
+  solvePrompt += '请逐步推理，推理结果按以下格式输出：\n';
 
-  if (question_type === 'single_choice' || question_type === 'unknown') {
+  if (finalQuestionType === 'single_choice') {
     solvePrompt += '答案: [单个大写字母]\n解释: [简要说明你的推理过程]\n';
-  } else if (question_type === 'multiple_choice') {
+  } else if (finalQuestionType === 'multiple_choice') {
     solvePrompt += '答案: [多个大写字母，用顿号分隔，如 A、C、D]\n解释: [简要说明你的推理过程]\n';
-  } else if (question_type === 'fill_in') {
+  } else if (finalQuestionType === 'fill_in') {
     solvePrompt += '答案: [直接给出需要填入的内容，多个空用逗号分隔]\n解释: [简要说明你的推理过程]\n';
-  } else if (question_type === 'subjective') {
+  } else if (finalQuestionType === 'subjective') {
     solvePrompt += '答案: [完整回答]\n解释: [可选的补充说明]\n';
   }
 

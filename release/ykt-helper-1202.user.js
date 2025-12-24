@@ -515,7 +515,37 @@
   }
   var tpl$4 = '<div id="ykt-ai-answer-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3><i class="fas fa-robot"></i> AI 融合分析</h3>\r\n    <span id="ykt-ai-close" class="close-btn" title="关闭">\r\n      <i class="fas fa-times"></i>\r\n    </span>\r\n  </div>\r\n  <div class="panel-body">\r\n    <div style="margin-bottom: 10px;">\r\n      <strong>当前题目：</strong>\r\n      <div style="font-size: 12px; color: #666; margin: 4px 0;">\r\n        系统将自动识别当前页面的题目\r\n      </div>\r\n      <div id="ykt-ai-text-status" class="text-status warning">\r\n        正在检测题目信息...\r\n      </div>\r\n      <div id="ykt-ai-question-display" class="ykt-question-display">\r\n        提示：系统使用融合模式，同时分析题目文本信息和页面图像，提供最准确的答案。\r\n      </div>\r\n    </div>\r\n    \x3c!-- 当前要提问的PPT预览 --\x3e\r\n    <div id="ykt-ai-selected" style="display:none; margin: 10px 0;">\r\n      <strong>已选PPT预览：</strong>\r\n      <div style="font-size: 12px; color: #666; margin: 4px 0;">\r\n        下方小图为即将用于分析的PPT页面截图\r\n      </div>\r\n      <div style="border: 1px solid var(--ykt-border-strong); padding: 6px; border-radius: 6px; display: inline-block;">\r\n        \x3c!-- 兼容旧单页：仍保留该 img --\x3e\r\n        <img id="ykt-ai-selected-thumb"\r\n             alt="已选PPT预览"\r\n             style="max-width: 180px; max-height: 120px; display:none;" />\r\n\r\n        \x3c!-- 多页预览容器：由 ai.js 动态填充 --\x3e\r\n        <div id="ykt-ai-selected-thumbs"\r\n             style="display:flex; flex-wrap:wrap; gap:6px; max-width: 420px;">\r\n        </div>\r\n      </div>\r\n    </div>\r\n    <div style="margin-bottom: 10px;">\r\n      <strong>自定义提示（可选）：</strong>\r\n      <div style="font-size: 12px; color: #666; margin: 4px 0;">\r\n        提示：此内容将追加到系统生成的prompt后面，可用于补充特殊要求或背景信息。\r\n      </div>\r\n      <textarea \r\n        id="ykt-ai-custom-prompt" \r\n        class="ykt-custom-prompt"\r\n        placeholder="例如：请用中文回答、注重解题思路、考虑XXX知识点等"\r\n      ></textarea>\r\n    </div>\r\n\r\n    <button id="ykt-ai-ask" style="width: 100%; height: 32px; border-radius: 6px; border: 1px solid var(--ykt-border-strong); background: #f7f8fa; cursor: pointer; margin-bottom: 10px;">\r\n      <i class="fas fa-brain"></i> 融合模式分析（文本+图像）\r\n    </button>\r\n\r\n    <div id="ykt-ai-loading" class="ai-loading" style="display: none;">\r\n      <i class="fas fa-spinner fa-spin"></i> AI正在使用融合模式分析...\r\n    </div>\r\n    <div id="ykt-ai-error" class="ai-error" style="display: none;"></div>\r\n    <div>\r\n      <strong>AI 分析结果：</strong>\r\n      <div id="ykt-ai-answer" class="ai-answer"></div>\r\n    </div>\r\n    \x3c!-- 可编辑答案区 --\x3e\r\n    <div id="ykt-ai-edit-section" style="display:none; margin-top:12px;">\r\n      <strong>提交前可编辑答案：</strong>\r\n      <div style="font-size: 12px; color: #666; margin: 4px 0;">\r\n        提示：这里是将要提交的“结构化答案”。可直接编辑。支持：\r\n        <br>• 选择题/投票：填写 <code>["A"]</code> 或 <code>A,B</code>\r\n        <br>• 填空题：填写 <code>[" 1"]</code> 或 直接写 <code> 1</code>（自动包成数组）\r\n        <br>• 主观题：可填 JSON（如 <code>{"content":"略","pics":[]}</code>）或直接输入文本\r\n      </div>\r\n      <textarea id="ykt-ai-answer-edit"\r\n        style="width:100%; min-height:88px; border:1px solid var(--ykt-border-strong); border-radius:6px; padding:6px; font-family:monospace;"></textarea>\r\n      <div id="ykt-ai-validate" style="font-size:12px; color:#666; margin-top:6px;"></div>\r\n      <div style="margin-top:8px; display:flex; gap:8px;">\r\n        <button id="ykt-ai-submit" class="ykt-btn ykt-btn-primary" style="flex:0 0 auto;">\r\n          提交编辑后的答案\r\n        </button>\r\n        <button id="ykt-ai-reset-edit" class="ykt-btn" style="flex:0 0 auto;">重置为 AI 建议</button>\r\n      </div>\r\n    </div>\r\n  </div>\r\n</div>';
   // src/ai/kimi.js
-    function getActiveProfile(aiCfg) {
+  // 将后端 problemType 数字映射为 Step1/Step2 使用的 question_type 字符串
+  // 约定：
+  // 1 -> single_choice   （单选）
+  // 2 -> multiple_choice （多选）
+  // 3 -> single_choice   （投票题按单选处理）
+  // 4 -> fill_in         （填空题）
+  // 5 -> subjective      （主观题 / 简答题）
+    function mapProblemTypeToQuestionType(problemType) {
+    if (problemType == null) return null;
+    const n = Number(problemType);
+    switch (n) {
+     case 1:
+      return "single_choice";
+
+     case 2:
+      return "multiple_choice";
+
+     case 3:
+      return "single_choice";
+
+     case 4:
+      return "fill_in";
+
+     case 5:
+      return "subjective";
+
+     default:
+      return null;
+    }
+  }
+  function getActiveProfile(aiCfg) {
     const cfg = aiCfg || {};
     const profiles = Array.isArray(cfg.profiles) ? cfg.profiles : [];
     if (!profiles.length) {
@@ -633,7 +663,7 @@
     const visionModel = profile.visionModel || profile.model;
     const textModel = profile.model;
     const hasSeparateTextModel = !!textModel && textModel !== visionModel;
-    const {disableTwoStep: disableTwoStep = false, twoStepDebug: twoStepDebug = false, timeout: timeoutMs = 6e4} = options || {};
+    const {disableTwoStep: disableTwoStep = false, twoStepDebug: twoStepDebug = false, timeout: timeoutMs = 6e4, problemType: problemType = null} = options || {};
     // -------- 0. 如果只有 VLM（或者显式关闭两步），回退到单步逻辑 --------
         if (!hasSeparateTextModel || disableTwoStep) {
       if (twoStepDebug) console.log("[雨课堂助手][INFO][vision] use single-step vision", {
@@ -649,7 +679,7 @@
       textModel: textModel
     });
     // ===================== Step 1: Vision 抽结构化题目 =====================
-        const STEP1_SYSTEM_PROMPT = `\n你是一个“题目结构化助手”。你将看到课件截图和可选的附加文本，请从中提取出清晰的题目结构，并以 JSON 格式输出。\n\n你不仅要识别文字（类似 OCR），还要理解图片里的内容（例如物体、颜色、形状、数量、相对位置等），并把这些与题目有关的信息转化为题干或补充说明的一部分。\n\n请尽量识别：\n- question_type: "single_choice" | "multiple_choice" | "fill_in" | "subjective" | "visual_only" | "unknown"\n- stem: 题干文本（如果题干主要依赖图片，请用自然语言描述图片中与题目相关的内容，可保留数学公式信息）\n- options: 一个对象，键为 "A"、"B"、"C"、"D" 等，值为选项内容文字（若不是选择题可为空对象）\n- image_facts: （可选）一个字符串数组，列出与解题有关的关键图像事实，例如 ["图中是一根黄色的香蕉", "背景是白色"]。\n- requires_image_for_solution: 布尔值。如果即使你尽力用文字描述图片，仍然很难仅凭文字保证答对（例如复杂几何图形或高度依赖精确位置关系的题目），请设为 true；如果你的文字描述已经足够让人类或文字模型解题，请设为 false。\n\n输出示例（仅示例，不是固定模板）：\n{\n  "question_type": "single_choice",\n  "stem": "根据图片中的水果，选择它的颜色。",\n  "options": {\n    "A": "红色",\n    "B": "黄色",\n    "C": "蓝色",\n    "D": "绿色"\n  },\n  "image_facts": [\n    "图片中是一根黄色的香蕉，背景为白色"\n  ],\n  "requires_image_for_solution": false\n}\n\n如果无法识别题目或截图并非题目，请尽量给出你能看到的内容，但仍然保持上述 JSON 结构（字段缺省时可以用 null、空对象或空数组）。\n仅输出 JSON，不要任何额外文字。\n`.trim();
+        const STEP1_SYSTEM_PROMPT = `\n你是一个“题目结构化助手”。你将看到课件截图和可选的附加文本，请从中提取出清晰的题目结构，并以 JSON 格式输出。\n\n你不仅要识别文字（类似 OCR），还要理解图片里的内容（例如物体、颜色、形状、数量、相对位置等），并把这些与题目有关的信息转化为题干或补充说明的一部分。\n\n【题型识别优先级】\n1. 如果页面上出现了明确的题型标签文字，如：\n   - "单选题"、"多选题"、"投票题"、"填空题"、"主观题" 等，\n   请优先根据这些标签设置 question_type：\n   - 单选题 / 投票题 -> "single_choice"\n   - 多选题         -> "multiple_choice"\n   - 填空题         -> "fill_in"\n   - 主观题 / 简答题 / 论述题 -> "subjective"\n2. 当没有明显题型标签时，再根据题干语义和版面结构推断题型。\n\n【选项字母规则】\n- 只有在页面上出现了清晰的选项字母（通常为 "A."、"B."、"C."、"D." 等）并跟随选项内容时，才能将 question_type 设为 "single_choice" 或 "multiple_choice"（或投票题对应的 "single_choice"）。\n- 如果没有任何 A/B/C/D 这种选项字母，而问题又需要开放性自由回答，请优先将 question_type 设为 "subjective"。\n\n请尽量识别：\n- question_type: "single_choice" | "multiple_choice" | "fill_in" | "subjective" | "visual_only" | "unknown"\n- stem: 题干文本（如果题干主要依赖图片，请用自然语言描述图片中与题目相关的内容，可保留数学公式信息）\n- options: 一个对象，键为 "A"、"B"、"C"、"D" 等，值为选项内容文字（若不是选择题可为空对象）\n- image_facts: （可选）一个字符串数组，列出与解题有关的关键图像事实，例如 ["图中是一根黄色的香蕉", "背景是白色"]。\n- requires_image_for_solution: 布尔值。如果即使你尽力用文字描述图片，仍然很难仅凭文字保证答对（例如复杂几何图形或高度依赖精确位置关系的题目），请设为 true；如果你的文字描述已经足够让人类或文字模型解题，请设为 false。\n\n输出示例（仅示例，不是固定模板）：\n{\n  "question_type": "single_choice",\n  "stem": "根据图片中的水果，选择它的颜色。",\n  "options": {\n    "A": "红色",\n    "B": "黄色",\n    "C": "蓝色",\n    "D": "绿色"\n  },\n  "image_facts": [\n    "图片中是一根黄色的香蕉，背景为白色"\n  ],\n  "requires_image_for_solution": false\n}\n\n如果无法识别题目或截图并非题目，请尽量给出你能看到的内容，但仍然保持上述 JSON 结构（字段缺省时可以用 null、空对象或空数组）。\n仅输出 JSON，不要任何额外文字。\n`.trim();
     const step1Messages = [ {
       role: "system",
       content: STEP1_SYSTEM_PROMPT
@@ -693,6 +723,20 @@
       });
     }
     if (twoStepDebug) console.log("[雨课堂助手][INFO][vision-step1] structuredQuestion:", structuredQuestion);
+    // ========= 题型合并逻辑：后端 problemType 优先，其次 VLM 推断，全部缺失则回退 subjective =========
+        const backendQuestionType = mapProblemTypeToQuestionType(problemType);
+    const vlmQuestionType = structuredQuestion.question_type || null;
+    let finalQuestionType = backendQuestionType || vlmQuestionType || null;
+    // 如果 VLM 返回的是 unknown / visual_only 这类不太可用的类型，也当成“缺失”
+        if (finalQuestionType === "unknown" || finalQuestionType === "visual_only") finalQuestionType = null;
+    // 当后端和 VLM 都没有给出可用题型时，统一回退为主观题
+        if (!finalQuestionType) finalQuestionType = "subjective";
+    if (twoStepDebug) console.log("[雨课堂助手][INFO][vision-step1] questionType merged:", {
+      problemType: problemType,
+      backendQuestionType: backendQuestionType,
+      vlmQuestionType: vlmQuestionType,
+      finalQuestionType: finalQuestionType
+    });
     // 如果模型明确表示“必须依赖原始图像才能解题”，则回退到单步 Vision，避免纯文本推理丢失关键信息
         if (structuredQuestion.requires_image_for_solution === true) {
       console.warn("[雨课堂助手][INFO][vision] step1 says image is essential, fallback to single-step");
@@ -710,8 +754,8 @@
       for (const key of optionKeys) solvePrompt += `${key}. ${sqOptions[key]}\n`;
       solvePrompt += "\n";
     }
-    solvePrompt += "请在心里逐步推理，但只按以下格式输出：\n";
-    if (question_type === "single_choice" || question_type === "unknown") solvePrompt += "答案: [单个大写字母]\n解释: [简要说明你的推理过程]\n"; else if (question_type === "multiple_choice") solvePrompt += "答案: [多个大写字母，用顿号分隔，如 A、C、D]\n解释: [简要说明你的推理过程]\n"; else if (question_type === "fill_in") solvePrompt += "答案: [直接给出需要填入的内容，多个空用逗号分隔]\n解释: [简要说明你的推理过程]\n"; else if (question_type === "subjective") solvePrompt += "答案: [完整回答]\n解释: [可选的补充说明]\n";
+    solvePrompt += "请逐步推理，推理结果按以下格式输出：\n";
+    if (finalQuestionType === "single_choice") solvePrompt += "答案: [单个大写字母]\n解释: [简要说明你的推理过程]\n"; else if (finalQuestionType === "multiple_choice") solvePrompt += "答案: [多个大写字母，用顿号分隔，如 A、C、D]\n解释: [简要说明你的推理过程]\n"; else if (finalQuestionType === "fill_in") solvePrompt += "答案: [直接给出需要填入的内容，多个空用逗号分隔]\n解释: [简要说明你的推理过程]\n"; else if (finalQuestionType === "subjective") solvePrompt += "答案: [完整回答]\n解释: [可选的补充说明]\n";
     // 将图像关键信息一并提供给文本模型，用于弥补完全无图像输入的劣势
         if (Array.isArray(image_facts) && image_facts.length > 0) {
       solvePrompt += "【图像关键信息】\n";
@@ -917,13 +961,32 @@
     try {
       const lines = String(aiAnswer || "").split("\n");
       let answerLine = "";
-      // 寻找答案行
-            for (const line of lines) if (line.includes("答案:") || line.includes("答案：")) {
-        answerLine = line.replace(/答案[:：]\s*/, "").trim();
-        break;
+      let answerIdx = -1;
+      // 先定位“答案:”所在行
+            for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.includes("答案:") || line.includes("答案：")) {
+          answerLine = line.replace(/答案[:：]\s*/, "").trim();
+          answerIdx = i;
+          break;
+        }
       }
-      // 如果没找到答案行，尝试第一行
-            if (!answerLine) answerLine = lines[0]?.trim() || "";
+      // === 对填空题和主观题，允许多行答案 ===
+            if ((problem.problemType === 4 || problem.problemType === 5) && answerIdx >= 0) {
+        const block = [];
+        // 当前行如果有内容，先收进去
+                if (answerLine) block.push(answerLine);
+        // 继续向下收集，直到遇到“解释:”或文本结束
+                for (let i = answerIdx + 1; i < lines.length; i++) {
+          const l = lines[i];
+          if (/^\s*解释[:：]/.test(l)) break;
+          block.push((l || "").trimEnd());
+        }
+        const merged = block.join("\n").trim();
+        if (merged) answerLine = merged;
+      }
+      // 如果仍然没有任何答案内容，退回到第一行兜底
+            if (!answerLine) answerLine = (lines[0] || "").trim();
       console.log("[雨课堂助手][INFO][parseAIAnswer] 题目类型:", problem.problemType, "原始答案行:", answerLine);
       switch (problem.problemType) {
        case 1:
@@ -1713,23 +1776,27 @@
         textPrompt += `\n\n【用户自定义要求】\n${customPrompt}`;
         L$2("[ask] 用户自定义prompt:", customPrompt);
       }
+      // ===== 题型 hint：仅当当前页面是题目时提供 =====
+            let problemType = null;
+      const problem = slide?.problem;
+      if (problem && typeof problem.problemType !== "undefined") problemType = problem.problemType;
+      L$2("[ask] problemType hint:", problemType);
       ui.toast(`正在分析${selectionSource}内容...`, 3e3);
       L$2("[ask] 调用 Vision API...");
-      const aiContent = await queryAIVision(imageBase64OrList, textPrompt, ui.config.ai);
+      const aiContent = await queryAIVision(imageBase64OrList, textPrompt, ui.config.ai, {
+        problemType: problemType
+      });
       setAILoading(false);
       L$2("[ask] Vision API调用成功, 内容长度=", aiContent?.length);
       // 若当前页有题目，尝试解析
             let parsed = null;
-      const problem = slide?.problem;
       if (problem) {
         parsed = parseAIAnswer(problem, aiContent);
         L$2("[ask] 解析结果:", parsed);
       }
       let displayContent = `${selectionSource}图像分析结果：\n${aiContent}`;
       if (customPrompt) displayContent = `${selectionSource}图像分析结果（包含自定义要求）：\n${aiContent}`;
-      if (parsed && problem) setAIAnswer(`${displayContent}\n\nAI 建议答案：${JSON.stringify(parsed)}`);
-      // 省略：编辑区逻辑（与你现有版本一致）
-       else {
+      if (parsed && problem) setAIAnswer(`${displayContent}\n\nAI 建议答案：${JSON.stringify(parsed)}`); else {
         if (!problem) displayContent += "\n\n💡 当前页面不是题目页面（或未识别到题目）。";
         setAIAnswer(displayContent);
       }

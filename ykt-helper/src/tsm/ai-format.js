@@ -145,21 +145,49 @@ export function parseAIAnswer(problem, aiAnswer) {
   try {
     const lines = String(aiAnswer || '').split('\n');
     let answerLine = '';
-    
-    // 寻找答案行
-    for (const line of lines) {
+    let answerIdx = -1;
+
+    // 先定位“答案:”所在行
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       if (line.includes('答案:') || line.includes('答案：')) {
         answerLine = line.replace(/答案[:：]\s*/, '').trim();
+        answerIdx = i;
         break;
       }
     }
-    
-    // 如果没找到答案行，尝试第一行
-    if (!answerLine) {
-      answerLine = lines[0]?.trim() || '';
+
+    // === 对填空题和主观题，允许多行答案 ===
+    if ((problem.problemType === 4 || problem.problemType === 5) && answerIdx >= 0) {
+      const block = [];
+
+      // 当前行如果有内容，先收进去
+      if (answerLine) block.push(answerLine);
+
+      // 继续向下收集，直到遇到“解释:”或文本结束
+      for (let i = answerIdx + 1; i < lines.length; i++) {
+        const l = lines[i];
+        if (/^\s*解释[:：]/.test(l)) break;
+        block.push((l || '').trimEnd());
+      }
+
+      const merged = block.join('\n').trim();
+      if (merged) {
+        answerLine = merged;
+      }
     }
 
-    console.log('[雨课堂助手][INFO][parseAIAnswer] 题目类型:', problem.problemType, '原始答案行:', answerLine);
+    // 如果仍然没有任何答案内容，退回到第一行兜底
+    if (!answerLine) {
+      answerLine = (lines[0] || '').trim();
+    }
+
+    console.log(
+      '[雨课堂助手][INFO][parseAIAnswer] 题目类型:',
+      problem.problemType,
+      '原始答案行:',
+      answerLine
+    );
 
     switch (problem.problemType) {
       case 1: // 单选题
