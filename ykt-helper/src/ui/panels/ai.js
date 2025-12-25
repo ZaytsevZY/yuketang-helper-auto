@@ -585,16 +585,24 @@ export async function askAIFusionMode() {
       L('[ask] 用户自定义prompt:', customPrompt);
     }
 
+    // ===== 题型 hint：仅当当前页面是题目时提供 =====
+    let problemType = null;
+    const problem = slide?.problem;
+    if (problem && typeof problem.problemType !== 'undefined') {
+      problemType = problem.problemType;
+    }
+
+    L('[ask] problemType hint:', problemType);
+
     ui.toast(`正在分析${selectionSource}内容...`, 3000);
     L('[ask] 调用 Vision API...');
-    const aiContent = await queryAIVision(imageBase64OrList, textPrompt, ui.config.ai);
+    const aiContent = await queryAIVision(imageBase64OrList, textPrompt, ui.config.ai, {problemType,});
 
     setAILoading(false);
     L('[ask] Vision API调用成功, 内容长度=', aiContent?.length);
 
     // 若当前页有题目，尝试解析
     let parsed = null;
-    const problem = slide?.problem;
     if (problem) {
       parsed = parseAIAnswer(problem, aiContent);
       L('[ask] 解析结果:', parsed);
@@ -606,7 +614,6 @@ export async function askAIFusionMode() {
     }
     if (parsed && problem) {
       setAIAnswer(`${displayContent}\n\nAI 建议答案：${JSON.stringify(parsed)}`);
-      // 省略：编辑区逻辑（与你现有版本一致）
     } else {
       if (!problem) displayContent += '\n\n💡 当前页面不是题目页面（或未识别到题目）。';
       setAIAnswer(displayContent);

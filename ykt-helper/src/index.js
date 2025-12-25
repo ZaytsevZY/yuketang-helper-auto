@@ -65,7 +65,7 @@ function startPeriodicReload(opts = {}) {
 }
 (function main() {
   if (maybeAutoReloadOnMount()) return;
-  startPeriodicReload({ intervalMs: 1 * 60 * 1000, onlyWhenHidden: false, skipLessonPages: false });
+  startPeriodicReload({ intervalMs: 1 * 60 * 1000, onlyWhenHidden: false, skipLessonPages: true });
   // 样式/图标
   injectStyles();
 

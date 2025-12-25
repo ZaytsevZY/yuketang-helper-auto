@@ -19,14 +19,14 @@
       yuketang-helper-auto 
     </h1>
     <h2 align="center">
-       雨课堂通用辅助工具
+       雨课堂助手(JS版)
     </h2>
     <h3 align="center">
        适用于雨课堂/荷塘雨课堂
     </h3>
 </html>
 
-> 最后更新时间：2025.12.15
+> 最后更新时间：2025.12.25
 
 ## 项目说明
 
@@ -34,9 +34,9 @@
 
 - 项目兼容：[清华大学荷塘雨课堂助手-AI版](https://github.com/DragonAura/THU-Yuketang-Helper-AI)，但是不建议同时使用2种AI答题。
 
-- 项目正在兼容：[yuketang-assistant](https://github.com/soundstarrain/yuketang-assistant)，我们正在修复和更新一些功能。
+- 项目兼容：[雨课堂考试助手](https://github.com/soundstarrain/yuketang-assistant)，如果有考试使用需要，请移步该项目。
 
-- 注意：本项目暂时不支持雨课堂最新版的**动态二维码**，如果你修读的课程使用动态二维码，我们无法提供摸鱼方面的帮助。
+- 注意：本项目暂时不支持扫描雨课堂**动态二维码**，如果你修读的课程使用动态二维码，我们无法提供摸鱼方面的帮助。
 
 
 ## 安装方法
@@ -181,7 +181,7 @@
 
 ---
 
-- 1.20.2: 增加多张图片输入和自动刷新
+- 1.20.2: 增加多张图片输入和自动刷新，修复了若干bug
 
 - 1.20.1: 优化AI工作流，增加答题准确率
 
