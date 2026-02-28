@@ -54,6 +54,12 @@ function getSlideByAny(id) {
   return { slide: null, hit: 'miss' };
 }
 
+function getSlideImageUrl(slide) {
+  if (!slide) return '';
+  // Prefer original image fields, then fallback-compatible fields.
+  return slide.coverAlt || slide.cover || slide.image || slide.thumbnail || '';
+}
+
 // fetch静态PPT
 function isStudentLessonReportPage() {
   return /\/v2\/web\/student-lesson-report\//.test(window.location.pathname);
@@ -229,7 +235,7 @@ export function mountPresentationPanel() {
       const slides = [];
       for (const sid of selectedSlideIds) {
         const lookup = getSlideByAny(sid);
-        const imageUrl = lookup.slide?.image || lookup.slide?.thumbnail || '';
+        const imageUrl = getSlideImageUrl(lookup.slide);
         if (imageUrl) slides.push({ slideId: sid, imageUrl });
       }
       L('点击“提问当前PPT”(多选)', { selectedCount: selectedSlideIds.size, slidesCount: slides.length });
@@ -246,7 +252,7 @@ export function mountPresentationPanel() {
     const lookup = getSlideByAny(sid);
     L('点击“提问当前PPT”', { currentSlideId: sid, lookupHit: lookup.hit, hasSlide: !!lookup.slide });
     if (!sid) return ui.toast('请先在左侧选择一页PPT', 2500);
-    const imageUrl = lookup.slide?.image || lookup.slide?.thumbnail || '';
+    const imageUrl = getSlideImageUrl(lookup.slide);
     window.dispatchEvent(new CustomEvent('ykt:ask-ai-for-slide', {
       detail: { slideId: sid, imageUrl }
     }));
@@ -520,7 +526,7 @@ export function updateSlideView() {
   cover.className = 'slide-cover';
   const img = document.createElement('img');
   img.crossOrigin = 'anonymous';
-  img.src = slide.image || slide.thumbnail || '';
+  img.src = getSlideImageUrl(slide);
   img.alt = slide.title || '';
   cover.appendChild(img);
 
@@ -607,7 +613,7 @@ async function downloadPresentationPDF() {
 
     for (let i = 0; i < slides.length; i++) {
       const s = slides[i];
-      const url = s.image || s.thumbnail;
+      const url = getSlideImageUrl(s);
       if (!url) {
         if (i > 0) doc.addPage();
         continue;
