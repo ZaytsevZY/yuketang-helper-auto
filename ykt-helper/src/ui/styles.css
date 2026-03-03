@@ -142,7 +142,16 @@
   background: rgba(255,255,255,.96); border: 1px solid var(--ykt-border);
   border-radius: 8px; padding: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.12);
 }
-#ykt-presentation-panel .problem-head{ font-weight: 600; margin-bottom: 6px; }
+#ykt-presentation-panel .problem-head{ font-weight: 600; margin-bottom: 6px; padding-right: 28px; }
+#ykt-presentation-panel .problem-box-close{
+  position: absolute; top: 6px; right: 6px;
+  width: 22px; height: 22px; border-radius: 999px;
+  border: 1px solid var(--ykt-border-strong);
+  background: #fff; color: #555;
+  cursor: pointer; font-size: 16px; line-height: 18px;
+  padding: 0;
+}
+#ykt-presentation-panel .problem-box-close:hover{ color: #111; border-color: var(--ykt-accent); }
 #ykt-presentation-panel .problem-options{ display: grid; grid-template-columns: 1fr; gap: 4px; }
 #ykt-presentation-panel .problem-option{ padding: 6px 8px; border: 1px solid var(--ykt-border); border-radius: 6px; background: #fafafa; }
 

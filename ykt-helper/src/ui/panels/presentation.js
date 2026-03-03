@@ -534,6 +534,19 @@ export function updateSlideView() {
     const prob = slide.problem;
     const box = document.createElement('div');
     box.className = 'problem-box';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'problem-box-close';
+    closeBtn.title = '关闭题干浮框';
+    closeBtn.setAttribute('aria-label', '关闭题干浮框');
+    closeBtn.textContent = '×';
+    closeBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      box.remove();
+    });
+    box.appendChild(closeBtn);
+
     const head = document.createElement('div');
     head.className = 'problem-head';
     head.textContent = prob.body || `题目 ${prob.problemId}`;
