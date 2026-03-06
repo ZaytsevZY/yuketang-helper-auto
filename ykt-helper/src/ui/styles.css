@@ -175,9 +175,18 @@
 }
 #ykt-active-problems{ display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow: auto; }
 #ykt-active-problems .active-problem-card{
+  position: relative;
   width: 320px; background: #fff; border: 1px solid var(--ykt-border);
   border-radius: 8px; box-shadow: var(--ykt-shadow); padding: 10px;
 }
+#ykt-active-problems .ap-close{
+  position: absolute; top: 6px; right: 6px;
+  width: 20px; height: 20px; border-radius: 999px;
+  border: 1px solid var(--ykt-border-strong);
+  background: #fff; color: #555;
+  cursor: pointer; padding: 0; font-size: 14px; line-height: 16px;
+}
+#ykt-active-problems .ap-close:hover{ color: #111; border-color: var(--ykt-accent); }
 #ykt-active-problems .ap-title{ font-weight: 600; margin-bottom: 4px; }
 #ykt-active-problems .ap-info{ color: #666; font-size: 12px; margin-bottom: 8px; }
 #ykt-active-problems .ap-actions{ display: flex; gap: 8px; }
