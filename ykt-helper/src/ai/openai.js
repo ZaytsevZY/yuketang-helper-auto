@@ -514,3 +514,63 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
   }
 }
 
+export async function queryOCRVision(imageBase64, aiCfg) {
+  const cfg = aiCfg || {};
+  const baseProfile = getActiveProfile(cfg);
+  const resolvedApiKey = (cfg.ocrApiKey || '').trim() || baseProfile?.apiKey || '';
+  if (!baseProfile || !resolvedApiKey) {
+    throw new Error('请先在设置中填写可用的 OCR API Key 或 AI API Key');
+  }
+
+  const profile = {
+    ...baseProfile,
+    baseUrl: (cfg.ocrApi || '').trim() || baseProfile.baseUrl,
+    apiKey: resolvedApiKey,
+  };
+
+  const cleanBase64 = String(imageBase64 || '').replace(/^data:image\/[^;]+;base64,/, '').trim();
+  if (!cleanBase64) {
+    throw new Error('OCR 图片内容为空');
+  }
+
+  const data = await chatCompletion(
+    profile,
+    {
+      model: profile.visionModel || profile.model,
+      messages: [
+        {
+          role: 'system',
+          content: [
+            '你是一个 OCR 助手。',
+            '只提取图片中可见的文字内容，不要解题，不要总结，不要补充说明。',
+            '尽量保留原有段落、标题、列表和换行。',
+            '如果图片里没有可识别文字，只返回“未识别到文字”。',
+          ].join('\n'),
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: { url: `data:image/png;base64,${cleanBase64}` },
+            },
+            {
+              type: 'text',
+              text: '请直接输出图片中的全部文字，保持结果可复制。',
+            },
+          ],
+        },
+      ],
+      temperature: 0.1,
+    },
+    '[AI OCR Vision]',
+    60000,
+  );
+
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error('OCR 接口未返回文本内容');
+  }
+  return String(content).trim();
+}
+

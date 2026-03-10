@@ -47,6 +47,16 @@
           <label for="ykt-ai-vision-model">图像模型 ID:</label>
           <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与文本模型相同">
         </div>
+        <div class="setting-item">
+          <label for="ykt-ai-ocr-api">OCR模型API:</label>
+          <input type="text" id="ykt-ai-ocr-api" placeholder="留空则复用当前 AI Profile 的 URL">
+          <small>仅用于课件“文字识别”功能；留空时走当前 AI Profile。</small>
+        </div>
+        <div class="setting-item">
+          <label for="ykt-ai-ocr-api-key">OCR API Key:</label>
+          <input type="password" id="ykt-ai-ocr-api-key" placeholder="留空则复用当前 AI Profile 的 API Key">
+          <small>仅用于课件 OCR；不填时自动回退到当前 AI Profile 的 API Key。</small>
+        </div>
       </div>
 
       <div class="setting-group">

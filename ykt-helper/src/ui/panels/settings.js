@@ -63,6 +63,8 @@ export function mountSettingsPanel() {
   const $api = root.querySelector('#kimi-api-key');
   const $model = root.querySelector('#ykt-ai-model');
   const $visionModel = root.querySelector('#ykt-ai-vision-model');
+  const $ocrApi = root.querySelector('#ykt-ai-ocr-api');
+  const $ocrApiKey = root.querySelector('#ykt-ai-ocr-api-key');
 
   // === 其他 UI 原有字段 ===
   const $auto = root.querySelector('#ykt-input-auto-answer');
@@ -107,6 +109,8 @@ export function mountSettingsPanel() {
     $api.value = p.apiKey || '';
     $model.value = p.model || '';
     $visionModel.value = p.visionModel || '';
+    $ocrApi.value = ui.config.ai.ocrApi || '';
+    $ocrApiKey.value = ui.config.ai.ocrApiKey || '';
   }
 
   // 初始化 Profile 下拉框
@@ -187,6 +191,8 @@ export function mountSettingsPanel() {
       p.apiKey = $api.value.trim();
       p.model = $model.value.trim() || p.model;
       p.visionModel = $visionModel.value.trim() || p.visionModel;
+      ai.ocrApi = $ocrApi.value.trim();
+      ai.ocrApiKey = $ocrApiKey.value.trim();
       const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
     if (curOpt) curOpt.textContent = p.name || p.id;
     }
@@ -238,6 +244,8 @@ export function mountSettingsPanel() {
 
     $notifyDur.value = 5;
     $notifyVol.value = 60;
+    $ocrApi.value = ui.config.ai.ocrApi || '';
+    $ocrApiKey.value = ui.config.ai.ocrApiKey || '';
     $audioName.textContent = '当前：使用内置“叮-咚”提示音';
 
     storage.set('kimiApiKey', '');

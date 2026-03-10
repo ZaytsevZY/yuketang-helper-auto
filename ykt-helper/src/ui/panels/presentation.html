@@ -6,12 +6,13 @@
     }
   </style>
   <div class="panel-header">
-    <h3>课件浏览</h3>
+    <h3>课件查看</h3>
     <div class="panel-controls">
       <label>
         <input type="checkbox" id="ykt-show-all-slides"> 切换全部页面/问题页面
       </label>
       <button id="ykt-ask-current">提问当前PPT</button>
+      <button id="ykt-ocr-current">文字识别</button>
       <button id="ykt-open-problem-list">题目列表</button>
       <button id="ykt-download-current">截图下载</button>
       <button id="ykt-download-pdf">整册下载(PDF)</button>
@@ -29,6 +30,14 @@
           <div class="empty-message">选择左侧的幻灯片查看详情</div>
         </div>
         <div id="ykt-problem-view" class="problem-view"></div>
+      </div>
+      <div id="ykt-ocr-panel" class="ocr-panel">
+        <div class="ocr-head">
+          <span>文字识别结果</span>
+          <span id="ykt-ocr-status" class="ocr-status">未开始</span>
+        </div>
+        <div id="ykt-ocr-tip" class="ocr-tip">选择课件页后点击“文字识别”。</div>
+        <textarea id="ykt-ocr-result" class="ocr-result" readonly placeholder="识别结果会显示在这里，支持直接复制。"></textarea>
       </div>
     </div>
   </div>

@@ -6,7 +6,7 @@
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="license"/>
   </a>
   <a href="manifest.json">
-    <img src="https://img.shields.io/badge/version-1.20.2-blue.svg" alt="版本">
+    <img src="https://img.shields.io/badge/version-1.21.0-blue.svg" alt="版本">
   </a>
   <a href="#">
     <img src="https://img.shields.io/badge/platform-Chrome%20%7C%20Edge-green.svg" alt="适配平台">
@@ -16,17 +16,17 @@
 
 <html>
     <h1 align="center">
-      yuketang-helper-auto 
-    </h1>
-    <h2 align="center">
        雨课堂助手(JS版)
-    </h2>
+    </h1>
+    <h3 align="center">
+       Yuketang Helper Auto
+    </h3>
     <h3 align="center">
        适用于雨课堂/荷塘雨课堂
     </h3>
 </html>
 
-> 最后更新时间：2026.02.28
+> 最后更新时间：2026.03.10
 
 ## 项目说明
 
@@ -41,6 +41,8 @@
 
 ## 安装方法
 
+- 请先确认雨课堂页面处于登录状态
+
 - 需要先在chrome浏览器或edge浏览器上安装[篡改猴(Tampermonkey)](https://www.tampermonkey.net/)插件使用；
 
   - 如果你使用的浏览器是edge，你需要打开**拓展-管理拓展-开发者模式**
@@ -49,17 +51,17 @@
 
   - 如果你需要最新版本的脚本，请在`dev-2.0`获取
 
-  - 你可以在`/release`目录获取`1.16.x-1.20.x`版本
+  - 你可以在`/release`目录获取`1.18.x-1.21.x`版本
 
   - 你可以在`/ykt-helper-allinone`获取更早的版本
 
 - 或手动创建新脚本，复制```yuketang-helper-ai-<版本号>.js```到篡改猴新建脚本中。
 
-- 目前持续更新的版本是`1.20.x`，支持：
+- 目前持续更新的版本是`1.21.x`，支持：
 
-  - `142.0.7444.177-chrome`及以下的chrome
+  - `145.0.7632.160-chrome`及以下的chrome
 
-  - `141.0.3537.99-edge`及以下的edge
+  - `145.0.3800.82-edge`及以下的edge
 
 ## 源代码
 
@@ -105,6 +107,10 @@
   - 可以通过`ctrl`/`cmd`在「查看课件和幻灯片」选中多张PPT进行提问
 
 ![](./static/agent.png)
+
+- OCR: 在`1.21.0`以上版本加入了OCR功能，可以配置OCR模型（或使用VLM）便捷识别、复制PPT里的文字
+
+![](./static/ocr.png)
 
 ### 3. AI自动作答
 
@@ -180,6 +186,8 @@
 请在[更新记录](./changelog.md)中查看详细的更新记录。
 
 ---
+
+- 1.21.0: 新增OCR系统
 
 - 1.20.3：详情图/下载改为高清图片
 

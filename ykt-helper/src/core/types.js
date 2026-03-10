@@ -20,6 +20,8 @@ export const DEFAULT_CONFIG = {
     endpoint: 'https://api.moonshot.cn/v1/chat/completions', 
     model: 'moonshot-v1-8k', 
     visionModel: 'moonshot-v1-8k-vision-preview', 
+    ocrApi: '',
+    ocrApiKey: '',
     temperature: 0.3,
     maxTokens: 1000,
   },
