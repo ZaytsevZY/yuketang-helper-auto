@@ -41,7 +41,7 @@ export async function captureSlideImage(slideId) {
     }
     
     // 使用 cover 或 coverAlt 图片URL
-    const imageUrl = slide.coverAlt || slide.cover;
+    const imageUrl = slide.coverAlt || slide.cover || slide.image || slide.thumbnail;
     if (!imageUrl) {
       console.error('[captureSlideImage] 幻灯片没有图片URL');
       return null;

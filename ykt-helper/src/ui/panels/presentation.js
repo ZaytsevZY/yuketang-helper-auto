@@ -3,11 +3,14 @@ import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
 import { ensureHtml2Canvas, ensureJsPDF } from '../../core/env.js';
+import { captureSlideImage } from '../../capture/screenshoot.js';
+import { queryOCRVision } from '../../ai/openai.js';
 
 let mounted = false;
 let host;
 let staticReportReady = false; //已结束课程
 const selectedSlideIds = new Set();
+const ocrResults = new Map();
 function findSlideAcrossPresentations(idStr) {
   for (const [, pres] of repo.presentations) { const arr = pres?.slides || []; const hit = arr.find(s => String(s.id) === idStr); if (hit) return hit; }
   return null;
@@ -58,6 +61,92 @@ function getSlideImageUrl(slide) {
   if (!slide) return '';
   // Prefer original image fields, then fallback-compatible fields.
   return slide.coverAlt || slide.cover || slide.image || slide.thumbnail || '';
+}
+
+function getCurrentSlideId() {
+  return repo.currentSlideId != null ? String(repo.currentSlideId) : null;
+}
+
+function renderOCRState() {
+  const currentSlideId = getCurrentSlideId();
+  const statusEl = $('#ykt-ocr-status');
+  const tipEl = $('#ykt-ocr-tip');
+  const resultEl = $('#ykt-ocr-result');
+  if (!statusEl || !tipEl || !resultEl) return;
+
+  if (!currentSlideId) {
+    statusEl.textContent = '未选择';
+    statusEl.className = 'ocr-status';
+    tipEl.textContent = '选择课件页后点击“文字识别”。';
+    resultEl.value = '';
+    return;
+  }
+
+  const state = ocrResults.get(currentSlideId);
+  if (!state) {
+    statusEl.textContent = '未开始';
+    statusEl.className = 'ocr-status';
+    tipEl.textContent = '当前页还没有识别结果。';
+    resultEl.value = '';
+    return;
+  }
+
+  if (state.loading) {
+    statusEl.textContent = '识别中';
+    statusEl.className = 'ocr-status is-loading';
+    tipEl.textContent = '正在调用 OCR 模型识别当前课件页。';
+    resultEl.value = state.text || '';
+    return;
+  }
+
+  if (state.error) {
+    statusEl.textContent = '失败';
+    statusEl.className = 'ocr-status is-error';
+    tipEl.textContent = state.error;
+    resultEl.value = state.text || '';
+    return;
+  }
+
+  statusEl.textContent = '已完成';
+  statusEl.className = 'ocr-status is-success';
+  tipEl.textContent = '识别结果已生成，可直接复制。';
+  resultEl.value = state.text || '';
+}
+
+async function recognizeCurrentSlideText() {
+  const slideId = getCurrentSlideId();
+  if (!slideId) {
+    ui.toast('请先选择要识别的课件页', 2500);
+    renderOCRState();
+    return;
+  }
+
+  ocrResults.set(slideId, { loading: true, text: '', error: '' });
+  renderOCRState();
+
+  try {
+    const imageBase64 = await captureSlideImage(slideId);
+    if (!imageBase64) {
+      throw new Error('当前课件页图片读取失败');
+    }
+
+    const text = await queryOCRVision(imageBase64, ui.config.ai);
+    ocrResults.set(slideId, {
+      loading: false,
+      text: text || '未识别到文字',
+      error: '',
+    });
+    renderOCRState();
+    ui.toast('文字识别完成', 2000);
+  } catch (e) {
+    ocrResults.set(slideId, {
+      loading: false,
+      text: '',
+      error: `文字识别失败: ${e.message || e}`,
+    });
+    renderOCRState();
+    ui.toast(`文字识别失败: ${e.message || e}`, 3500);
+  }
 }
 
 // fetch静态PPT
@@ -260,6 +349,7 @@ export function mountPresentationPanel() {
   });
 
   $('#ykt-download-current')?.addEventListener('click', downloadCurrentSlide);
+  $('#ykt-ocr-current')?.addEventListener('click', recognizeCurrentSlideText);
   $('#ykt-download-pdf')?.addEventListener('click', downloadPresentationPDF);
 
   const cb = $('#ykt-show-all-slides');
@@ -272,6 +362,7 @@ export function mountPresentationPanel() {
   });
 
   mounted = true;
+  renderOCRState();
   L('mountPresentationPanel 完成');
   return host;
 }
@@ -507,13 +598,15 @@ export function updateSlideView() {
   const problemView = $('#ykt-problem-view');
   slideView.querySelector('.slide-cover')?.classList.add('hidden');
   problemView.innerHTML = '';
+  renderOCRState();
 
-  const curId = repo.currentSlideId != null ? String(repo.currentSlideId) : null;
+  const curId = getCurrentSlideId();
   const lookup = getSlideByAny(curId);
   L('updateSlideView', { curId, lookupHit: lookup.hit, hasInMap: !!lookup.slide });
 
   if (!curId) {
     slideView.querySelector('.slide-cover')?.classList.remove('hidden');
+    renderOCRState();
     return;
   }
   const slide = lookup.slide;
@@ -569,6 +662,7 @@ export function updateSlideView() {
   slideView.innerHTML = '';
   slideView.appendChild(cover);
   slideView.appendChild(problemView);
+  renderOCRState();
 }
 
 async function downloadCurrentSlide() {

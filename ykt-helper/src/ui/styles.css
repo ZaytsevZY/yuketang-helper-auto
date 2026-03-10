@@ -112,7 +112,7 @@
 
 /* ===== 课件浏览面板 (#ykt-presentation-panel) ===== */
 #ykt-presentation-panel{ width: 900px; }
-#ykt-presentation-panel .panel-controls{ display: flex; align-items: center; gap: 8px; }
+#ykt-presentation-panel .panel-controls{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 #ykt-presentation-panel .panel-body{
   display: grid; grid-template-columns: 300px 1fr; gap: 10px;
 }
@@ -136,6 +136,45 @@
 }
 #ykt-presentation-panel .slide-cover{ display: flex; align-items: center; justify-content: center; min-height: 360px; }
 #ykt-presentation-panel .slide-cover img{ max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+#ykt-presentation-panel .ocr-panel{
+  margin-top: 12px;
+  border: 1px solid var(--ykt-border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+#ykt-presentation-panel .ocr-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+#ykt-presentation-panel .ocr-status{
+  font-size: 12px;
+  color: var(--ykt-muted);
+}
+#ykt-presentation-panel .ocr-status.is-loading{ color: #a16207; }
+#ykt-presentation-panel .ocr-status.is-error{ color: #b42318; }
+#ykt-presentation-panel .ocr-status.is-success{ color: #027a48; }
+#ykt-presentation-panel .ocr-tip{
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--ykt-muted);
+}
+#ykt-presentation-panel .ocr-result{
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  border: 1px solid var(--ykt-border-strong);
+  border-radius: 6px;
+  padding: 10px;
+  line-height: 1.5;
+  font-size: 13px;
+  box-sizing: border-box;
+  background: #fafafa;
+}
 
 #ykt-presentation-panel .problem-box{
   position: absolute; left: 12px; right: 12px; bottom: 12px;
@@ -175,9 +214,18 @@
 }
 #ykt-active-problems{ display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow: auto; }
 #ykt-active-problems .active-problem-card{
+  position: relative;
   width: 320px; background: #fff; border: 1px solid var(--ykt-border);
   border-radius: 8px; box-shadow: var(--ykt-shadow); padding: 10px;
 }
+#ykt-active-problems .ap-close{
+  position: absolute; top: 6px; right: 6px;
+  width: 20px; height: 20px; border-radius: 999px;
+  border: 1px solid var(--ykt-border-strong);
+  background: #fff; color: #555;
+  cursor: pointer; padding: 0; font-size: 14px; line-height: 16px;
+}
+#ykt-active-problems .ap-close:hover{ color: #111; border-color: var(--ykt-accent); }
 #ykt-active-problems .ap-title{ font-weight: 600; margin-bottom: 4px; }
 #ykt-active-problems .ap-info{ color: #666; font-size: 12px; margin-bottom: 8px; }
 #ykt-active-problems .ap-actions{ display: flex; gap: 8px; }
