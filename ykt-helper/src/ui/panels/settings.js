@@ -65,6 +65,9 @@ export function mountSettingsPanel() {
   const $visionModel = root.querySelector('#ykt-ai-vision-model');
   const $ocrApi = root.querySelector('#ykt-ai-ocr-api');
   const $ocrApiKey = root.querySelector('#ykt-ai-ocr-api-key');
+  const $translateApi = root.querySelector('#ykt-ai-translate-api');
+  const $translateApiKey = root.querySelector('#ykt-ai-translate-api-key');
+  const $translateModel = root.querySelector('#ykt-ai-translate-model');
 
   // === 其他 UI 原有字段 ===
   const $auto = root.querySelector('#ykt-input-auto-answer');
@@ -111,6 +114,9 @@ export function mountSettingsPanel() {
     $visionModel.value = p.visionModel || '';
     $ocrApi.value = ui.config.ai.ocrApi || '';
     $ocrApiKey.value = ui.config.ai.ocrApiKey || '';
+    $translateApi.value = ui.config.ai.translateApi || '';
+    $translateApiKey.value = ui.config.ai.translateApiKey || '';
+    $translateModel.value = ui.config.ai.translateModel || '';
   }
 
   // 初始化 Profile 下拉框
@@ -193,6 +199,9 @@ export function mountSettingsPanel() {
       p.visionModel = $visionModel.value.trim() || p.visionModel;
       ai.ocrApi = $ocrApi.value.trim();
       ai.ocrApiKey = $ocrApiKey.value.trim();
+      ai.translateApi = $translateApi.value.trim();
+      ai.translateApiKey = $translateApiKey.value.trim();
+      ai.translateModel = $translateModel.value.trim();
       const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
     if (curOpt) curOpt.textContent = p.name || p.id;
     }
@@ -246,6 +255,9 @@ export function mountSettingsPanel() {
     $notifyVol.value = 60;
     $ocrApi.value = ui.config.ai.ocrApi || '';
     $ocrApiKey.value = ui.config.ai.ocrApiKey || '';
+    $translateApi.value = ui.config.ai.translateApi || '';
+    $translateApiKey.value = ui.config.ai.translateApiKey || '';
+    $translateModel.value = ui.config.ai.translateModel || '';
     $audioName.textContent = '当前：使用内置“叮-咚”提示音';
 
     storage.set('kimiApiKey', '');

@@ -33,11 +33,18 @@
       </div>
       <div id="ykt-ocr-panel" class="ocr-panel">
         <div class="ocr-head">
-          <span>文字识别结果</span>
+          <span>文字结果</span>
           <span id="ykt-ocr-status" class="ocr-status">未开始</span>
         </div>
         <div id="ykt-ocr-tip" class="ocr-tip">选择课件页后点击“文字识别”。</div>
         <textarea id="ykt-ocr-result" class="ocr-result" readonly placeholder="识别结果会显示在这里，支持直接复制。"></textarea>
+        <div class="ocr-translate-bar">
+          <label for="ykt-translate-target">目标语言</label>
+          <input type="text" id="ykt-translate-target" class="ocr-target-input" placeholder="默认使用浏览器语言">
+          <button id="ykt-translate-toggle">翻译</button>
+          <span id="ykt-translate-status" class="ocr-status">未翻译</span>
+        </div>
+        <div id="ykt-translate-tip" class="ocr-tip">默认翻译到浏览器语言，也可手动修改目标语言。</div>
       </div>
     </div>
   </div>

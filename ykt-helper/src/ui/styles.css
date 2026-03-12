@@ -116,6 +116,18 @@
 #ykt-presentation-panel .panel-body{
   display: grid; grid-template-columns: 300px 1fr; gap: 10px;
 }
+#ykt-presentation-panel .panel-left,
+#ykt-presentation-panel .panel-right{
+  display: flex;
+  flex-direction: column;
+}
+#ykt-presentation-panel .presentation-list{
+  border: 1px solid var(--ykt-border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+  box-sizing: border-box;
+}
 #ykt-presentation-panel .presentation-title{
   font-weight: 600; padding: 6px 0; border-bottom: 1px solid var(--ykt-border);
 }
@@ -162,6 +174,27 @@
   margin-bottom: 8px;
   font-size: 12px;
   color: var(--ykt-muted);
+}
+#ykt-presentation-panel .ocr-translate-bar{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0 8px;
+}
+#ykt-presentation-panel .ocr-translate-bar .ocr-status{
+  margin-left: auto;
+}
+#ykt-presentation-panel .ocr-target-input{
+  min-width: 220px;
+  height: 32px;
+  border: 1px solid var(--ykt-border-strong);
+  border-radius: 6px;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+#ykt-presentation-panel .ocr-subhead{
+  margin-top: 4px;
 }
 #ykt-presentation-panel .ocr-result{
   width: 100%;
@@ -299,7 +332,8 @@
 #ykt-presentation-panel .panel-left{
   max-height: var(--ykt-panel-max-h);
   overflow: auto;
-  min-width: 0;                      
+  min-width: 0;
+  align-self: stretch;
 }
 
 /* 右侧：粘性定位为“固定”，始终在面板可视区内 */
@@ -307,6 +341,7 @@
   position: sticky;
   top: 0;                            
   align-self: start;
+  gap: 12px;
 }
 
 /* 右侧详细视图自身也限制高度并允许内部滚动 */
