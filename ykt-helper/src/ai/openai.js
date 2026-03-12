@@ -574,3 +574,65 @@ export async function queryOCRVision(imageBase64, aiCfg) {
   return String(content).trim();
 }
 
+export async function queryTranslationText(text, targetLanguage, aiCfg) {
+  const cfg = aiCfg || {};
+  const baseProfile = getActiveProfile(cfg);
+  const resolvedApiKey = (cfg.translateApiKey || '').trim() || baseProfile?.apiKey || '';
+  if (!baseProfile || !resolvedApiKey) {
+    throw new Error('请先在设置中填写可用的翻译 API Key 或 AI API Key');
+  }
+
+  const resolvedTargetLanguage = String(targetLanguage || '').trim();
+  if (!resolvedTargetLanguage) {
+    throw new Error('翻译目标语言不能为空');
+  }
+
+  const sourceText = String(text || '').trim();
+  if (!sourceText) {
+    throw new Error('没有可翻译的文字内容');
+  }
+
+  const profile = {
+    ...baseProfile,
+    baseUrl: (cfg.translateApi || '').trim() || baseProfile.baseUrl,
+    apiKey: resolvedApiKey,
+    model: (cfg.translateModel || '').trim() || baseProfile.model,
+  };
+
+  const data = await chatCompletion(
+    profile,
+    {
+      model: profile.model,
+      messages: [
+        {
+          role: 'system',
+          content: [
+            '你是一个专业翻译助手。',
+            '只执行翻译，不要解释，不要总结，不要补充。',
+            '尽量保留原文段落、列表、编号、公式和专有名词格式。',
+            `将用户提供的文本翻译为：${resolvedTargetLanguage}。`,
+          ].join('\n'),
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: sourceText,
+            },
+          ],
+        },
+      ],
+      temperature: 0.1,
+    },
+    '[AI Translate]',
+    60000,
+  );
+
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error('翻译接口未返回文本内容');
+  }
+  return String(content).trim();
+}
+
