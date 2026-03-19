@@ -4,7 +4,6 @@ import { actions } from '../../state/actions.js';
 
 let mounted = false;
 let root;
-const dismissedProblemIds = new Set();
 
 function $(sel) {
   return document.querySelector(sel);
@@ -18,7 +17,6 @@ export function mountActiveProblemsPanel() {
   root = document.getElementById('ykt-active-problems-panel');
   mounted = true;
 
-  // 轻量刷新计时器
   setInterval(() => updateActiveProblems(), 1000);
   return root;
 }
@@ -29,47 +27,22 @@ export function updateActiveProblems() {
   box.innerHTML = '';
 
   const now = Date.now();
-  let hasVisibleProblems = false;
-  const activeProblemIds = new Set();
+  let hasActiveProblems = false;
 
   repo.problemStatus.forEach((status, pid) => {
     const p = repo.problems.get(pid);
-    const pidStr = String(pid);
-    if (!p || p.result) {
-      dismissedProblemIds.delete(pidStr);
-      return;
-    }
+    if (!p || p.result) return;
 
     const remain = Math.max(0, Math.floor((status.endTime - now) / 1000));
-    
-    // 如果倒计时结束（剩余时间为0），跳过显示这个卡片
     if (remain <= 0) {
       console.log(`[雨课堂助手][INFO][ActiveProblems] 题目 ${pid} 倒计时已结束，移除卡片`);
-      dismissedProblemIds.delete(pidStr);
       return;
     }
 
-    activeProblemIds.add(pidStr);
-    if (dismissedProblemIds.has(pidStr)) return;
-
-    hasVisibleProblems = true;
+    hasActiveProblems = true;
 
     const card = document.createElement('div');
     card.className = 'active-problem-card';
-
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'ap-close';
-    close.title = 'Close reminder';
-    close.setAttribute('aria-label', 'Close reminder');
-    close.textContent = 'x';
-    close.onclick = (ev) => {
-      ev.stopPropagation();
-      dismissedProblemIds.add(pidStr);
-      card.remove();
-      if (box.children.length === 0) root.style.display = 'none';
-    };
-    card.appendChild(close);
 
     const title = document.createElement('div');
     title.className = 'ap-title';
@@ -98,13 +71,7 @@ export function updateActiveProblems() {
     box.appendChild(card);
   });
 
-  // 清理已不活跃题目的“关闭记忆”
-  for (const pid of Array.from(dismissedProblemIds)) {
-    if (!activeProblemIds.has(pid)) dismissedProblemIds.delete(pid);
-  }
-
-  // 如果没有可见活跃题目，隐藏整个面板容器
-  if (!hasVisibleProblems) {
+  if (!hasActiveProblems) {
     root.style.display = 'none';
   } else {
     root.style.display = '';
