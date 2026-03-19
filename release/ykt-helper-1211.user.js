@@ -3419,7 +3419,6 @@
   var tpl$1 = '<div id="ykt-active-problems-panel" class="ykt-active-wrapper">\r\n  <div id="ykt-active-problems" class="active-problems"></div>\r\n</div>\r\n';
   let mounted$1 = false;
   let root$1;
-  const dismissedProblemIds = new Set;
   function $$1(sel) {
     return document.querySelector(sel);
   }
@@ -3430,8 +3429,7 @@
     document.body.appendChild(wrap.firstElementChild);
     root$1 = document.getElementById("ykt-active-problems-panel");
     mounted$1 = true;
-    // 轻量刷新计时器
-        setInterval(() => updateActiveProblems(), 1e3);
+    setInterval(() => updateActiveProblems(), 1e3);
     return root$1;
   }
   function updateActiveProblems() {
@@ -3439,40 +3437,18 @@
     const box = $$1("#ykt-active-problems");
     box.innerHTML = "";
     const now = Date.now();
-    let hasVisibleProblems = false;
-    const activeProblemIds = new Set;
+    let hasActiveProblems = false;
     repo.problemStatus.forEach((status, pid) => {
       const p = repo.problems.get(pid);
-      const pidStr = String(pid);
-      if (!p || p.result) {
-        dismissedProblemIds.delete(pidStr);
-        return;
-      }
+      if (!p || p.result) return;
       const remain = Math.max(0, Math.floor((status.endTime - now) / 1e3));
-      // 如果倒计时结束（剩余时间为0），跳过显示这个卡片
-            if (remain <= 0) {
+      if (remain <= 0) {
         console.log(`[雨课堂助手][INFO][ActiveProblems] 题目 ${pid} 倒计时已结束，移除卡片`);
-        dismissedProblemIds.delete(pidStr);
         return;
       }
-      activeProblemIds.add(pidStr);
-      if (dismissedProblemIds.has(pidStr)) return;
-      hasVisibleProblems = true;
+      hasActiveProblems = true;
       const card = document.createElement("div");
       card.className = "active-problem-card";
-      const close = document.createElement("button");
-      close.type = "button";
-      close.className = "ap-close";
-      close.title = "Close reminder";
-      close.setAttribute("aria-label", "Close reminder");
-      close.textContent = "x";
-      close.onclick = ev => {
-        ev.stopPropagation();
-        dismissedProblemIds.add(pidStr);
-        card.remove();
-        if (box.children.length === 0) root$1.style.display = "none";
-      };
-      card.appendChild(close);
       const title = document.createElement("div");
       title.className = "ap-title";
       title.textContent = (p.body || `题目 ${pid}`).slice(0, 80);
@@ -3494,12 +3470,9 @@
       card.appendChild(bar);
       box.appendChild(card);
     });
-    // 清理已不活跃题目的“关闭记忆”
-        for (const pid of Array.from(dismissedProblemIds)) if (!activeProblemIds.has(pid)) dismissedProblemIds.delete(pid);
-    // 如果没有可见活跃题目，隐藏整个面板容器
-        if (!hasVisibleProblems) root$1.style.display = "none"; else root$1.style.display = "";
+    if (!hasActiveProblems) root$1.style.display = "none"; else root$1.style.display = "";
   }
-  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>雨课堂助手使用教程</h3>\r\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="tutorial-content">\r\n      <h4>工具版本</h4>\r\n      <p>1.21.0</p>\r\n\r\n      <h4>功能介绍</h4>\r\n      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>\r\n      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">GitHub</a></p>\r\n      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B-%E6%A8%A1%E5%9D%97%E5%8C%96%E6%9E%84%E5%BB%BA%E7%89%88" target="_blank" rel="noopener">GreasyFork</a></p>\r\n\r\n      <h4>工具栏按钮说明</h4>\r\n      <ul>\r\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>\r\n        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面，提问可见内容。</li>\r\n        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>\r\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\r\n        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>\r\n        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>\r\n      </ul>\r\n\r\n      <h4>自动作答</h4>\r\n      <ul>\r\n        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>\r\n        <li>需要配置 LLM API 密钥。</li>\r\n        <li>答案来自 AI，结果仅供参考。</li>\r\n      </ul>\r\n\r\n      <h4>AI 解答</h4>\r\n      <ol>\r\n        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>\r\n        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>\r\n      </ol>\r\n\r\n      <h4>注意事项</h4>\r\n      <p>1) 仅供学习参考，请独立思考；</p>\r\n      <p>2) 合理使用 API 额度；</p>\r\n      <p>3) 答案不保证 100% 正确；</p>\r\n      <p>4) 自动作答有一定风险，谨慎开启。</p>\r\n\r\n      <h4>联系方式</h4>\r\n      <ul>\r\n        <li>请在<a href="https://github.com/ZaytsevZY/yuketang-helper-auto/issues" target="_blank" rel="noopener">GitHub Issues</a>提出问题</li>\r\n      </ul>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
+  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\r\n  <div class="panel-header">\r\n    <h3>雨课堂助手使用教程</h3>\r\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\r\n  </div>\r\n\r\n  <div class="panel-body">\r\n    <div class="tutorial-content">\r\n      <h4>工具版本</h4>\r\n      <p>1.21.1</p>\r\n\r\n      <h4>功能介绍</h4>\r\n      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>\r\n      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">GitHub</a></p>\r\n      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B-%E6%A8%A1%E5%9D%97%E5%8C%96%E6%9E%84%E5%BB%BA%E7%89%88" target="_blank" rel="noopener">GreasyFork</a></p>\r\n\r\n      <h4>工具栏按钮说明</h4>\r\n      <ul>\r\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>\r\n        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面，提问可见内容。</li>\r\n        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>\r\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\r\n        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>\r\n        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>\r\n      </ul>\r\n\r\n      <h4>自动作答</h4>\r\n      <ul>\r\n        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>\r\n        <li>需要配置 LLM API 密钥。</li>\r\n        <li>答案来自 AI，结果仅供参考。</li>\r\n      </ul>\r\n\r\n      <h4>AI 解答</h4>\r\n      <ol>\r\n        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>\r\n        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>\r\n      </ol>\r\n\r\n      <h4>注意事项</h4>\r\n      <p>1) 仅供学习参考，请独立思考；</p>\r\n      <p>2) 合理使用 API 额度；</p>\r\n      <p>3) 答案不保证 100% 正确；</p>\r\n      <p>4) 自动作答有一定风险，谨慎开启。</p>\r\n\r\n      <h4>联系方式</h4>\r\n      <ul>\r\n        <li>请在<a href="https://github.com/ZaytsevZY/yuketang-helper-auto/issues" target="_blank" rel="noopener">GitHub Issues</a>提出问题</li>\r\n      </ul>\r\n    </div>\r\n  </div>\r\n</div>\r\n';
   let mounted = false;
   let root;
   function $(sel) {
@@ -3559,6 +3532,48 @@
   }
   // 面板层级管理
     let currentZIndex = 1e7;
+  function enableNotifyDrag(wrapper, handle, bringToFront) {
+    if (!wrapper || !handle) return;
+    let dragging = false;
+    let startX = 0;
+    let startY = 0;
+    let originLeft = 0;
+    let originTop = 0;
+    const onPointerMove = ev => {
+      if (!dragging) return;
+      const nextLeft = Math.max(8, originLeft + ev.clientX - startX);
+      const nextTop = Math.max(8, originTop + ev.clientY - startY);
+      wrapper.style.left = `${nextLeft}px`;
+      wrapper.style.top = `${nextTop}px`;
+      wrapper.style.right = "auto";
+      wrapper.style.bottom = "auto";
+    };
+    const stopDrag = () => {
+      dragging = false;
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stopDrag);
+      window.removeEventListener("pointercancel", stopDrag);
+    };
+    handle.addEventListener("pointerdown", ev => {
+      if (ev.button !== 0) return;
+      if (ev.target?.closest?.("button, a, input, textarea, select")) return;
+      const rect = wrapper.getBoundingClientRect();
+      dragging = true;
+      startX = ev.clientX;
+      startY = ev.clientY;
+      originLeft = rect.left;
+      originTop = rect.top;
+      wrapper.style.left = `${rect.left}px`;
+      wrapper.style.top = `${rect.top}px`;
+      wrapper.style.right = "auto";
+      wrapper.style.bottom = "auto";
+      bringToFront?.(wrapper);
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", stopDrag);
+      window.addEventListener("pointercancel", stopDrag);
+      ev.preventDefault();
+    });
+  }
   const ui = {
     get config() {
       return _config;
@@ -3653,7 +3668,8 @@
           fontSize: "14px",
           lineHeight: "1.5",
           backdropFilter: "blur(2px)",
-          border: "1px solid rgba(255,255,255,0.06)"
+          border: "1px solid rgba(255,255,255,0.06)",
+          cursor: "default"
         });
         // 缩略图（可选）
                 if (slide?.thumbnail) {
@@ -3670,13 +3686,40 @@
         }
         const body = document.createElement("div");
         body.style.flex = "1 1 auto";
+        const head = document.createElement("div");
+        Object.assign(head.style, {
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "8px",
+          marginBottom: "6px",
+          cursor: "move",
+          userSelect: "none",
+          touchAction: "none"
+        });
         const title = document.createElement("div");
         title.textContent = "习题已发布";
         Object.assign(title.style, {
           fontWeight: "600",
-          marginBottom: "6px",
-          fontSize: "15px"
+          fontSize: "15px",
+          flex: "1 1 auto"
         });
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "x";
+        Object.assign(closeBtn.style, {
+          border: "none",
+          background: "transparent",
+          color: "#fff",
+          opacity: "0.7",
+          fontSize: "18px",
+          lineHeight: "18px",
+          cursor: "pointer",
+          padding: "0 4px",
+          marginLeft: "4px",
+          flex: "0 0 auto"
+        });
+        closeBtn.addEventListener("mouseenter", () => closeBtn.style.opacity = "1");
+        closeBtn.addEventListener("mouseleave", () => closeBtn.style.opacity = "0.7");
         const detail = document.createElement("pre");
         detail.textContent = this.getProblemDetail(problem);
         Object.assign(detail.style, {
@@ -3687,34 +3730,21 @@
           maxHeight: "220px",
           overflow: "auto"
         });
-        body.appendChild(title);
+        head.appendChild(title);
+        head.appendChild(closeBtn);
+        body.appendChild(head);
         body.appendChild(detail);
         wrapper.appendChild(body);
-        // 关闭按钮
-                const closeBtn = document.createElement("button");
-        closeBtn.textContent = "×";
-        Object.assign(closeBtn.style, {
-          border: "none",
-          background: "transparent",
-          color: "#fff",
-          opacity: "0.7",
-          fontSize: "18px",
-          lineHeight: "18px",
-          cursor: "pointer",
-          padding: "0 4px",
-          marginLeft: "4px"
-        });
-        closeBtn.addEventListener("mouseenter", () => closeBtn.style.opacity = "1");
-        closeBtn.addEventListener("mouseleave", () => closeBtn.style.opacity = "0.7");
-        closeBtn.onclick = () => wrapper.remove();
-        wrapper.appendChild(closeBtn);
         document.body.appendChild(wrapper);
         this._bringToFront(wrapper);
-        // 自动移除
-                const timeout = Math.max(2e3, +this.config.notifyPopupDuration || 5e3);
-        setTimeout(() => wrapper.remove(), timeout);
-        // 3) 播放提示音（WebAudio 简单“叮咚”）
-                this._playNotifySound(+this.config.notifyVolume || .6);
+        const timeout = Math.max(2e3, +this.config.notifyPopupDuration || 5e3);
+        const timer = setTimeout(() => wrapper.remove(), timeout);
+        closeBtn.onclick = () => {
+          clearTimeout(timer);
+          wrapper.remove();
+        };
+        enableNotifyDrag(wrapper, head, el => this._bringToFront(el));
+        this._playNotifySound(+this.config.notifyVolume || .6);
       } catch (e) {
         console.warn("[雨课堂助手][WARN][ui.notifyProblem] failed:", e);
       }

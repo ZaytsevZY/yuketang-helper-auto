@@ -45,7 +45,7 @@
 
 - 需要先在chrome浏览器或edge浏览器上安装[篡改猴(Tampermonkey)](https://www.tampermonkey.net/)插件使用；
 
-  - 如果你使用的浏览器是edge，你需要打开**拓展-管理拓展-开发者模式**
+  - 如果你使用的浏览器是edge，你需要打开**拓展-管理拓展-开发者模式**，再开启篡改猴插件中的**允许注入脚本**和**允许访问文件URL权限**
 
 - 在安装对应插件后，可以[一键安装](https://update.greasyfork.org/scripts/531469/AI%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B.user.js)本项目的稳定版本；(一般不是最新版)
 

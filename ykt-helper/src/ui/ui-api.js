@@ -45,6 +45,53 @@ function saveConfig() {
 // 面板层级管理
 let currentZIndex = 10000000;
 
+function enableNotifyDrag(wrapper, handle, bringToFront) {
+  if (!wrapper || !handle) return;
+
+  let dragging = false;
+  let startX = 0;
+  let startY = 0;
+  let originLeft = 0;
+  let originTop = 0;
+
+  const onPointerMove = (ev) => {
+    if (!dragging) return;
+    const nextLeft = Math.max(8, originLeft + ev.clientX - startX);
+    const nextTop = Math.max(8, originTop + ev.clientY - startY);
+    wrapper.style.left = `${nextLeft}px`;
+    wrapper.style.top = `${nextTop}px`;
+    wrapper.style.right = 'auto';
+    wrapper.style.bottom = 'auto';
+  };
+
+  const stopDrag = () => {
+    dragging = false;
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', stopDrag);
+    window.removeEventListener('pointercancel', stopDrag);
+  };
+
+  handle.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    if (ev.target?.closest?.('button, a, input, textarea, select')) return;
+    const rect = wrapper.getBoundingClientRect();
+    dragging = true;
+    startX = ev.clientX;
+    startY = ev.clientY;
+    originLeft = rect.left;
+    originTop = rect.top;
+    wrapper.style.left = `${rect.left}px`;
+    wrapper.style.top = `${rect.top}px`;
+    wrapper.style.right = 'auto';
+    wrapper.style.bottom = 'auto';
+    bringToFront?.(wrapper);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', stopDrag);
+    window.addEventListener('pointercancel', stopDrag);
+    ev.preventDefault();
+  });
+}
+
 export const ui = {
   get config() { return _config; },
   saveConfig,
@@ -131,7 +178,7 @@ export const ui = {
       } catch {}
 
       // 2) 自定义悬浮弹窗
-     const wrapper = document.createElement('div');
+      const wrapper = document.createElement('div');
       wrapper.className = 'ykt-problem-notify';
       // 内联样式，避免依赖外部CSS
       Object.assign(wrapper.style, {
@@ -152,6 +199,7 @@ export const ui = {
         lineHeight: '1.5',
         backdropFilter: 'blur(2px)',
         border: '1px solid rgba(255,255,255,0.06)',
+        cursor: 'default',
       });
 
       // 缩略图（可选）
@@ -170,26 +218,25 @@ export const ui = {
 
       const body = document.createElement('div');
       body.style.flex = '1 1 auto';
+
+      const head = document.createElement('div');
+      Object.assign(head.style, {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '8px',
+        marginBottom: '6px',
+        cursor: 'move',
+        userSelect: 'none',
+        touchAction: 'none',
+      });
+
       const title = document.createElement('div');
       title.textContent = '习题已发布';
-      Object.assign(title.style, { fontWeight: '600', marginBottom: '6px', fontSize: '15px' });
-      const detail = document.createElement('pre');
-      detail.textContent = this.getProblemDetail(problem);
-      Object.assign(detail.style, {
-        whiteSpace: 'pre-wrap',
-        margin: 0,
-        fontFamily: 'inherit',
-        opacity: '0.92',
-        maxHeight: '220px',
-        overflow: 'auto',
-      });
-      body.appendChild(title);
-      body.appendChild(detail);
-      wrapper.appendChild(body);
+      Object.assign(title.style, { fontWeight: '600', fontSize: '15px', flex: '1 1 auto' });
 
-      // 关闭按钮
       const closeBtn = document.createElement('button');
-      closeBtn.textContent = '×';
+      closeBtn.textContent = 'x';
       Object.assign(closeBtn.style, {
         border: 'none',
         background: 'transparent',
@@ -200,20 +247,39 @@ export const ui = {
         cursor: 'pointer',
         padding: '0 4px',
         marginLeft: '4px',
+        flex: '0 0 auto',
       });
       closeBtn.addEventListener('mouseenter', () => (closeBtn.style.opacity = '1'));
       closeBtn.addEventListener('mouseleave', () => (closeBtn.style.opacity = '0.7'));
-      closeBtn.onclick = () => wrapper.remove();
-      wrapper.appendChild(closeBtn);
+
+      const detail = document.createElement('pre');
+      detail.textContent = this.getProblemDetail(problem);
+      Object.assign(detail.style, {
+        whiteSpace: 'pre-wrap',
+        margin: 0,
+        fontFamily: 'inherit',
+        opacity: '0.92',
+        maxHeight: '220px',
+        overflow: 'auto',
+      });
+
+      head.appendChild(title);
+      head.appendChild(closeBtn);
+      body.appendChild(head);
+      body.appendChild(detail);
+      wrapper.appendChild(body);
 
       document.body.appendChild(wrapper);
       this._bringToFront(wrapper);
 
-      // 自动移除
       const timeout = Math.max(2000, +this.config.notifyPopupDuration || 5000);
-      setTimeout(() => wrapper.remove(), timeout);
+      const timer = setTimeout(() => wrapper.remove(), timeout);
+      closeBtn.onclick = () => {
+        clearTimeout(timer);
+        wrapper.remove();
+      };
+      enableNotifyDrag(wrapper, head, (el) => this._bringToFront(el));
 
-      // 3) 播放提示音（WebAudio 简单“叮咚”）
       this._playNotifySound(+this.config.notifyVolume || 0.6);
     } catch (e) {
       console.warn('[雨课堂助手][WARN][ui.notifyProblem] failed:', e);
