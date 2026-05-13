@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YKT Helper - 本地调试</title>
+
+  <!-- CDN 依赖（与 userscript.meta.js @require 一致） -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.min.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+    }
+    .debug-banner {
+      background: #fff3cd;
+      border-bottom: 1px solid #ffc107;
+      padding: 8px 16px;
+      font-size: 13px;
+      color: #856404;
+      position: sticky;
+      top: 0;
+      z-index: 99999;
+    }
+    .page-content {
+      max-width: 900px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .card h3 {
+      margin: 0 0 12px;
+    }
+    .card p {
+      color: #666;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="debug-banner">
+    🔧 本地调试模式 — 用户脚本 UI 应出现在页面右侧。
+    <span style="float:right">修改源码后执行 <code>npm run build</code>，然后刷新本页。</span>
+  </div>
+
+  <div class="page-content">
+    <div class="card">
+      <h3>调试说明</h3>
+      <p>
+        此页面加载 ykt-helper 构建产物，用于本地调试前端 UI。<br>
+        <b>启动方式</b>：<code>cd ykt-helper && python3 -m http.server 8765</code>，然后访问 <code>http://localhost:8765/debug/</code><br>
+        <b>构建</b>：<code>cd ykt-helper && npm run build</code>，产物更新后刷新页面即可。
+      </p>
+    </div>
+    <div class="card">
+      <h3>模拟内容区</h3>
+      <p>此区域模拟雨课堂页面内容，用户脚本的工具栏和面板应叠加显示在右侧。</p>
+    </div>
+  </div>
+
+  <!-- 1. 先加载 GM mock（阻止重载） -->
+  <script src="mock-gm.js"></script>
+  <!-- 2. 加载构建产物 -->
+  <script src="../dist/ykt-helper-1211.user.js"></script>
+  <!-- 3. 可选：mock 数据注入 -->
+  <script src="mock-data.js"></script>
+</body>
+</html>

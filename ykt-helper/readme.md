@@ -16,6 +16,19 @@ npm run dev          # 开发模式（监听文件变化）
 ### 使用方式
 直接使用 `release/ykt-helper.user.js`，导入 Tampermonkey 即可。
 
+### 本地调试
+`debug/` 目录提供了本地调试环境，无需 Tampermonkey 即可运行 UI。
+```bash
+npm run build                              # 先构建
+python3 -m http.server 8765                # 从 ykt-helper/ 根目录启动
+# 浏览器打开 http://localhost:8765/debug/
+```
+
+- `mock-gm.js`：模拟 GM API 并阻止脚本自动重载
+- `mock-data.js`：可选的 mock 数据注入（默认为空，按需添加）
+- AI 功能因缺少 `GM_xmlhttpRequest` 会报错，不影响 UI 调试
+- 每次修改源码后需重新 `npm run build` 再刷新页面
+
 ## 项目架构
 
 ```
@@ -223,14 +236,17 @@ export const ui = {
 
 ## 开发注意事项
 
-1. **版本管理**: 新功能开发后需更新 `userscript.meta.js` 版本号
-2. **UI组件**: 采用 HTML + JS 模板形式，样式统一在 `styles.css` 中定义
-3. **网络处理**: 通过拦截器统一处理所有网络请求
-4. **状态管理**: 集中在 `repo` 和 `actions` 中，确保数据一致性
-5. **AI服务**: 优先使用融合模式，确保最佳识别效果
-6. **图像处理**: 注意图像大小限制，自动压缩优化
-7. **格式控制**: 严格控制AI输出格式，确保解析成功率
-8. **错误处理**: 提供详细的调试信息和用户反馈
+1. **版本管理**: 发版时需手动修改以下两处版本号
+   - `userscript.meta.js` 第7行 `@version` 字段（如 `1.21.1`）
+   - `rollup.config.mjs` 第9行 `OUT_FILE` 文件名中的版本编码（如 `ykt-helper-1211`）
+2. **发布产物**: 构建完成后（`npm run build`），将 `dist/` 下的产物复制一份到项目根目录的 `release/` 文件夹中
+3. **UI组件**: 采用 HTML + JS 模板形式，样式统一在 `styles.css` 中定义
+4. **网络处理**: 通过拦截器统一处理所有网络请求
+5. **状态管理**: 集中在 `repo` 和 `actions` 中，确保数据一致性
+6. **AI服务**: 优先使用融合模式，确保最佳识别效果
+7. **图像处理**: 注意图像大小限制，自动压缩优化
+8. **格式控制**: 严格控制AI输出格式，确保解析成功率
+9. **错误处理**: 提供详细的调试信息和用户反馈
 
 ## 使用建议
 
