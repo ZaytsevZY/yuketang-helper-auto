@@ -1,0 +1,17 @@
+{
+  "name": "@ykt/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ykt": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@ykt/backend": "0.1.0",
+    "@ykt/contracts": "0.1.0"
+  }
+}
