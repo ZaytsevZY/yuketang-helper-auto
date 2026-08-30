@@ -1,5 +1,10 @@
 import type { LessonEvent } from '@ykt/contracts';
 
+export * from './fixture.js';
+export * from './normalizer.js';
+export * from './recorder.js';
+export * from './redactor.js';
+
 export interface RoutingService {
   events(lessonId: string): AsyncIterable<LessonEvent>;
 }

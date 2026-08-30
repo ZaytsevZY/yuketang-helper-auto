@@ -15,7 +15,8 @@
     "lint": "eslint . && npm run boundaries",
     "boundaries": "node scripts/check-boundaries.mjs",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "fixture:replay": "node scripts/replay-fixture.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

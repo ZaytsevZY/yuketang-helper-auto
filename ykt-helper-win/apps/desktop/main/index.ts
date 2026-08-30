@@ -1,14 +1,24 @@
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { app, BrowserWindow, ipcMain, Menu, type WebContents } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  type WebContents,
+} from 'electron';
 import { createBackendRuntime } from '@ykt/backend';
 import { IpcChannel, isBrowserEnvironment } from '@ykt/contracts';
 
 import { BrowserController } from './browser-controller.js';
+import { NetworkLabController } from './network-lab-controller.js';
 
 const runtime = createBackendRuntime();
 let mainWindow: BrowserWindow | undefined;
 let browserController: BrowserController | undefined;
+let networkLabController: NetworkLabController | undefined;
 
 function isTrustedRenderer(sender: WebContents, senderUrl: string): boolean {
   return (
@@ -52,6 +62,44 @@ function registerIpc(): void {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
     getBrowserController().reload();
   });
+  ipcMain.handle(IpcChannel.GetNetworkSnapshot, (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    return getNetworkLabController().getSnapshot();
+  });
+  ipcMain.handle(IpcChannel.SetNetworkPaused, (event, paused: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (typeof paused !== 'boolean') throw new Error('Invalid pause state.');
+    getNetworkLabController().setPaused(paused);
+  });
+  ipcMain.handle(IpcChannel.SetDeepCapture, async (event, enabled: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (typeof enabled !== 'boolean') {
+      throw new Error('Invalid deep capture state.');
+    }
+    await getNetworkLabController().setDeepCapture(enabled);
+  });
+  ipcMain.handle(IpcChannel.ClearNetworkEntries, (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    getNetworkLabController().clear();
+  });
+  ipcMain.handle(IpcChannel.ExportNetworkFixture, async (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (!mainWindow) throw new Error('Desktop window is not ready.');
+
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: '导出脱敏网络 Fixture',
+      defaultPath: `yuketang-network-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+
+    await writeFile(
+      result.filePath,
+      JSON.stringify(getNetworkLabController().getFixture(), null, 2),
+      'utf8',
+    );
+    return { filePath: result.filePath };
+  });
 }
 
 function assertTrustedIpc(sender: WebContents, senderUrl: string): void {
@@ -65,12 +113,17 @@ function getBrowserController(): BrowserController {
   return browserController;
 }
 
+function getNetworkLabController(): NetworkLabController {
+  if (!networkLabController) throw new Error('Network lab is not ready.');
+  return networkLabController;
+}
+
 async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 720,
+    width: 1180,
+    height: 800,
     minWidth: 720,
-    minHeight: 480,
+    minHeight: 680,
     title: '雨课堂助手',
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
@@ -85,8 +138,32 @@ async function createWindow(): Promise<void> {
       mainWindow.webContents.send(IpcChannel.BrowserStateChanged, state);
     }
   });
-  mainWindow.on('closed', () => {
+  networkLabController = new NetworkLabController(
+    browserController.webContents,
+    (entry) => {
+      if (mainWindow && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send(IpcChannel.NetworkEntryAdded, entry);
+      }
+    },
+    (state) => {
+      if (mainWindow && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send(
+          IpcChannel.NetworkCaptureStateChanged,
+          state,
+        );
+      }
+    },
+  );
+  networkLabController.start();
+  let disposed = false;
+  mainWindow.on('close', () => {
+    if (disposed) return;
+    disposed = true;
+    networkLabController?.destroy();
     browserController?.destroy();
+  });
+  mainWindow.on('closed', () => {
+    networkLabController = undefined;
     browserController = undefined;
     mainWindow = undefined;
   });
