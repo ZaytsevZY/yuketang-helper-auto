@@ -176,7 +176,7 @@ select {
 
 .browser-placeholder {
   display: grid;
-  height: calc(100vh - 96px);
+  height: calc(100vh - 396px);
   place-items: center;
   color: #77847d;
   font-size: 14px;

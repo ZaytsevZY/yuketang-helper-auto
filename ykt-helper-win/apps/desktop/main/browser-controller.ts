@@ -1,4 +1,8 @@
-import { WebContentsView, type BrowserWindow } from 'electron';
+import {
+  WebContentsView,
+  type BrowserWindow,
+  type WebContents,
+} from 'electron';
 import { BrowserEnvironment, type BrowserState } from '@ykt/contracts';
 
 import {
@@ -9,6 +13,7 @@ import {
 
 const SESSION_PARTITION = 'persist:yuketang-browser';
 const TOOLBAR_HEIGHT = 96;
+const NETWORK_LAB_HEIGHT = 300;
 
 export class BrowserController {
   readonly #view: WebContentsView;
@@ -51,6 +56,10 @@ export class BrowserController {
       canGoForward: contents.navigationHistory.canGoForward(),
       errorMessage: this.#errorMessage,
     };
+  }
+
+  get webContents(): WebContents {
+    return this.#view.webContents;
   }
 
   async start(): Promise<void> {
@@ -183,7 +192,7 @@ export class BrowserController {
       x: 0,
       y: TOOLBAR_HEIGHT,
       width,
-      height: Math.max(0, height - TOOLBAR_HEIGHT),
+      height: Math.max(0, height - TOOLBAR_HEIGHT - NETWORK_LAB_HEIGHT),
     });
   }
 

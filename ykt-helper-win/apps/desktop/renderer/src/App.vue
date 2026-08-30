@@ -7,6 +7,8 @@ import {
   type RuntimeStatus,
 } from '@ykt/contracts';
 
+import NetworkLab from './components/NetworkLab.vue';
+
 const runtimeStatus = ref<RuntimeStatus>();
 const browserState = ref<BrowserState>();
 const controlError = ref('');
@@ -132,4 +134,5 @@ const reload = () => runControl(() => window.yuketang.browserReload());
   <main class="browser-placeholder">
     <p>正在初始化安全网页容器…</p>
   </main>
+  <NetworkLab />
 </template>

@@ -4,6 +4,10 @@ import {
   type BrowserEnvironment,
   type BrowserState,
   type DesktopApi,
+  type FixtureExportResult,
+  type NetworkCaptureState,
+  type NetworkEntry,
+  type NetworkSnapshot,
   type RuntimeStatus,
 } from '@ykt/contracts';
 
@@ -33,6 +37,47 @@ const api: DesktopApi = Object.freeze({
     ipcRenderer.on(IpcChannel.BrowserStateChanged, handler);
     return () =>
       ipcRenderer.removeListener(IpcChannel.BrowserStateChanged, handler);
+  },
+  getNetworkSnapshot: () =>
+    ipcRenderer.invoke(
+      IpcChannel.GetNetworkSnapshot,
+    ) as Promise<NetworkSnapshot>,
+  setNetworkPaused: (paused: boolean) =>
+    ipcRenderer.invoke(IpcChannel.SetNetworkPaused, paused) as Promise<void>,
+  setDeepCapture: (enabled: boolean) =>
+    ipcRenderer.invoke(IpcChannel.SetDeepCapture, enabled) as Promise<void>,
+  clearNetworkEntries: () =>
+    ipcRenderer.invoke(IpcChannel.ClearNetworkEntries) as Promise<void>,
+  exportNetworkFixture: () =>
+    ipcRenderer.invoke(
+      IpcChannel.ExportNetworkFixture,
+    ) as Promise<FixtureExportResult | null>,
+  onNetworkEntryAdded: (listener: (entry: NetworkEntry) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      entry: NetworkEntry,
+    ) => {
+      listener(entry);
+    };
+    ipcRenderer.on(IpcChannel.NetworkEntryAdded, handler);
+    return () =>
+      ipcRenderer.removeListener(IpcChannel.NetworkEntryAdded, handler);
+  },
+  onNetworkCaptureStateChanged: (
+    listener: (state: NetworkCaptureState) => void,
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      state: NetworkCaptureState,
+    ) => {
+      listener(state);
+    };
+    ipcRenderer.on(IpcChannel.NetworkCaptureStateChanged, handler);
+    return () =>
+      ipcRenderer.removeListener(
+        IpcChannel.NetworkCaptureStateChanged,
+        handler,
+      );
   },
 });
 
