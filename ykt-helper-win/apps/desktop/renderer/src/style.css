@@ -1,0 +1,76 @@
+:root {
+  color: #19241f;
+  background: #edf3ef;
+  font-family:
+    Inter,
+    'Microsoft YaHei',
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 32px;
+}
+
+.card {
+  width: min(620px, 100%);
+  padding: 48px;
+  border: 1px solid #d5e2da;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 20px 60px rgb(35 66 50 / 10%);
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #178653;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(28px, 5vw, 42px);
+  line-height: 1.16;
+}
+
+.description {
+  margin: 18px 0 28px;
+  color: #65726b;
+  line-height: 1.7;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #65726b;
+  font-size: 14px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #a5afa9;
+}
+
+.status.running .dot {
+  background: #1fbf75;
+  box-shadow: 0 0 0 4px rgb(31 191 117 / 12%);
+}
