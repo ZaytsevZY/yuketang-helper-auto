@@ -116,10 +116,8 @@ export function connectOrAttachLessonWS({ lessonId, auth }) {
     return repo.lessonSockets.get(lessonId);
   }
 
-  // 根据当前域名选择 ws 地址（标准/荷塘）
-  const host = location.hostname === 'pro.yuketang.cn'
-    ? 'wss://pro.yuketang.cn/wsapp/'
-    : 'wss://www.yuketang.cn/wsapp/';
+  // 根据当前域名选择 ws 地址
+  const host = "wss://" + location.hostname + "/wsapp/";
 
   const ws = new WebSocket(host);
 
