@@ -123,3 +123,11 @@
 1.21.2
 
 - 适配所有雨课堂服务器网页
+
+1.21.3
+
+- 每个 AI Profile 支持独立 Temperature 配置；留空时不会向 OpenAI 兼容 API 发送该参数
+
+- 文本、视觉/融合、OCR 与翻译请求统一使用当前 Profile 的 Temperature
+
+- 新增 Profile Temperature 的自动化测试，并同步 1.21.3 发布脚本与开发文档

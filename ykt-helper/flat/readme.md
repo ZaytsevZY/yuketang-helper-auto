@@ -1,5 +1,7 @@
 # ykt-helper 开发文档
 
+> **历史实现说明**：`flat/` 是旧版扁平化代码的存档，不参与当前 1.21.3 用户脚本的构建或发布。当前源码、构建流程和发版清单请看 [`../readme.md`](../readme.md)。
+
 ## 项目构建
 
 ### 环境要求
@@ -14,7 +16,7 @@ npm run dev          # 开发模式（监听文件变化）
 ```
 
 ### 使用方式
-直接使用 `release/ykt-helper.user.js`，导入 Tampermonkey 即可。
+请不要将本目录的构建产物作为当前发布版本使用。当前正式脚本是根目录的 [`../release/ykt-helper-1213.user.js`](../../release/ykt-helper-1213.user.js)，导入 Tampermonkey 即可。
 
 ## 项目架构
 
@@ -167,6 +169,7 @@ export class StorageManager {
 
 ## 开发注意事项
 
+0. `flat/` 仅保留作历史参考；不要在此目录开发 1.21.3 及后续版本的功能。
 1. 新功能开发后需更新 `userscript.meta.js` 版本号
 2. UI 组件采用 HTML + JS 模板形式
 3. 样式统一在 `styles.css` 中定义
