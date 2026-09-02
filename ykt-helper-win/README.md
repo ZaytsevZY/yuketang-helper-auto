@@ -1,6 +1,6 @@
 # 雨课堂助手桌面版
 
-当前已完成 `coding_plan.md` 的 M0 架构基线、M1 桌面网页容器和 M2 网络实验室。程序可在独立的 `WebContentsView` 中登录和浏览雨课堂，并观察、脱敏和导出该页面产生的网络记录；真实课堂业务仍留待后续阶段。
+当前已完成 `coding_plan.md` 的 M0 架构基线、M1 桌面网页容器、M2 网络实验室和 M3 Backend 核心抽取。程序可在独立的 `WebContentsView` 中登录和浏览雨课堂，并观察、脱敏和导出网络记录；Backend 可在无浏览器环境下回放课堂事件并验证人工答案。真实主动网络调用仍留待 M4。
 
 ## 开发命令
 
@@ -31,7 +31,7 @@ CLI 的 stdout 只输出 JSON；诊断和用法信息写入 stderr。
 - `packages/contracts`：共享 DTO、领域事件、错误码、Facade 和 IPC 契约。
 - `packages/routing`：M0 空 Routing 服务；M2 再接入 Browser Observer。
 - `packages/storage`：供测试和基线使用的内存存储；M5 再接入 SQLite 与系统凭据库。
-- `packages/backend`：唯一 Backend Runtime 和 Facade 实现。
+- `packages/backend`：领域模型、每课堂独立状态、工作流、答案验证以及统一 Facade。
 - `apps/desktop`：Electron 主进程、受限 preload 和 Vue Renderer。
 - `apps/cli`：调用 Backend Runtime 的 JSON 命令行入口。
 
@@ -64,3 +64,14 @@ CLI 的 stdout 只输出 JSON；诊断和用法信息写入 stderr。
 npm run build
 npm run fixture:replay -- tests/fixtures/network-sample.json
 ```
+
+## Backend 离线回放
+
+M3 将旧脚本中的课件、题目、题型、答案和超时规则迁入纯 TypeScript Backend，不依赖 DOM、Vuex、toast、GM API 或 localStorage。可使用脱敏后的标准课堂事件 fixture 重现题目解锁流程：
+
+```powershell
+npm run build
+npm run lesson:replay -- tests/fixtures/lesson-unlock.json
+```
+
+提交所需的真实 Session、Cookie、接口和 WebSocket 客户端属于 M4；M3 只生成可检查的提交计划，不发出网络写请求。

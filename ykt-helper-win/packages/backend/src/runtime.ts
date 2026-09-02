@@ -13,12 +13,20 @@ import {
 import { EmptyRoutingService, type RoutingService } from '@ykt/routing';
 import { MemoryKeyValueStore, type KeyValueStore } from '@ykt/storage';
 
+import {
+  InMemoryLessonRepository,
+  type LessonRepository,
+} from './repositories/lesson-repository.js';
+import { ProblemService } from './services/problem-service.js';
+
 const VERSION = '0.1.0';
 
 class BaselineFacade implements YuketangFacade {
   constructor(
     private readonly status: () => RuntimeStatus,
     private readonly routing: RoutingService,
+    private readonly lessons: LessonRepository,
+    private readonly problems: ProblemService,
   ) {}
 
   async getStatus(): Promise<RuntimeStatus> {
@@ -26,7 +34,7 @@ class BaselineFacade implements YuketangFacade {
   }
 
   async listLessons(): Promise<readonly Lesson[]> {
-    return [];
+    return this.lessons.listLessons();
   }
 
   watchLesson(id: string): AsyncIterable<LessonEvent> {
@@ -34,26 +42,17 @@ class BaselineFacade implements YuketangFacade {
   }
 
   async getProblem(id: string): Promise<ProblemContext> {
-    throw new YuketangError({
-      code: ErrorCode.NotFound,
-      message: `Problem ${id} is not available in the M0 runtime.`,
-    });
+    return this.problems.getProblem(id);
   }
 
   async validateAnswer(input: AnswerInput): Promise<ValidationResult> {
-    return {
-      valid: input.problemId.length > 0 && input.answer.length > 0,
-      issues:
-        input.problemId.length > 0 && input.answer.length > 0
-          ? []
-          : ['problemId and answer are required'],
-    };
+    return this.problems.validateAnswer(input);
   }
 
   async submitAnswer(_input: AnswerInput): Promise<SubmissionResult> {
     throw new YuketangError({
       code: ErrorCode.NotImplemented,
-      message: 'Answer submission is not available in M0.',
+      message: 'Answer submission requires the M4 active network client.',
     });
   }
 }
@@ -61,18 +60,23 @@ class BaselineFacade implements YuketangFacade {
 export interface BackendRuntimeOptions {
   routing?: RoutingService;
   store?: KeyValueStore;
+  lessons?: LessonRepository;
 }
 
 export class BackendRuntime {
   readonly facade: YuketangFacade;
   readonly store: KeyValueStore;
+  readonly lessons: LessonRepository;
   #running = false;
 
   constructor(options: BackendRuntimeOptions = {}) {
     this.store = options.store ?? new MemoryKeyValueStore();
+    this.lessons = options.lessons ?? new InMemoryLessonRepository();
     this.facade = new BaselineFacade(
       () => this.status(),
       options.routing ?? new EmptyRoutingService(),
+      this.lessons,
+      new ProblemService(this.lessons),
     );
   }
 
@@ -88,7 +92,13 @@ export class BackendRuntime {
     return {
       state: this.#running ? 'running' : 'stopped',
       version: VERSION,
-      capabilities: ['status'],
+      capabilities: [
+        'status',
+        'lessons',
+        'problems',
+        'answer-validation',
+        'fixture-replay',
+      ],
     };
   }
 }

@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "lesson": {
+    "id": "lesson-1",
+    "title": "离线回放课堂",
+    "status": "upcoming"
+  },
+  "events": [
+    {
+      "type": "lesson.started",
+      "lessonId": "lesson-1",
+      "occurredAt": 1000
+    },
+    {
+      "type": "presentation.loaded",
+      "lessonId": "lesson-1",
+      "occurredAt": 1100,
+      "presentation": {
+        "id": "presentation-1",
+        "lessonId": "lesson-1",
+        "title": "课件",
+        "width": 1280,
+        "height": 720,
+        "slides": [
+          {
+            "id": "slide-1",
+            "index": 0,
+            "title": "选择题",
+            "imageUrl": null,
+            "problem": null
+          }
+        ]
+      }
+    },
+    {
+      "type": "problem.published",
+      "lessonId": "lesson-1",
+      "occurredAt": 1200,
+      "problem": {
+        "id": "problem-1",
+        "lessonId": "lesson-1",
+        "presentationId": "presentation-1",
+        "slideId": "slide-1",
+        "type": "single-choice",
+        "prompt": "1 + 1 = ?",
+        "options": ["1", "2", "3"],
+        "blanks": [],
+        "result": null
+      }
+    },
+    {
+      "type": "problem.unlocked",
+      "lessonId": "lesson-1",
+      "occurredAt": 1300,
+      "problemId": "problem-1",
+      "presentationId": "presentation-1",
+      "slideId": "slide-1",
+      "unlockedAt": 1300,
+      "deadlineAt": 5000
+    }
+  ]
+}
