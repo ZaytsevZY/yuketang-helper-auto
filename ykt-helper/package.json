@@ -6,6 +6,7 @@
   "scripts": {
     "build": "rollup -c",
     "dev": "rollup -c -w",
+    "test": "node --test test/*.test.js",
     "postbuild": "node -e \"console.log('\\n✅ Build done: dist/ykt-helper.user.js')\""
   },
   "devDependencies": {

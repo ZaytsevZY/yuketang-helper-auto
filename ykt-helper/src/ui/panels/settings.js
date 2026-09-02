@@ -22,6 +22,7 @@ function ensureAIProfiles(configAI) {
         apiKey: legacyKey,
         model: 'moonshot-v1-8k',
         visionModel: 'moonshot-v1-8k-vision-preview',
+        temperature: '',
       },
     ];
     configAI.activeProfileId = 'default';
@@ -63,6 +64,7 @@ export function mountSettingsPanel() {
   const $api = root.querySelector('#kimi-api-key');
   const $model = root.querySelector('#ykt-ai-model');
   const $visionModel = root.querySelector('#ykt-ai-vision-model');
+  const $temperature = root.querySelector('#ykt-ai-temperature');
   const $ocrApi = root.querySelector('#ykt-ai-ocr-api');
   const $ocrApiKey = root.querySelector('#ykt-ai-ocr-api-key');
   const $translateApi = root.querySelector('#ykt-ai-translate-api');
@@ -112,6 +114,7 @@ export function mountSettingsPanel() {
     $api.value = p.apiKey || '';
     $model.value = p.model || '';
     $visionModel.value = p.visionModel || '';
+    $temperature.value = p.temperature ?? '';
     $ocrApi.value = ui.config.ai.ocrApi || '';
     $ocrApiKey.value = ui.config.ai.ocrApiKey || '';
     $translateApi.value = ui.config.ai.translateApi || '';
@@ -138,6 +141,7 @@ export function mountSettingsPanel() {
       apiKey: '',
       model: 'gpt-4o-mini',
       visionModel: '',
+      temperature: '',
     };
     ui.config.ai.profiles.push(newP);
     ui.config.ai.activeProfileId = id;
@@ -197,6 +201,17 @@ export function mountSettingsPanel() {
       p.apiKey = $api.value.trim();
       p.model = $model.value.trim() || p.model;
       p.visionModel = $visionModel.value.trim() || p.visionModel;
+      const rawTemperature = $temperature.value.trim();
+      if (rawTemperature === '') {
+        p.temperature = '';
+      } else {
+        const temperature = Number(rawTemperature);
+        if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
+          ui.toast('Temperature 必须是 0 到 2 之间的数字，或留空', 3000);
+          return;
+        }
+        p.temperature = temperature;
+      }
       ai.ocrApi = $ocrApi.value.trim();
       ai.ocrApiKey = $ocrApiKey.value.trim();
       ai.translateApi = $translateApi.value.trim();

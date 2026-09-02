@@ -49,6 +49,22 @@ function makeChatUrl(profile) {
     return profile.baseUrl;
 }
 
+function withProfileTemperature(profile, payload) {
+  const { temperature: _legacyTemperature, ...requestPayload } = payload;
+  const rawTemperature = profile?.temperature;
+
+  if (rawTemperature === '' || rawTemperature === undefined || rawTemperature === null) {
+    return requestPayload;
+  }
+
+  const temperature = Number(rawTemperature);
+  if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
+    throw new Error('Temperature 必须是 0 到 2 之间的数字，或留空使用模型默认值');
+  }
+
+  return { ...requestPayload, temperature };
+}
+
 // -----------------------------------------------
 // Unified Prompt blocks for Text & Vision
 // -----------------------------------------------
@@ -96,7 +112,7 @@ export async function queryAI(question, aiCfg) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${profile.apiKey}`,
       },
-      data: JSON.stringify({
+      data: JSON.stringify(withProfileTemperature(profile, {
         model,
         messages: [
           { role: 'system', content: BASE_SYSTEM_PROMPT },
@@ -114,8 +130,7 @@ export async function queryAI(question, aiCfg) {
             ],
           },
         ],
-        temperature: 0.6,
-      }),
+      })),
       onload: (res) => {
         try {
           console.log('[雨课堂助手][AI OpenAI] Status:', res.status);
@@ -151,7 +166,7 @@ function chatCompletion(profile, payload, debugLabel = '[AI OpenAI]', timeoutMs 
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${profile.apiKey}`,
       },
-      data: JSON.stringify(payload),
+      data: JSON.stringify(withProfileTemperature(profile, payload)),
       timeout: timeoutMs,
       onload: (res) => {
         try {
@@ -230,7 +245,6 @@ async function singleStepVisionCall(profile, cleanBase64List, textPrompt, option
     {
       model: visionModel,
       messages,
-      temperature: 0.3,
     },
     '[AI OpenAI Vision 单步]',
     timeoutMs,
@@ -367,7 +381,6 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
       {
         model: visionModel,
         messages: step1Messages,
-        temperature: 0.1,
       },
       '[AI OpenAI Vision Step1]',
       timeoutMs,
@@ -494,7 +507,6 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
       {
         model: textModel,
         messages: step2Messages,
-        temperature: 0.2,
       },
       '[AI OpenAI Vision Step2]',
       timeoutMs,
@@ -561,7 +573,6 @@ export async function queryOCRVision(imageBase64, aiCfg) {
           ],
         },
       ],
-      temperature: 0.1,
     },
     '[AI OCR Vision]',
     60000,
@@ -623,7 +634,6 @@ export async function queryTranslationText(text, targetLanguage, aiCfg) {
           ],
         },
       ],
-      temperature: 0.1,
     },
     '[AI Translate]',
     60000,
@@ -635,4 +645,3 @@ export async function queryTranslationText(text, targetLanguage, aiCfg) {
   }
   return String(content).trim();
 }
-

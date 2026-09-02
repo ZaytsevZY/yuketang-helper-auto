@@ -25,7 +25,6 @@ export const DEFAULT_CONFIG = {
     translateApi: '',
     translateApiKey: '',
     translateModel: '',
-    temperature: 0.3,
     maxTokens: 1000,
   },
   profiles: [
@@ -36,6 +35,7 @@ export const DEFAULT_CONFIG = {
       apiKey: '',                     
       model: 'moonshot-v1-8k',
       visionModel: 'moonshot-v1-8k-vision-preview',
+      temperature: '',
     },
   ],
   activeProfileId: 'default',
