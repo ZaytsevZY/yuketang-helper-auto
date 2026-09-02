@@ -1,6 +1,6 @@
 # ykt-helper 开发文档
 
-> 当前发布版本为 1.21.3，正式用户脚本位于 [`../release/ykt-helper-1213.user.js`](../release/ykt-helper-1213.user.js)。`flat/` 是旧版扁平化实现，不参与当前发布。
+> 当前发布版本为 1.21.4，正式用户脚本位于 [`../release/ykt-helper-1214.user.js`](../release/ykt-helper-1214.user.js)。`flat/` 是旧版扁平化实现，不参与当前发布。
 
 ## 项目构建
 
@@ -17,7 +17,7 @@ npm run dev          # 开发模式（监听文件变化）
 ```
 
 ### 使用方式
-构建后的当前产物是 `dist/ykt-helper-1213.user.js`；发布前将它与根目录的 `../release/ykt-helper-1213.user.js` 保持完全一致，再导入 Tampermonkey。
+构建后的当前产物是 `dist/ykt-helper-1214.user.js`；发布前将它与根目录的 `../release/ykt-helper-1214.user.js` 保持完全一致，再导入 Tampermonkey。
 
 ### 本地调试
 `debug/` 目录提供了本地调试环境，无需 Tampermonkey 即可运行 UI。

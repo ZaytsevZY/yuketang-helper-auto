@@ -5,8 +5,8 @@
   <a href="https://github.com/ZaytsevZY/yuketang-helper-auto/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="license"/>
   </a>
-  <a href="./release/ykt-helper-1213.user.js">
-    <img src="https://img.shields.io/badge/version-1.21.3-blue.svg" alt="版本">
+  <a href="./release/ykt-helper-1214.user.js">
+    <img src="https://img.shields.io/badge/version-1.21.4-blue.svg" alt="版本">
   </a>
   <a href="#">
     <img src="https://img.shields.io/badge/platform-Chrome%20%7C%20Edge-green.svg" alt="适配平台">
@@ -48,7 +48,7 @@
   - 使用edge，你需要打开**拓展-管理拓展-开发者模式**，再开启篡改猴插件中的**允许注入脚本**和**允许访问文件URL权限**
   - 使用chrome，你需要打开 **（右上角三点）-拓展程序-管理拓展程序-开发者模式**，再开启插件面板中的**允许运行用户脚本**和**允许访问文件网址**
 
-- 使用本 fork 的当前构建时，可直接[安装 1.21.3](https://raw.githubusercontent.com/Frank-678/yuketang-helper-auto/main/release/ykt-helper-1213.user.js)。
+- 使用本 fork 的当前构建时，可直接[安装 1.21.4](https://raw.githubusercontent.com/Frank-678/yuketang-helper-auto/main/release/ykt-helper-1214.user.js)。
 
 - 也可以[安装 GreasyFork 的稳定版本](https://update.greasyfork.org/scripts/531469/AI%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B.user.js)；它通常不是最新版本。
 
@@ -60,7 +60,7 @@
 
 - 或手动创建新脚本，将 `release/ykt-helper-<版本号>.user.js` 的内容复制到篡改猴的新建脚本中。
 
-- 当前构建版本为 `1.21.3`，支持：
+- 当前构建版本为 `1.21.4`，支持：
 
   - `148.0.7778.98-chrome`及以下的chrome
 
@@ -194,6 +194,8 @@
 请在[更新记录](./changelog.md)中查看详细的更新记录。
 
 ---
+
+- 1.21.4: 修复直接打开雨课堂入口网址后，脚本需手动刷新才生效的问题
 
 - 1.21.3: 每个 AI Profile 支持独立 Temperature；留空时使用模型默认值
 
