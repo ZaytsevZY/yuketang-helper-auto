@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   IpcChannel,
+  type AnswerInput,
   type BrowserEnvironment,
   type BrowserState,
   type DesktopApi,
@@ -8,12 +9,40 @@ import {
   type NetworkCaptureState,
   type NetworkEntry,
   type NetworkSnapshot,
+  type Lesson,
+  type ProblemContext,
   type RuntimeStatus,
+  type SubmissionResult,
+  type ValidationResult,
 } from '@ykt/contracts';
 
 const api: DesktopApi = Object.freeze({
   getRuntimeStatus: () =>
     ipcRenderer.invoke(IpcChannel.GetRuntimeStatus) as Promise<RuntimeStatus>,
+  refreshLessons: (environment: BrowserEnvironment) =>
+    ipcRenderer.invoke(IpcChannel.RefreshLessons, environment) as Promise<
+      readonly Lesson[]
+    >,
+  connectLesson: (environment: BrowserEnvironment, id: string) =>
+    ipcRenderer.invoke(
+      IpcChannel.ConnectLesson,
+      environment,
+      id,
+    ) as Promise<void>,
+  listProblems: (lessonId: string) =>
+    ipcRenderer.invoke(IpcChannel.ListProblems, lessonId) as Promise<
+      readonly ProblemContext[]
+    >,
+  validateAnswer: (input: AnswerInput) =>
+    ipcRenderer.invoke(
+      IpcChannel.ValidateAnswer,
+      input,
+    ) as Promise<ValidationResult>,
+  submitAnswer: (input: AnswerInput) =>
+    ipcRenderer.invoke(
+      IpcChannel.SubmitAnswer,
+      input,
+    ) as Promise<SubmissionResult>,
   getBrowserState: () =>
     ipcRenderer.invoke(IpcChannel.GetBrowserState) as Promise<BrowserState>,
   selectBrowserEnvironment: (environment: BrowserEnvironment) =>

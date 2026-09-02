@@ -66,6 +66,7 @@ export interface ProblemContext extends Problem {
 export interface AnswerInput {
   problemId: string;
   answer: string | AnswerValue;
+  forceRetry?: boolean;
   idempotencyKey?: string;
 }
 

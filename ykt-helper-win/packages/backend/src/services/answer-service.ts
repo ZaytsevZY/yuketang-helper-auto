@@ -34,12 +34,13 @@ export class AnswerService {
   validate(
     problem: ProblemContext,
     input: string | AnswerValue,
+    allowExpired = false,
   ): ValidationResult {
     const answer = normalizeAnswer(problem.type, input);
     const issues: string[] = [];
 
     if (problem.status === 'locked') issues.push('problem is locked');
-    if (problem.status === 'expired')
+    if (problem.status === 'expired' && !allowExpired)
       issues.push('problem deadline has passed');
     if (problem.status === 'answered')
       issues.push('problem is already answered');
