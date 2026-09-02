@@ -27,6 +27,11 @@ const api: DesktopApi = Object.freeze({
     ipcRenderer.invoke(IpcChannel.BrowserForward) as Promise<void>,
   browserReload: () =>
     ipcRenderer.invoke(IpcChannel.BrowserReload) as Promise<void>,
+  setNetworkLabCollapsed: (collapsed: boolean) =>
+    ipcRenderer.invoke(
+      IpcChannel.SetNetworkLabCollapsed,
+      collapsed,
+    ) as Promise<void>,
   onBrowserStateChanged: (listener: (state: BrowserState) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

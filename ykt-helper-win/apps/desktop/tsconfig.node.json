@@ -9,5 +9,10 @@
     { "path": "../../packages/contracts" },
     { "path": "../../packages/backend" }
   ],
-  "include": ["main/**/*.ts", "preload/**/*.ts", "vite.config.ts"]
+  "include": [
+    "main/**/*.ts",
+    "preload/**/*.ts",
+    "tsup.preload.config.ts",
+    "vite.config.ts"
+  ]
 }

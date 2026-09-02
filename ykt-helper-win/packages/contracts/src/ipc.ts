@@ -14,6 +14,7 @@ export const IpcChannel = {
   BrowserBack: 'browser:back',
   BrowserForward: 'browser:forward',
   BrowserReload: 'browser:reload',
+  SetNetworkLabCollapsed: 'browser:set-network-lab-collapsed',
   BrowserStateChanged: 'browser:state-changed',
   GetNetworkSnapshot: 'network:get-snapshot',
   SetNetworkPaused: 'network:set-paused',
@@ -31,6 +32,7 @@ export interface DesktopApi {
   browserBack(): Promise<void>;
   browserForward(): Promise<void>;
   browserReload(): Promise<void>;
+  setNetworkLabCollapsed(collapsed: boolean): Promise<void>;
   onBrowserStateChanged(listener: (state: BrowserState) => void): () => void;
   getNetworkSnapshot(): Promise<NetworkSnapshot>;
   setNetworkPaused(paused: boolean): Promise<void>;
