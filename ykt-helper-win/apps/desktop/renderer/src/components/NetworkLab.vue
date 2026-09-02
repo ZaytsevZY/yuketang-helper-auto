@@ -21,6 +21,7 @@ const filter = ref<EntryFilter>('all');
 const search = ref('');
 const selectedId = ref<string>();
 const message = ref('');
+const collapsed = ref(false);
 const subscriptions: Array<() => void> = [];
 
 const filteredEntries = computed(() => {
@@ -95,6 +96,20 @@ async function exportFixture(): Promise<void> {
   });
 }
 
+async function toggleCollapsed(): Promise<void> {
+  const next = !collapsed.value;
+  collapsed.value = next;
+  try {
+    await window.yuketang.setNetworkLabCollapsed(next);
+  } catch (error) {
+    collapsed.value = !next;
+    message.value =
+      error instanceof Error
+        ? `无法调整网络实验室面板：${error.message}`
+        : '无法调整网络实验室面板';
+  }
+}
+
 async function runAction(action: () => Promise<void>): Promise<void> {
   try {
     message.value = '';
@@ -134,10 +149,10 @@ function shortUrl(value: string): string {
 </script>
 
 <template>
-  <section class="network-lab">
+  <section class="network-lab" :class="{ collapsed }">
     <header class="lab-toolbar">
       <strong>网络实验室</strong>
-      <div class="filters" aria-label="记录类型">
+      <div v-if="!collapsed" class="filters" aria-label="记录类型">
         <button
           v-for="item in ['all', 'http', 'websocket', 'domain'] as const"
           :key="item"
@@ -155,12 +170,14 @@ function shortUrl(value: string): string {
         </button>
       </div>
       <input
+        v-if="!collapsed"
         v-model="search"
         class="search"
         type="search"
         placeholder="搜索 URL / payload"
       />
       <label
+        v-if="!collapsed"
         class="deep-toggle"
         :title="captureState.deepCaptureError ?? '捕获响应正文和 WebSocket 帧'"
       >
@@ -172,19 +189,32 @@ function shortUrl(value: string): string {
         />
         深度捕获
       </label>
-      <button type="button" @click="togglePaused">
+      <button v-if="!collapsed" type="button" @click="togglePaused">
         {{ captureState.paused ? '继续' : '暂停' }}
       </button>
-      <button type="button" @click="clearEntries">清空</button>
-      <button type="button" @click="exportFixture">导出</button>
+      <button v-if="!collapsed" type="button" @click="clearEntries">
+        清空
+      </button>
+      <button v-if="!collapsed" type="button" @click="exportFixture">
+        导出
+      </button>
       <span class="lab-count">
         {{ entries.length }} 条<span v-if="captureState.droppedEntries">
           · 丢弃 {{ captureState.droppedEntries }}</span
         >
       </span>
+      <button
+        type="button"
+        class="collapse-toggle"
+        :aria-expanded="!collapsed"
+        :title="collapsed ? '展开网络实验室' : '收起网络实验室'"
+        @click="toggleCollapsed"
+      >
+        {{ collapsed ? '⌃ 展开' : '⌄ 收起' }}
+      </button>
     </header>
 
-    <div class="lab-body">
+    <div v-if="!collapsed" class="lab-body">
       <div class="entry-list">
         <button
           v-for="entry in filteredEntries"
@@ -227,7 +257,10 @@ function shortUrl(value: string): string {
       </div>
     </div>
 
-    <p v-if="captureState.deepCaptureError || message" class="lab-message">
+    <p
+      v-if="!collapsed && (captureState.deepCaptureError || message)"
+      class="lab-message"
+    >
       {{ message || captureState.deepCaptureError }}
     </p>
   </section>
@@ -243,6 +276,14 @@ function shortUrl(value: string): string {
   border-top: 1px solid #cbd6d0;
   background: #f7faf8;
   color: #25362d;
+}
+
+.network-lab.collapsed {
+  height: 43px;
+}
+
+.network-lab.collapsed .lab-toolbar {
+  border-bottom: 0;
 }
 
 .lab-toolbar {
@@ -269,6 +310,13 @@ function shortUrl(value: string): string {
   background: #fff;
   color: #405149;
   cursor: pointer;
+}
+
+.lab-toolbar .collapse-toggle {
+  min-width: 62px;
+  border-color: #b7c9bf;
+  background: #eef6f2;
+  color: #176f48;
 }
 
 .filters {

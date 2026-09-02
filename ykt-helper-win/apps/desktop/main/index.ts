@@ -62,6 +62,16 @@ function registerIpc(): void {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
     getBrowserController().reload();
   });
+  ipcMain.handle(
+    IpcChannel.SetNetworkLabCollapsed,
+    (event, collapsed: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (typeof collapsed !== 'boolean') {
+        throw new Error('Invalid network lab state.');
+      }
+      getBrowserController().setNetworkLabCollapsed(collapsed);
+    },
+  );
   ipcMain.handle(IpcChannel.GetNetworkSnapshot, (event) => {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
     return getNetworkLabController().getSnapshot();

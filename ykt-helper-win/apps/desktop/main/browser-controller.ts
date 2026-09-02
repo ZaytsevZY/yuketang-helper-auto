@@ -13,13 +13,15 @@ import {
 
 const SESSION_PARTITION = 'persist:yuketang-browser';
 const TOOLBAR_HEIGHT = 96;
-const NETWORK_LAB_HEIGHT = 300;
+const NETWORK_LAB_EXPANDED_HEIGHT = 300;
+const NETWORK_LAB_COLLAPSED_HEIGHT = 43;
 
 export class BrowserController {
   readonly #view: WebContentsView;
   #environment: BrowserEnvironment = BrowserEnvironment.Standard;
   #loading = false;
   #errorMessage: string | null = null;
+  #networkLabHeight = NETWORK_LAB_EXPANDED_HEIGHT;
 
   constructor(
     private readonly window: BrowserWindow,
@@ -83,6 +85,13 @@ export class BrowserController {
 
   reload(): void {
     this.#view.webContents.reload();
+  }
+
+  setNetworkLabCollapsed(collapsed: boolean): void {
+    this.#networkLabHeight = collapsed
+      ? NETWORK_LAB_COLLAPSED_HEIGHT
+      : NETWORK_LAB_EXPANDED_HEIGHT;
+    this.resize();
   }
 
   destroy(): void {
@@ -192,7 +201,7 @@ export class BrowserController {
       x: 0,
       y: TOOLBAR_HEIGHT,
       width,
-      height: Math.max(0, height - TOOLBAR_HEIGHT - NETWORK_LAB_HEIGHT),
+      height: Math.max(0, height - TOOLBAR_HEIGHT - this.#networkLabHeight),
     });
   }
 
