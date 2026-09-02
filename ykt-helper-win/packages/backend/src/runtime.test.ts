@@ -12,7 +12,13 @@ describe('BackendRuntime', () => {
     expect(await runtime.facade.getStatus()).toEqual({
       state: 'running',
       version: '0.1.0',
-      capabilities: ['status'],
+      capabilities: [
+        'status',
+        'lessons',
+        'problems',
+        'answer-validation',
+        'fixture-replay',
+      ],
     });
     expect(await runtime.facade.listLessons()).toEqual([]);
   });

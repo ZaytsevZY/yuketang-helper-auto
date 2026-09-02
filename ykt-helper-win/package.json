@@ -16,7 +16,8 @@
     "boundaries": "node scripts/check-boundaries.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "fixture:replay": "node scripts/replay-fixture.mjs"
+    "fixture:replay": "node scripts/replay-fixture.mjs",
+    "lesson:replay": "node scripts/replay-lesson-fixture.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
