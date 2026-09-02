@@ -1,0 +1,184 @@
+import { BrowserEnvironment } from '@ykt/contracts';
+import {
+  YuketangActiveClient,
+  type ActiveHttpRequest,
+  type ActiveHttpResponse,
+  type ActiveHttpTransport,
+  type LessonSocket,
+} from '@ykt/routing';
+import { describe, expect, it } from 'vitest';
+
+import { createBackendRuntime } from './runtime.js';
+
+describe('M4 backend active client', () => {
+  it('lists, connects, loads a problem and submits through mocked transports', async () => {
+    const transport = new QueueTransport([
+      response({
+        data: {
+          onLessonClassrooms: [
+            {
+              lessonId: 7,
+              classroomId: 8,
+              presentationId: 9,
+              title: 'Active lesson',
+              status: 1,
+            },
+          ],
+        },
+      }),
+      response(
+        { data: { lessonToken: 'lesson-token' } },
+        { 'Set-Auth': 'new' },
+      ),
+      response({
+        data: {
+          id: 9,
+          title: 'Presentation',
+          slides: [
+            {
+              id: 10,
+              problem: {
+                problemId: 11,
+                problemType: 1,
+                content: 'Question',
+                options: ['One', 'Two'],
+              },
+            },
+            {
+              id: 12,
+              problem: {
+                problemId: 13,
+                problemType: 1,
+                content: 'Expired question',
+                options: ['One', 'Two'],
+              },
+            },
+          ],
+        },
+      }),
+      response({ code: 0 }),
+      response({ code: 0, data: { success: ['13'] } }),
+    ]);
+    const socket = new FakeSocket();
+    const activeClient = new YuketangActiveClient({
+      credentials: {
+        load: async () => ({
+          cookieHeader: 'session=abc',
+          bearerToken: 'old',
+          userId: '42',
+        }),
+      },
+      transport,
+      socketFactory: () => socket,
+    });
+    const runtime = createBackendRuntime({ activeClient });
+    await runtime.start();
+
+    expect((await runtime.facade.getStatus()).capabilities).toContain(
+      'active-client',
+    );
+
+    expect(
+      await runtime.facade.refreshLessons(BrowserEnvironment.Standard),
+    ).toEqual([{ id: '7', title: 'Active lesson', status: 'active' }]);
+    await runtime.facade.connectLesson(BrowserEnvironment.Standard, '7');
+    const unlockedAt = Date.now();
+    socket.message(
+      JSON.stringify({
+        eventId: 'unlock-11',
+        op: 'unlockproblem',
+        problem: {
+          problemId: 11,
+          pres: 9,
+          slideId: 10,
+          dt: unlockedAt,
+          limit: 60,
+        },
+      }),
+    );
+    socket.message(
+      JSON.stringify({
+        eventId: 'unlock-13',
+        op: 'unlockproblem',
+        problem: {
+          problemId: 13,
+          pres: 9,
+          slideId: 12,
+          dt: unlockedAt - 120_000,
+          limit: 1,
+        },
+      }),
+    );
+
+    expect((await runtime.facade.listProblems('7'))[0]).toMatchObject({
+      id: '11',
+      presentationId: '9',
+      slideId: '10',
+      status: 'available',
+    });
+    expect(transport.requests[2]?.headers.authorization).toBe('Bearer new');
+    expect(
+      await runtime.facade.submitAnswer({ problemId: '11', answer: 'B' }),
+    ).toMatchObject({ problemId: '11', status: 'submitted' });
+    expect(transport.requests[3]).toMatchObject({
+      method: 'POST',
+      url: 'https://www.yuketang.cn/api/v3/lesson/problem/answer',
+    });
+    expect(
+      await runtime.facade.submitAnswer({
+        problemId: '13',
+        answer: 'A',
+        forceRetry: true,
+      }),
+    ).toMatchObject({ problemId: '13', status: 'submitted' });
+    expect(transport.requests[4]).toMatchObject({
+      method: 'POST',
+      url: 'https://www.yuketang.cn/api/v3/lesson/problem/retry',
+    });
+    expect(await runtime.facade.getProblem('11')).toMatchObject({
+      status: 'answered',
+      result: ['B'],
+    });
+
+    await runtime.stop();
+    expect(socket.closed).toBe(true);
+  });
+});
+
+class QueueTransport implements ActiveHttpTransport {
+  readonly requests: ActiveHttpRequest[] = [];
+
+  constructor(private readonly responses: ActiveHttpResponse[]) {}
+
+  async request(request: ActiveHttpRequest): Promise<ActiveHttpResponse> {
+    this.requests.push(request);
+    const next = this.responses.shift();
+    if (!next) throw new Error('No mock response configured.');
+    return next;
+  }
+}
+
+class FakeSocket implements LessonSocket {
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  closed = false;
+
+  send(_data: string): void {}
+
+  close(): void {
+    this.closed = true;
+  }
+
+  message(data: string): void {
+    this.onmessage?.({ data });
+  }
+}
+
+function response(
+  body: unknown,
+  headers: Readonly<Record<string, string>> = {},
+): ActiveHttpResponse {
+  return { status: 200, headers, body };
+}

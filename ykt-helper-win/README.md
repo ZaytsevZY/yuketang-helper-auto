@@ -1,6 +1,6 @@
 # 雨课堂助手桌面版
 
-当前已完成 `coding_plan.md` 的 M0 架构基线、M1 桌面网页容器、M2 网络实验室和 M3 Backend 核心抽取。程序可在独立的 `WebContentsView` 中登录和浏览雨课堂，并观察、脱敏和导出网络记录；Backend 可在无浏览器环境下回放课堂事件并验证人工答案。真实主动网络调用仍留待 M4。
+当前已完成 `coding_plan.md` 的 M0 至 M4。程序可在独立的 `WebContentsView` 中登录和浏览雨课堂，观察、脱敏和导出网络记录；Backend 可复用受控浏览器会话，主动读取课堂和课件、连接课堂 WebSocket，并通过统一 Facade 验证和提交人工答案。
 
 ## 开发命令
 
@@ -29,7 +29,7 @@ CLI 的 stdout 只输出 JSON；诊断和用法信息写入 stderr。
 ## 当前边界
 
 - `packages/contracts`：共享 DTO、领域事件、错误码、Facade 和 IPC 契约。
-- `packages/routing`：M0 空 Routing 服务；M2 再接入 Browser Observer。
+- `packages/routing`：Browser Observer、主动 HTTP 客户端、环境适配器、SessionManager 和课堂 WebSocket。
 - `packages/storage`：供测试和基线使用的内存存储；M5 再接入 SQLite 与系统凭据库。
 - `packages/backend`：领域模型、每课堂独立状态、工作流、答案验证以及统一 Facade。
 - `apps/desktop`：Electron 主进程、受限 preload 和 Vue Renderer。
@@ -74,4 +74,10 @@ npm run build
 npm run lesson:replay -- tests/fixtures/lesson-unlock.json
 ```
 
-提交所需的真实 Session、Cookie、接口和 WebSocket 客户端属于 M4；M3 只生成可检查的提交计划，不发出网络写请求。
+## 主动网络客户端
+
+M4 为 standard、pro 和 changjiang 分别固定了 host adapter，并实现用户信息、正在上课、签到、课件、答题和补交接口。Cookie 从 Electron 专用 session 读取，Bearer、`Set-Auth` 和 lessonToken 由 `SessionManager` 管理。
+
+独立课堂 WebSocket 支持 hello 握手、断线重连、跨重连事件去重和统一关闭。主动 HTTP/WS 记录使用 `active` 来源写入网络实验室，并沿用相同的凭据脱敏规则。
+
+当前 UI 不会自动签到或提交；相关能力只通过 Backend Facade 和受限 IPC 暴露，等待后续课堂与题目界面显式调用。

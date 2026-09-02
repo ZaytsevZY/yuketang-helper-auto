@@ -1,5 +1,12 @@
 import type { BrowserEnvironment, BrowserState } from './browser.js';
-import type { RuntimeStatus } from './dto.js';
+import type {
+  AnswerInput,
+  Lesson,
+  ProblemContext,
+  RuntimeStatus,
+  SubmissionResult,
+  ValidationResult,
+} from './dto.js';
 import type {
   FixtureExportResult,
   NetworkCaptureState,
@@ -9,6 +16,11 @@ import type {
 
 export const IpcChannel = {
   GetRuntimeStatus: 'runtime:get-status',
+  RefreshLessons: 'backend:refresh-lessons',
+  ConnectLesson: 'backend:connect-lesson',
+  ListProblems: 'backend:list-problems',
+  ValidateAnswer: 'backend:validate-answer',
+  SubmitAnswer: 'backend:submit-answer',
   GetBrowserState: 'browser:get-state',
   SelectBrowserEnvironment: 'browser:select-environment',
   BrowserBack: 'browser:back',
@@ -27,6 +39,11 @@ export const IpcChannel = {
 
 export interface DesktopApi {
   getRuntimeStatus(): Promise<RuntimeStatus>;
+  refreshLessons(environment: BrowserEnvironment): Promise<readonly Lesson[]>;
+  connectLesson(environment: BrowserEnvironment, id: string): Promise<void>;
+  listProblems(lessonId: string): Promise<readonly ProblemContext[]>;
+  validateAnswer(input: AnswerInput): Promise<ValidationResult>;
+  submitAnswer(input: AnswerInput): Promise<SubmissionResult>;
   getBrowserState(): Promise<BrowserState>;
   selectBrowserEnvironment(environment: BrowserEnvironment): Promise<void>;
   browserBack(): Promise<void>;

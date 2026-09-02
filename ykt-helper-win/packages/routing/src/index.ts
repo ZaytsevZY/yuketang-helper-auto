@@ -1,5 +1,11 @@
 import type { LessonEvent } from '@ykt/contracts';
 
+export * from './active/client.js';
+export * from './active/host-adapter.js';
+export * from './active/http-transport.js';
+export * from './active/lesson-websocket.js';
+export * from './active/session-manager.js';
+export * from './active/types.js';
 export * from './fixture.js';
 export * from './normalizer.js';
 export * from './recorder.js';

@@ -15,7 +15,7 @@ import {
 import { ElectronNetworkObserver } from './electron-network-observer.js';
 
 export class NetworkLabController {
-  readonly #recorder = new NetworkRecorder();
+  readonly recorder = new NetworkRecorder();
   readonly #normalizers = new NormalizerPipeline();
   readonly #observer: ElectronNetworkObserver;
   #lastDroppedEntries = 0;
@@ -25,10 +25,10 @@ export class NetworkLabController {
     private readonly onEntry: (entry: NetworkEntry) => void,
     private readonly onStateChanged: (state: NetworkCaptureState) => void,
   ) {
-    this.#observer = new ElectronNetworkObserver(contents, this.#recorder, () =>
+    this.#observer = new ElectronNetworkObserver(contents, this.recorder, () =>
       this.emitState(),
     );
-    this.#recorder.subscribe((entry) => this.handleEntry(entry));
+    this.recorder.subscribe((entry) => this.handleEntry(entry));
   }
 
   start(): void {
@@ -36,15 +36,15 @@ export class NetworkLabController {
   }
 
   getSnapshot(): NetworkSnapshot {
-    return { state: this.getState(), entries: this.#recorder.entries };
+    return { state: this.getState(), entries: this.recorder.entries };
   }
 
   getFixture(): NetworkFixture {
-    return createNetworkFixture(this.#recorder.entries);
+    return createNetworkFixture(this.recorder.entries);
   }
 
   setPaused(paused: boolean): void {
-    this.#recorder.setPaused(paused);
+    this.recorder.setPaused(paused);
     this.emitState();
   }
 
@@ -53,7 +53,7 @@ export class NetworkLabController {
   }
 
   clear(): void {
-    this.#recorder.clear();
+    this.recorder.clear();
     this.#lastDroppedEntries = 0;
     this.emitState();
   }
@@ -64,12 +64,12 @@ export class NetworkLabController {
 
   private getState(): NetworkCaptureState {
     return {
-      paused: this.#recorder.paused,
+      paused: this.recorder.paused,
       deepCapture: this.#observer.deepCapture,
       deepCaptureAvailable: true,
       deepCaptureError: this.#observer.deepCaptureError,
-      entryCount: this.#recorder.entries.length,
-      droppedEntries: this.#recorder.droppedEntries,
+      entryCount: this.recorder.entries.length,
+      droppedEntries: this.recorder.droppedEntries,
     };
   }
 
@@ -77,7 +77,7 @@ export class NetworkLabController {
     this.onEntry(entry);
     if (isRawNetworkEntry(entry)) {
       for (const event of this.#normalizers.normalize(entry)) {
-        this.#recorder.addDomain({
+        this.recorder.addDomain({
           source: entry.source,
           eventType: event.eventType,
           summary: event.summary,
@@ -88,8 +88,8 @@ export class NetworkLabController {
         });
       }
     }
-    if (this.#lastDroppedEntries !== this.#recorder.droppedEntries) {
-      this.#lastDroppedEntries = this.#recorder.droppedEntries;
+    if (this.#lastDroppedEntries !== this.recorder.droppedEntries) {
+      this.#lastDroppedEntries = this.recorder.droppedEntries;
       this.emitState();
     }
   }

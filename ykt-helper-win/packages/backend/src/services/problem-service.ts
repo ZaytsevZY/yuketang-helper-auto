@@ -36,6 +36,17 @@ export class ProblemService {
     return this.answers.validate(
       this.getProblem(input.problemId),
       input.answer,
+      input.forceRetry === true,
     );
+  }
+
+  listProblems(lessonId: string): readonly ProblemContext[] {
+    const session = this.repository.getSession(lessonId);
+    if (!session) return [];
+    const now = this.clock.now();
+    return [...session.problems.keys()].flatMap((id) => {
+      const problem = session.getProblemContext(id, now);
+      return problem ? [problem] : [];
+    });
   }
 }

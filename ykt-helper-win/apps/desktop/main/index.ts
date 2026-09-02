@@ -9,13 +9,19 @@ import {
   Menu,
   type WebContents,
 } from 'electron';
-import { createBackendRuntime } from '@ykt/backend';
-import { IpcChannel, isBrowserEnvironment } from '@ykt/contracts';
+import { createBackendRuntime, type BackendRuntime } from '@ykt/backend';
+import {
+  IpcChannel,
+  isBrowserEnvironment,
+  type AnswerInput,
+} from '@ykt/contracts';
+import { YuketangActiveClient } from '@ykt/routing';
 
 import { BrowserController } from './browser-controller.js';
+import { ElectronSessionCredentialSource } from './electron-session-credentials.js';
 import { NetworkLabController } from './network-lab-controller.js';
 
-const runtime = createBackendRuntime();
+let runtime: BackendRuntime | undefined;
 let mainWindow: BrowserWindow | undefined;
 let browserController: BrowserController | undefined;
 let networkLabController: NetworkLabController | undefined;
@@ -33,7 +39,42 @@ function registerIpc(): void {
     if (!isTrustedRenderer(event.sender, event.senderFrame?.url ?? '')) {
       throw new Error('IPC request rejected.');
     }
-    return runtime.facade.getStatus();
+    return getRuntime().facade.getStatus();
+  });
+  ipcMain.handle(
+    IpcChannel.RefreshLessons,
+    async (event, environment: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (!isBrowserEnvironment(environment)) {
+        throw new Error('Invalid browser environment.');
+      }
+      return getRuntime().facade.refreshLessons(environment);
+    },
+  );
+  ipcMain.handle(
+    IpcChannel.ConnectLesson,
+    async (event, environment: unknown, lessonId: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (!isBrowserEnvironment(environment) || typeof lessonId !== 'string') {
+        throw new Error('Invalid lesson connection request.');
+      }
+      await getRuntime().facade.connectLesson(environment, lessonId);
+    },
+  );
+  ipcMain.handle(IpcChannel.ListProblems, async (event, lessonId: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (typeof lessonId !== 'string') throw new Error('Invalid lesson id.');
+    return getRuntime().facade.listProblems(lessonId);
+  });
+  ipcMain.handle(IpcChannel.ValidateAnswer, async (event, input: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    assertAnswerInput(input);
+    return getRuntime().facade.validateAnswer(input);
+  });
+  ipcMain.handle(IpcChannel.SubmitAnswer, async (event, input: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    assertAnswerInput(input);
+    return getRuntime().facade.submitAnswer(input);
   });
 
   ipcMain.handle(IpcChannel.GetBrowserState, (event) => {
@@ -118,9 +159,40 @@ function assertTrustedIpc(sender: WebContents, senderUrl: string): void {
   }
 }
 
+function assertAnswerInput(value: unknown): asserts value is AnswerInput {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('Invalid answer input.');
+  }
+  const input = value as Record<string, unknown>;
+  const answer = input.answer;
+  const validAnswer =
+    typeof answer === 'string' ||
+    (Array.isArray(answer) &&
+      answer.every((item) => typeof item === 'string')) ||
+    (typeof answer === 'object' &&
+      answer !== null &&
+      typeof (answer as Record<string, unknown>).content === 'string' &&
+      Array.isArray((answer as Record<string, unknown>).pics) &&
+      ((answer as Record<string, unknown>).pics as unknown[]).every(
+        (item) => typeof item === 'string',
+      ));
+  if (
+    typeof input.problemId !== 'string' ||
+    !validAnswer ||
+    (input.forceRetry !== undefined && typeof input.forceRetry !== 'boolean')
+  ) {
+    throw new Error('Invalid answer input.');
+  }
+}
+
 function getBrowserController(): BrowserController {
   if (!browserController) throw new Error('Browser is not ready.');
   return browserController;
+}
+
+function getRuntime(): BackendRuntime {
+  if (!runtime) throw new Error('Backend is not ready.');
+  return runtime;
 }
 
 function getNetworkLabController(): NetworkLabController {
@@ -164,6 +236,15 @@ async function createWindow(): Promise<void> {
       }
     },
   );
+  runtime = createBackendRuntime({
+    activeClient: new YuketangActiveClient({
+      credentials: new ElectronSessionCredentialSource(
+        browserController.webContents,
+      ),
+      recorder: networkLabController.recorder,
+    }),
+  });
+  await runtime.start();
   networkLabController.start();
   let disposed = false;
   mainWindow.on('close', () => {
@@ -171,11 +252,13 @@ async function createWindow(): Promise<void> {
     disposed = true;
     networkLabController?.destroy();
     browserController?.destroy();
+    void runtime?.stop();
   });
   mainWindow.on('closed', () => {
     networkLabController = undefined;
     browserController = undefined;
     mainWindow = undefined;
+    runtime = undefined;
   });
   await mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   await browserController.start();
@@ -183,7 +266,6 @@ async function createWindow(): Promise<void> {
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
-  await runtime.start();
   registerIpc();
   await createWindow();
 
@@ -197,5 +279,5 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  void runtime.stop();
+  void runtime?.stop();
 });
