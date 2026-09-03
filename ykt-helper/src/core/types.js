@@ -15,6 +15,7 @@ export const DEFAULT_CONFIG = {
   autoAnswer: false,
   autoAnswerDelay: 3000,
   autoAnswerRandomDelay: 2000,
+  keepScreenAwake: false,
   iftex: true,
   ai: {
     provider: 'kimi', 

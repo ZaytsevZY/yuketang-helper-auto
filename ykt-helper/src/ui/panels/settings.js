@@ -3,6 +3,7 @@ import tpl from './settings.html';
 import { ui } from '../ui-api.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
 import { storage } from '../../core/storage.js';
+import { screenWakeLock } from '../../core/screen-wake-lock.js';
 
 let mounted = false;
 let root;
@@ -85,6 +86,7 @@ export function mountSettingsPanel() {
   const $notifyAssessment = root.querySelector('#ykt-input-notify-assessment-publish');
   const $notifyCourseware = root.querySelector('#ykt-input-notify-courseware-publish');
   const $notifyOther = root.querySelector('#ykt-input-notify-other-publish');
+  const $keepScreenAwake = root.querySelector('#ykt-input-keep-screen-awake');
   const $iftex = root.querySelector('#ykt-ui-tex');
 
   const $audioFile = root.querySelector('#ykt-input-notify-audio-file');
@@ -189,6 +191,7 @@ export function mountSettingsPanel() {
   $notifyAssessment.checked = ui.config.notifyAssessmentPublishes !== false;
   $notifyCourseware.checked = ui.config.notifyCoursewarePublishes !== false;
   $notifyOther.checked = ui.config.notifyOtherPublishes !== false;
+  $keepScreenAwake.checked = !!ui.config.keepScreenAwake;
 
   if (ui.config.customNotifyAudioName) {
     $audioName.textContent = `当前：${ui.config.customNotifyAudioName}`;
@@ -198,7 +201,7 @@ export function mountSettingsPanel() {
 
   // 保存设置
 
-  root.querySelector('#ykt-btn-settings-save').addEventListener('click', () => {
+  root.querySelector('#ykt-btn-settings-save').addEventListener('click', async () => {
     // --- 保存当前 Profile ---
     const ai = ui.config.ai;
     const pid = ai.activeProfileId;
@@ -245,18 +248,28 @@ export function mountSettingsPanel() {
     ui.config.notifyAssessmentPublishes = !!$notifyAssessment.checked;
     ui.config.notifyCoursewarePublishes = !!$notifyCourseware.checked;
     ui.config.notifyOtherPublishes = !!$notifyOther.checked;
+    ui.config.keepScreenAwake = !!$keepScreenAwake.checked;
 
     ui.saveConfig();
     document.getElementById('ykt-btn-bell')?.classList.toggle('active', ui.config.notifyProblems);
     ui.updateAutoAnswerBtn();
-    ui.toast('设置已保存');
+    const wakeLockStatus = await screenWakeLock.setEnabled(ui.config.keepScreenAwake);
+    if (ui.config.keepScreenAwake && wakeLockStatus.reason === 'not-classroom') {
+      ui.toast('设置已保存；进入课堂页后将尝试保持亮屏', 3000);
+    } else if (ui.config.keepScreenAwake && wakeLockStatus.reason === 'unsupported') {
+      ui.toast('设置已保存；当前浏览器不支持课堂保持亮屏', 3500);
+    } else if (ui.config.keepScreenAwake && wakeLockStatus.reason === 'request-failed') {
+      ui.toast('设置已保存；系统未允许保持亮屏，请检查省电模式或浏览器权限', 4000);
+    } else {
+      ui.toast('设置已保存');
+    }
   });
 
   //--------------------------------------
   //            重置为默认
   //--------------------------------------
 
-  root.querySelector('#ykt-btn-settings-reset').addEventListener('click', () => {
+  root.querySelector('#ykt-btn-settings-reset').addEventListener('click', async () => {
     if (!confirm('确定要重置为默认设置吗？')) return;
 
     Object.assign(ui.config, JSON.parse(JSON.stringify(DEFAULT_CONFIG)));
@@ -285,6 +298,7 @@ export function mountSettingsPanel() {
     $notifyAssessment.checked = ui.config.notifyAssessmentPublishes !== false;
     $notifyCourseware.checked = ui.config.notifyCoursewarePublishes !== false;
     $notifyOther.checked = ui.config.notifyOtherPublishes !== false;
+    $keepScreenAwake.checked = !!ui.config.keepScreenAwake;
     $ocrApi.value = ui.config.ai.ocrApi || '';
     $ocrApiKey.value = ui.config.ai.ocrApiKey || '';
     $translateApi.value = ui.config.ai.translateApi || '';
@@ -297,6 +311,7 @@ export function mountSettingsPanel() {
     ui.saveConfig();
     document.getElementById('ykt-btn-bell')?.classList.toggle('active', ui.config.notifyProblems);
     ui.updateAutoAnswerBtn();
+    await screenWakeLock.setEnabled(false);
     ui.toast('设置已重置');
   });
 

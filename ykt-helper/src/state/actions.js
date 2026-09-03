@@ -11,6 +11,7 @@ import { captureSlideImage, captureProblemForVision } from '../capture/screensho
 import { getOnLesson, checkinClass } from '../net/xhr-interceptor.js';
 import { connectOrAttachLessonWS } from '../net/ws-interceptor.js';
 import { createPublishReminder } from './publish-reminder.js';
+import { screenWakeLock } from '../core/screen-wake-lock.js';
 
 let _autoLoopStarted = false;
 let _autoJoinStarted = false;
@@ -336,6 +337,7 @@ export const actions = {
     repo.loadStoredPresentations();
     this.maybeStartAutoJoin();           
     this.installRouterRearm();            
+    void screenWakeLock.setEnabled(ui.config.keepScreenAwake);
   },
   
     startAutoAnswerLoop() {
@@ -420,6 +422,7 @@ export const actions = {
       _autoOnLessonClickInProgress = false;
       // 每次路由变更都尝试启动（内部有防重，所以安全）
       this.maybeStartAutoJoin();
+      void screenWakeLock.sync();
     };
     const wrap = (obj, key) => {
       const orig = obj[key];
