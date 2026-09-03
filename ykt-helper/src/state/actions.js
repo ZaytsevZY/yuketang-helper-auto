@@ -10,12 +10,16 @@ import { formatProblemForVision, parseAIAnswer } from '../tsm/ai-format.js';
 import { captureSlideImage, captureProblemForVision } from '../capture/screenshoot.js';  
 import { getOnLesson, checkinClass } from '../net/xhr-interceptor.js';
 import { connectOrAttachLessonWS } from '../net/ws-interceptor.js';
+import { createPublishReminder } from './publish-reminder.js';
 
 let _autoLoopStarted = false;
 let _autoJoinStarted = false;
 let _autoOnLessonClickStarted = false;
 let _autoOnLessonClickInProgress = false;
 let _routerHooked = false;
+const publishReminder = createPublishReminder({
+  notify: event => ui.notifyPublish(event),
+});
 
 // 无AI默认答案生成
 function makeDefaultAnswer(problem) {
@@ -248,6 +252,14 @@ export const actions = {
     }
     
     ui.updateActiveProblems();
+  },
+
+  onPublishEvent(event) {
+    const notified = publishReminder.handle(event, ui.config);
+    if (notified) {
+      console.log('[雨课堂助手][INFO][Publish] 已提醒发布事件:', event.category, event.dedupeKey);
+    }
+    return notified;
   },
 
   onLessonFinished() {

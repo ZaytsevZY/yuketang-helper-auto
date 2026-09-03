@@ -165,12 +165,14 @@ export const ui = {
   },
 
   // 题目提醒
-  notifyProblem(problem, slide) {
+  notifyProblem(problem, slide, notice = {}) {
     try {
+      const titleText = notice.title || '习题已发布';
+      const nativeTitle = notice.nativeTitle || '雨课堂习题提示';
       // 1) 原生通知（如果可用，备用，不阻碍自定义弹窗）
       try {
         this.nativeNotify?.({
-          title: '雨课堂习题提示',
+          title: nativeTitle,
           text: this.getProblemDetail(problem),
           image: slide?.thumbnail || null,
           timeout: Math.max(2000, +this.config.notifyPopupDuration || 5000),
@@ -232,7 +234,7 @@ export const ui = {
       });
 
       const title = document.createElement('div');
-      title.textContent = '习题已发布';
+      title.textContent = titleText;
       Object.assign(title.style, { fontWeight: '600', fontSize: '15px', flex: '1 1 auto' });
 
       const closeBtn = document.createElement('button');
@@ -284,6 +286,16 @@ export const ui = {
     } catch (e) {
       console.warn('[雨课堂助手][WARN][ui.notifyProblem] failed:', e);
     }
+  },
+
+  notifyPublish(event) {
+    const title = event?.title || '课堂内容已发布';
+    const detail = event?.detail || '教师发布了新的课堂内容';
+    this.notifyProblem({
+      problemId: event?.dedupeKey || 'PUBLISH',
+      body: detail,
+      options: [],
+    }, null, { title, nativeTitle: title });
   },
 
   // 播放自定义提示音  

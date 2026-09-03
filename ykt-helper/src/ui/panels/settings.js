@@ -81,6 +81,10 @@ export function mountSettingsPanel() {
   const $priority = root.querySelector('#ykt-ai-pick-main-first');
   const $notifyDur = root.querySelector('#ykt-input-notify-duration');
   const $notifyVol = root.querySelector('#ykt-input-notify-volume');
+  const $notifyAll = root.querySelector('#ykt-input-notify-all');
+  const $notifyAssessment = root.querySelector('#ykt-input-notify-assessment-publish');
+  const $notifyCourseware = root.querySelector('#ykt-input-notify-courseware-publish');
+  const $notifyOther = root.querySelector('#ykt-input-notify-other-publish');
   const $iftex = root.querySelector('#ykt-ui-tex');
 
   const $audioFile = root.querySelector('#ykt-input-notify-audio-file');
@@ -181,6 +185,10 @@ export function mountSettingsPanel() {
 
   $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5000) / 1000);
   $notifyVol.value = Math.round(100 * (ui.config.notifyVolume ?? 0.6));
+  $notifyAll.checked = ui.config.notifyProblems !== false;
+  $notifyAssessment.checked = ui.config.notifyAssessmentPublishes !== false;
+  $notifyCourseware.checked = ui.config.notifyCoursewarePublishes !== false;
+  $notifyOther.checked = ui.config.notifyOtherPublishes !== false;
 
   if (ui.config.customNotifyAudioName) {
     $audioName.textContent = `当前：${ui.config.customNotifyAudioName}`;
@@ -233,8 +241,13 @@ export function mountSettingsPanel() {
     ui.config.aiSlidePickPriority = !!$priority.checked;
     ui.config.notifyPopupDuration = Math.max(2000, (+$notifyDur.value || 0) * 1000);
     ui.config.notifyVolume = Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100));
+    ui.config.notifyProblems = !!$notifyAll.checked;
+    ui.config.notifyAssessmentPublishes = !!$notifyAssessment.checked;
+    ui.config.notifyCoursewarePublishes = !!$notifyCourseware.checked;
+    ui.config.notifyOtherPublishes = !!$notifyOther.checked;
 
     ui.saveConfig();
+    document.getElementById('ykt-btn-bell')?.classList.toggle('active', ui.config.notifyProblems);
     ui.updateAutoAnswerBtn();
     ui.toast('设置已保存');
   });
@@ -268,6 +281,10 @@ export function mountSettingsPanel() {
 
     $notifyDur.value = 5;
     $notifyVol.value = 60;
+    $notifyAll.checked = ui.config.notifyProblems !== false;
+    $notifyAssessment.checked = ui.config.notifyAssessmentPublishes !== false;
+    $notifyCourseware.checked = ui.config.notifyCoursewarePublishes !== false;
+    $notifyOther.checked = ui.config.notifyOtherPublishes !== false;
     $ocrApi.value = ui.config.ai.ocrApi || '';
     $ocrApiKey.value = ui.config.ai.ocrApiKey || '';
     $translateApi.value = ui.config.ai.translateApi || '';
@@ -278,6 +295,7 @@ export function mountSettingsPanel() {
     storage.set('kimiApiKey', '');
 
     ui.saveConfig();
+    document.getElementById('ykt-btn-bell')?.classList.toggle('active', ui.config.notifyProblems);
     ui.updateAutoAnswerBtn();
     ui.toast('设置已重置');
   });

@@ -2,6 +2,7 @@
 import { gm } from '../core/env.js';
 import { actions } from '../state/actions.js';
 import { repo } from '../state/repo.js';
+import { getRealtimeEvent } from '../core/publish-events.js';
 
 export function installWSInterceptor() {
 
@@ -67,14 +68,19 @@ MyWebSocket.addHandler((ws, url) => {
     ws.listen((message) => {
       try {
         console.log('[雨课堂助手][INFO] WebSocket接收:', message);
-        switch (message.op) {
-          case 'fetchtimeline':
+        const realtime = getRealtimeEvent(message);
+        switch (realtime?.kind) {
+          case 'timeline':
             console.log('[雨课堂助手][INFO] 收到时间线:', message.timeline);
-            actions.onFetchTimeline(message.timeline);
+            actions.onFetchTimeline(realtime.timeline);
             break;
           case 'unlockproblem':
             console.log('[雨课堂助手][INFO] 收到解锁问题:', message.problem);
-            actions.onUnlockProblem(message.problem);
+            actions.onUnlockProblem(realtime.problem);
+            break;
+          case 'publish':
+            console.log('[雨课堂助手][INFO] 收到课堂发布:', realtime.event);
+            actions.onPublishEvent(realtime.event);
             break;
           case 'lessonfinished':
             console.log('[雨课堂助手][INFO] 课程结束');

@@ -145,6 +145,36 @@
       <div class="setting-group">
         <h4>习题提醒</h4>
         <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-all" />
+            <span class="checkmark"></span>
+            总提醒开关
+          </label>
+          <small>关闭后，课堂题目和下列发布提醒都会静音；工具栏铃铛与此开关同步。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-assessment-publish" />
+            <span class="checkmark"></span>
+            考试/测试题组发布提醒
+          </label>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-courseware-publish" />
+            <span class="checkmark"></span>
+            课件发布提醒
+          </label>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-other-publish" />
+            <span class="checkmark"></span>
+            其他无法分类的发布提醒
+          </label>
+          <small>用于不同学校服务器的未知发布事件；若提醒过多可单独关闭。</small>
+        </div>
+        <div class="setting-item">
           <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>
           <input type="number" id="ykt-input-notify-duration" min="2" max="60" />
           <small>习题出现时，弹窗在屏幕上的停留时长</small>
