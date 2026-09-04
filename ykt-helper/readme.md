@@ -17,17 +17,17 @@ npm run dev          # 开发模式（监听文件变化）
 直接使用 `release/ykt-helper.user.js`，导入 Tampermonkey 即可。
 
 ### 本地调试
-`debug/` 目录提供了本地调试环境，无需 Tampermonkey 即可运行 UI。
+`debug/` 目录提供了本地雨课堂测试宿主，可用于 userscript、浏览器扩展和 Electron/WebView 的基础功能测试。
 ```bash
-npm run build                              # 先构建
-python3 -m http.server 8765                # 从 ykt-helper/ 根目录启动
-# 浏览器打开 http://localhost:8765/debug/
+npm run debug
+# 浏览器打开 http://127.0.0.1:8765/debug/
 ```
 
-- `mock-gm.js`：模拟 GM API 并阻止脚本自动重载
-- `mock-data.js`：可选的 mock 数据注入（默认为空，按需添加）
-- AI 功能因缺少 `GM_xmlhttpRequest` 会报错，不影响 UI 调试
-- 每次修改源码后需重新 `npm run build` 再刷新页面
+- 页面使用固定构建入口 `dist/ykt-helper.debug.user.js`，不再随发布版本号失效。
+- 老师端/学生端通过本地事件总线联动，支持播放 6 页测试 PPT、发题、答题和答案回传。
+- `mock-gm.js`：本地模拟 GM API、Fetch、XHR 和 WebSocket；Kimi 请求经只允许 `api.moonshot.cn` 的本机代理发送。
+- `mock-data.js`：提供测试 PPT 中的两道单选题、一道多选题、两道填空题和基础课堂信号。
+- 详细调试 API 见 [`debug/README.md`](debug/README.md)。
 
 ## 项目架构
 
