@@ -165,7 +165,7 @@ export class YuketangActiveClient {
       ...request,
       headers: await this.sessions.headers(environment, lessonId),
     });
-    this.sessions.captureResponse(environment, response);
+    await this.sessions.captureResponse(environment, response);
     assertSuccess(response);
     return response;
   }

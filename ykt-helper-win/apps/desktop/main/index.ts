@@ -1,5 +1,5 @@
 import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import {
   app,
@@ -16,15 +16,34 @@ import {
   type AnswerInput,
 } from '@ykt/contracts';
 import { YuketangActiveClient } from '@ykt/routing';
+import {
+  DiskResourceCache,
+  FileSecretStore,
+  SqliteAppDataStore,
+} from '@ykt/storage';
 
 import { BrowserController } from './browser-controller.js';
 import { ElectronSessionCredentialSource } from './electron-session-credentials.js';
+import { ElectronSafeStorageCodec } from './electron-safe-storage-codec.js';
 import { NetworkLabController } from './network-lab-controller.js';
 
 let runtime: BackendRuntime | undefined;
 let mainWindow: BrowserWindow | undefined;
 let browserController: BrowserController | undefined;
 let networkLabController: NetworkLabController | undefined;
+
+configureStorageProfile();
+
+function configureStorageProfile(): void {
+  if (process.argv.includes('--portable')) {
+    app.setPath(
+      'userData',
+      join(dirname(app.getPath('exe')), 'ykt-helper-data'),
+    );
+  } else if (process.argv.includes('--debug-profile')) {
+    app.setPath('userData', join(app.getPath('userData'), 'debug-profile'));
+  }
+}
 
 function isTrustedRenderer(sender: WebContents, senderUrl: string): boolean {
   return (
@@ -40,6 +59,41 @@ function registerIpc(): void {
       throw new Error('IPC request rejected.');
     }
     return getRuntime().facade.getStatus();
+  });
+  ipcMain.handle(IpcChannel.GetSettings, async (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    return getRuntime().facade.getSettings();
+  });
+  ipcMain.handle(IpcChannel.UpdateSettings, async (event, patch: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+      throw new Error('Invalid settings.');
+    }
+    return getRuntime().facade.updateSettings(patch);
+  });
+  ipcMain.handle(IpcChannel.GetUser, async (event, environment: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (!isBrowserEnvironment(environment)) {
+      throw new Error('Invalid browser environment.');
+    }
+    return getRuntime().facade.getUser(environment);
+  });
+  ipcMain.handle(
+    IpcChannel.RefreshUser,
+    async (event, environment: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (!isBrowserEnvironment(environment)) {
+        throw new Error('Invalid browser environment.');
+      }
+      return getRuntime().facade.refreshUser(environment);
+    },
+  );
+  ipcMain.handle(IpcChannel.ListLogs, async (event, limit: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (limit !== undefined && typeof limit !== 'number') {
+      throw new Error('Invalid log limit.');
+    }
+    return getRuntime().facade.listLogs(limit);
   });
   ipcMain.handle(
     IpcChannel.RefreshLessons,
@@ -236,10 +290,26 @@ async function createWindow(): Promise<void> {
       }
     },
   );
+  const storageDirectory = join(app.getPath('userData'), 'storage');
+  const dataStore = new SqliteAppDataStore(
+    join(storageDirectory, 'yuketang.sqlite'),
+  );
+  const settings = await dataStore.getSettings();
+  const resourceCache = await DiskResourceCache.open({
+    directory: join(storageDirectory, 'resource-cache'),
+    maxBytes: settings.cacheMaxBytes,
+  });
+  const secretStore = new FileSecretStore(
+    join(storageDirectory, 'credentials.json'),
+    new ElectronSafeStorageCodec(),
+  );
   runtime = createBackendRuntime({
+    dataStore,
+    resourceCache,
     activeClient: new YuketangActiveClient({
       credentials: new ElectronSessionCredentialSource(
         browserController.webContents,
+        secretStore,
       ),
       recorder: networkLabController.recorder,
     }),

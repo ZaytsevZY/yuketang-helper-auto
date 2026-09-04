@@ -7,7 +7,8 @@
   },
   "references": [
     { "path": "../../packages/contracts" },
-    { "path": "../../packages/backend" }
+    { "path": "../../packages/backend" },
+    { "path": "../../packages/storage" }
   ],
   "include": [
     "main/**/*.ts",

@@ -1,6 +1,6 @@
 # 雨课堂助手桌面版
 
-当前已完成 `coding_plan.md` 的 M0 至 M4。程序可在独立的 `WebContentsView` 中登录和浏览雨课堂，观察、脱敏和导出网络记录；Backend 可复用受控浏览器会话，主动读取课堂和课件、连接课堂 WebSocket，并通过统一 Facade 验证和提交人工答案。
+当前已完成 `coding_plan.md` 的 M0 至 M5。程序可在独立的 `WebContentsView` 中登录和浏览雨课堂，观察、脱敏和导出网络记录；Backend 可复用受控浏览器会话，主动读取课堂和课件、连接课堂 WebSocket，并通过统一 Facade 验证和提交人工答案。设置、用户、日志和课件索引可在重启后恢复。
 
 ## 开发命令
 
@@ -30,7 +30,7 @@ CLI 的 stdout 只输出 JSON；诊断和用法信息写入 stderr。
 
 - `packages/contracts`：共享 DTO、领域事件、错误码、Facade 和 IPC 契约。
 - `packages/routing`：Browser Observer、主动 HTTP 客户端、环境适配器、SessionManager 和课堂 WebSocket。
-- `packages/storage`：供测试和基线使用的内存存储；M5 再接入 SQLite 与系统凭据库。
+- `packages/storage`：SQLite 应用数据、系统加密凭据文件和受限磁盘资源缓存。
 - `packages/backend`：领域模型、每课堂独立状态、工作流、答案验证以及统一 Facade。
 - `apps/desktop`：Electron 主进程、受限 preload 和 Vue Renderer。
 - `apps/cli`：调用 Backend Runtime 的 JSON 命令行入口。
@@ -81,3 +81,18 @@ M4 为 standard、pro 和 changjiang 分别固定了 host adapter，并实现用
 独立课堂 WebSocket 支持 hello 握手、断线重连、跨重连事件去重和统一关闭。主动 HTTP/WS 记录使用 `active` 来源写入网络实验室，并沿用相同的凭据脱敏规则。
 
 当前 UI 不会自动签到或提交；相关能力只通过 Backend Facade 和受限 IPC 暴露，等待后续课堂与题目界面显式调用。
+
+## 本地存储
+
+M5 使用 Node 内置 SQLite 保存普通设置、用户信息、脱敏日志和课件 JSON；图片、PDF 等二进制资源保存在独立缓存目录，默认总上限 256 MiB、单项上限 32 MiB，并识别 `Cache-Control`、`Expires`、`ETag` 和 `Last-Modified`。Electron 的持久 session 继续负责网页 Cookie 与 Chromium 自身缓存。
+
+雨课堂 Authorization Token 不进入 SQLite：当前网页 localStorage 和主动请求返回的 `Set-Auth` 会同步到 Electron `safeStorage` 加密的凭据文件，失效响应会清除旧值。设置中出现 Cookie、Token、API Key、Password 等敏感字段会被拒绝，日志和课件元数据在写入前统一脱敏。
+
+默认数据位于 Electron `userData/storage`。也可使用隔离 profile 启动：
+
+```powershell
+npm start -- --debug-profile
+npm start -- --portable
+```
+
+`--debug-profile` 使用独立调试数据目录；`--portable` 将整个 Electron userData（包括 Cookie、网页缓存和应用数据库）放到可执行文件旁的 `ykt-helper-data`。

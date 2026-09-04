@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import {
   IpcChannel,
   type AnswerInput,
+  type AppLogEntry,
+  type AppSettings,
   type BrowserEnvironment,
   type BrowserState,
   type DesktopApi,
@@ -13,12 +15,34 @@ import {
   type ProblemContext,
   type RuntimeStatus,
   type SubmissionResult,
+  type UserProfile,
   type ValidationResult,
 } from '@ykt/contracts';
 
 const api: DesktopApi = Object.freeze({
   getRuntimeStatus: () =>
     ipcRenderer.invoke(IpcChannel.GetRuntimeStatus) as Promise<RuntimeStatus>,
+  getSettings: () =>
+    ipcRenderer.invoke(IpcChannel.GetSettings) as Promise<AppSettings>,
+  updateSettings: (settings: Partial<AppSettings>) =>
+    ipcRenderer.invoke(
+      IpcChannel.UpdateSettings,
+      settings,
+    ) as Promise<AppSettings>,
+  getUser: (environment: BrowserEnvironment) =>
+    ipcRenderer.invoke(
+      IpcChannel.GetUser,
+      environment,
+    ) as Promise<UserProfile | null>,
+  refreshUser: (environment: BrowserEnvironment) =>
+    ipcRenderer.invoke(
+      IpcChannel.RefreshUser,
+      environment,
+    ) as Promise<UserProfile>,
+  listLogs: (limit?: number) =>
+    ipcRenderer.invoke(IpcChannel.ListLogs, limit) as Promise<
+      readonly AppLogEntry[]
+    >,
   refreshLessons: (environment: BrowserEnvironment) =>
     ipcRenderer.invoke(IpcChannel.RefreshLessons, environment) as Promise<
       readonly Lesson[]

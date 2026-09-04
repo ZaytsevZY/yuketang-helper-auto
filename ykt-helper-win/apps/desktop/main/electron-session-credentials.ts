@@ -5,9 +5,13 @@ import {
   type BrowserCredentials,
   type SessionCredentialSource,
 } from '@ykt/routing';
+import type { SecretStore } from '@ykt/storage';
 
 export class ElectronSessionCredentialSource implements SessionCredentialSource {
-  constructor(private readonly contents: WebContents) {}
+  constructor(
+    private readonly contents: WebContents,
+    private readonly secrets: SecretStore,
+  ) {}
 
   async load(environment: BrowserEnvironment): Promise<BrowserCredentials> {
     const adapter = hostAdapterFor(environment);
@@ -20,22 +24,43 @@ export class ElectronSessionCredentialSource implements SessionCredentialSource 
     const userId = cookies.find((cookie) => cookie.name === 'user_id')?.value;
     return {
       cookieHeader,
-      bearerToken: await this.readBearerToken(adapter.origin),
+      bearerToken: await this.readBearerToken(environment, adapter.origin),
       userId: userId ?? null,
     };
   }
 
-  private async readBearerToken(origin: string): Promise<string | null> {
-    try {
-      if (new URL(this.contents.getURL()).origin !== origin) return null;
-      const value: unknown = await this.contents.executeJavaScript(
-        "localStorage.getItem('Authorization')",
-        true,
-      );
-      if (typeof value !== 'string' || !value) return null;
-      return value.replace(/^Bearer\s+/i, '');
-    } catch {
-      return null;
-    }
+  async saveBearerToken(
+    environment: BrowserEnvironment,
+    value: string | null,
+  ): Promise<void> {
+    const key = tokenKey(environment);
+    if (value) await this.secrets.set(key, value);
+    else await this.secrets.delete(key);
   }
+
+  private async readBearerToken(
+    environment: BrowserEnvironment,
+    origin: string,
+  ): Promise<string | null> {
+    try {
+      if (new URL(this.contents.getURL()).origin === origin) {
+        const value: unknown = await this.contents.executeJavaScript(
+          "localStorage.getItem('Authorization')",
+          true,
+        );
+        if (typeof value === 'string' && value) {
+          const token = value.replace(/^Bearer\s+/i, '');
+          await this.saveBearerToken(environment, token);
+          return token;
+        }
+      }
+    } catch {
+      // Fall back to the encrypted copy when the page is unavailable.
+    }
+    return this.secrets.get(tokenKey(environment));
+  }
+}
+
+function tokenKey(environment: BrowserEnvironment): string {
+  return `yuketang:${environment}:bearer-token`;
 }
