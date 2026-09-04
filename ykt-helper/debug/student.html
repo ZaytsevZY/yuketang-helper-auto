@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light">
+  <title>学生端 · YKT Local Test Lab</title><link rel="stylesheet" href="/debug/styles.css">
+</head>
+<body class="classroom-page student-page">
+  <main id="app" class="lesson__page" data-testid="mock-classroom">
+    <header class="lesson__header"><span id="lesson-title">测试ppt</span><span class="role-pill student">学生端</span><a href="/debug/" class="header-link">返回入口</a><span class="lab-badge">LOCAL · NO REAL BUSINESS API</span></header>
+    <section class="lesson__cards">
+      <nav class="cards__nav" aria-label="课堂动态"><h3 class="nav__header"><span>课堂动态</span><span>←</span></h3><section class="nav__list"><div class="timeline__wrap" id="timeline-list"></div></section></nav>
+      <section class="lesson__container box-center notfull"><section class="slide__info J_container">
+        <section class="waiting-card" id="waiting-card"><div class="waiting-icon">⌁</div><h2>等待老师开始放映</h2><p>此页面会自动接收另一个标签页中的 PPT 和发题信号。</p></section>
+        <section class="presentation-card" id="presentation-card" hidden><img id="slide-image" alt="当前 PPT 页面"><div class="slide-status"><span id="slide-caption">第 1 页</span><span id="timer-text">课件放映中</span></div></section>
+        <section class="answer-card page-exercise" id="answer-card" hidden>
+          <div class="exercise-head"><strong id="problem-type">题目</strong><small>本地模拟</small></div><div class="time-box"><span class="timing willEnd" id="question-timer">等待作答</span></div>
+          <div class="problem-body" id="problem-body"></div><div id="problem-options" class="answer-options"></div>
+          <button class="slide__shape submit-btn" id="mock-submit" type="button">提交答案</button>
+        </section>
+      </section></section>
+    </section>
+  </main>
+  <aside class="mock-console student-console" aria-label="学生端状态">
+    <div class="mock-console__head"><strong>Student Signal Monitor</strong><span id="mock-status">● connecting</span></div>
+    <div class="mock-console__body"><p class="monitor-copy">老师端发出的 PPT、发题和结束信号会在这里显示。</p><div class="signal-grid"><button type="button" id="request-state">重新同步课堂</button><button type="button" id="toggle-network">模拟断网</button></div><div class="mock-log" id="mock-log" role="log" aria-live="polite"></div></div>
+  </aside>
+  <script src="/debug/local-logger.js"></script><script src="/debug/ppt-fixtures.js"></script><script src="/debug/classroom-bus.js"></script><script src="/debug/mock-gm.js"></script><script src="/debug/debug-loader.js"></script>
+</body>
+</html>

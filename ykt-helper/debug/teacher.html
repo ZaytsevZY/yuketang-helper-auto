@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>老师端 · YKT Local Test Lab</title><link rel="stylesheet" href="/debug/styles.css"></head>
+<body class="teacher-page">
+  <main class="teacher-shell">
+    <header class="teacher-header"><div><span class="eyebrow">LOCAL TEST LAB</span><h1>测试ppt</h1></div><div class="teacher-header-actions"><span class="role-pill teacher">老师端</span><a class="secondary-button" href="/lesson/fullscreen/v3/mock-lesson/exercise/3?ykt_mock=1" target="_blank">打开学生页面 ↗</a><a class="header-link dark" href="/debug/">返回入口</a></div></header>
+    <section class="teacher-workspace">
+      <aside class="slide-rail"><h2>课件 · 6 页</h2><div id="teacher-slide-list"></div></aside>
+      <section class="teacher-stage"><div class="teacher-screen"><img id="teacher-slide-image" alt="当前 PPT 页面"></div><div class="playback-bar"><button id="previous-slide" type="button">← 上一页</button><strong id="teacher-page-label">第 1 / 6 页</strong><button id="next-slide" type="button">下一页 →</button></div></section>
+      <aside class="control-panel">
+        <h2>课堂控制</h2><div class="connection-card"><span id="student-dot"></span><div><strong id="student-status">等待学生端</strong><small>同一浏览器中的标签页会自动连接</small></div></div>
+        <button class="primary-button" id="play-slide" type="button">▶ 播放当前 PPT 页</button><button class="question-button" id="publish-question" type="button" disabled>发出当前题目</button><button class="danger-button" id="finish-question" type="button" disabled>结束当前答题</button><button class="secondary-button wide" id="reset-classroom" type="button">重置课堂</button>
+        <section class="question-preview" id="question-preview"></section><section class="answer-feed"><h3>学生答案</h3><div id="answer-feed"><p class="empty-state">尚未收到答案</p></div></section><div class="mock-log teacher-log" id="teacher-log" role="log"></div>
+      </aside>
+    </section>
+  </main>
+  <script src="/debug/local-logger.js"></script><script src="/debug/ppt-fixtures.js"></script><script src="/debug/classroom-bus.js"></script><script src="/debug/teacher.js"></script>
+</body>
+</html>

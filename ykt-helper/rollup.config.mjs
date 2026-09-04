@@ -7,18 +7,20 @@ import { meta } from './userscript.meta.js';
 
 /** 产物文件名 */
 const OUT_FILE = 'dist/ykt-helper-1212.user.js';
+const DEBUG_OUT_FILE = 'dist/ykt-helper.debug.user.js';
+
+const makeOutput = (file) => ({
+  file,
+  format: 'iife',
+  sourcemap: false,
+  banner: () => meta,
+  inlineDynamicImports: true
+});
 
 export default {
   input: 'src/index.js',
-  output: {
-    file: OUT_FILE,
-    format: 'iife',         // Userscript 友好
-    sourcemap: false,
-    // 把 Userscript 头部固定注入到产物顶部
-    banner: () => meta,
-    // 强制禁用代码分割，将所有代码打包到一个文件
-    inlineDynamicImports: true
-  },
+  // 版本化产物用于发布；固定文件名专供本地调试页，避免每次升级版本都修改 HTML。
+  output: [makeOutput(OUT_FILE), makeOutput(DEBUG_OUT_FILE)],
   plugins: [
     // 允许 import 模板与样式为字符串（与现有用法一致）
     string({ include: ['**/*.html', '**/*.css'] }),
