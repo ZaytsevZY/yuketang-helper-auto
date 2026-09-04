@@ -53,6 +53,7 @@ describe('M4 active routing', () => {
 
   it('manages browser credentials, Set-Auth and lesson token expiry', async () => {
     let now = 1000;
+    const savedTokens: (string | null)[] = [];
     const sessions = new SessionManager(
       {
         load: async () => ({
@@ -60,6 +61,9 @@ describe('M4 active routing', () => {
           bearerToken: 'browser-token',
           userId: '42',
         }),
+        saveBearerToken: async (_environment, value) => {
+          savedTokens.push(value);
+        },
       },
       () => now,
     );
@@ -67,11 +71,12 @@ describe('M4 active routing', () => {
       cookie: 'session=abc',
       authorization: 'Bearer browser-token',
     });
-    sessions.captureResponse(BrowserEnvironment.Standard, {
+    await sessions.captureResponse(BrowserEnvironment.Standard, {
       status: 200,
       headers: { 'Set-Auth': 'fresh-token' },
       body: {},
     });
+    expect(savedTokens).toEqual(['fresh-token']);
     sessions.setLessonToken(BrowserEnvironment.Standard, 'lesson-1', {
       lessonToken: 'lesson-token',
       expiresAt: 2000,
@@ -84,6 +89,12 @@ describe('M4 active routing', () => {
     });
     now = 2000;
     expect(sessions.lessonToken('lesson-1')).toBeNull();
+    await sessions.captureResponse(BrowserEnvironment.Standard, {
+      status: 401,
+      headers: {},
+      body: {},
+    });
+    expect(savedTokens).toEqual(['fresh-token', null]);
   });
 
   it('reconnects while deduplicating messages across sockets', () => {

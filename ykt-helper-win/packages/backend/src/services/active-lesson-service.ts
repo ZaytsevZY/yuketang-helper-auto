@@ -5,12 +5,14 @@ import {
   type BrowserEnvironment,
   type Lesson,
   type SubmissionResult,
+  type UserProfile,
 } from '@ykt/contracts';
 import {
   normalizeTimestamp,
   type ActiveLesson,
   type YuketangActiveClient,
 } from '@ykt/routing';
+import type { AppDataStore } from '@ykt/storage';
 
 import type { LessonRepository } from '../repositories/lesson-repository.js';
 import {
@@ -30,9 +32,22 @@ export class ActiveLessonService {
   constructor(
     private readonly client: YuketangActiveClient,
     private readonly repository: LessonRepository,
+    private readonly storage: AppDataStore,
     private readonly clock: Clock = systemClock,
   ) {
     this.#problems = new ProblemService(repository, clock, this.#answers);
+  }
+
+  async refreshUser(environment: BrowserEnvironment): Promise<UserProfile> {
+    const activeUser = await this.client.getUser(environment);
+    const user: UserProfile = {
+      environment,
+      id: activeUser.id,
+      name: activeUser.name,
+      updatedAt: new Date(this.clock.now()).toISOString(),
+    };
+    await this.storage.saveUser(user);
+    return user;
   }
 
   async refreshLessons(
@@ -84,6 +99,15 @@ export class ActiveLessonService {
         lessonId,
         remote.presentationId,
       );
+      await this.storage.putDocument({
+        key: `${environment}:presentation:${remote.presentationId}`,
+        kind: 'presentation',
+        value: JSON.parse(JSON.stringify(presentation)),
+        updatedAt: new Date(this.clock.now()).toISOString(),
+        expiresAt: new Date(
+          this.clock.now() + 7 * 24 * 60 * 60 * 1000,
+        ).toISOString(),
+      });
       new LessonStateMachine(session, this.clock).apply({
         type: 'presentation.loaded',
         lessonId,

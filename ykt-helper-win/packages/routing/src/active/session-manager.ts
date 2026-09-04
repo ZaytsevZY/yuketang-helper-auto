@@ -52,10 +52,10 @@ export class SessionManager {
     return headers;
   }
 
-  captureResponse(
+  async captureResponse(
     environment: BrowserEnvironment,
     response: ActiveHttpResponse,
-  ): void {
+  ): Promise<void> {
     const setAuth = header(response.headers, 'set-auth');
     if (setAuth) {
       const current = this.#credentials.get(environment);
@@ -64,6 +64,10 @@ export class SessionManager {
         bearerToken: setAuth.replace(/^Bearer\s+/i, ''),
         userId: current?.userId ?? null,
       });
+      await this.source.saveBearerToken?.(
+        environment,
+        setAuth.replace(/^Bearer\s+/i, ''),
+      );
     }
     if (response.status === 401 || response.status === 403) {
       const current = this.#credentials.get(environment);
@@ -77,6 +81,7 @@ export class SessionManager {
         if (state.environment === environment)
           this.#lessonTokens.delete(lessonId);
       }
+      await this.source.saveBearerToken?.(environment, null);
     }
   }
 

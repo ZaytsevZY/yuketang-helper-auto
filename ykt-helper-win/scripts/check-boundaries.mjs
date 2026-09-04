@@ -27,7 +27,10 @@ const packageRules = new Map([
   ['packages/storage/src', ['@ykt/contracts']],
   ['packages/backend/src', ['@ykt/contracts', '@ykt/routing', '@ykt/storage']],
   ['apps/cli/src', ['@ykt/contracts', '@ykt/backend']],
-  ['apps/desktop/main', ['@ykt/contracts', '@ykt/backend', '@ykt/routing']],
+  [
+    'apps/desktop/main',
+    ['@ykt/contracts', '@ykt/backend', '@ykt/routing', '@ykt/storage'],
+  ],
   ['apps/desktop/preload', ['@ykt/contracts']],
   ['apps/desktop/renderer', ['@ykt/contracts']],
 ]);

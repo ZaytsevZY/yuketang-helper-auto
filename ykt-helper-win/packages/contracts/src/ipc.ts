@@ -7,6 +7,7 @@ import type {
   SubmissionResult,
   ValidationResult,
 } from './dto.js';
+import type { AppLogEntry, AppSettings, UserProfile } from './storage.js';
 import type {
   FixtureExportResult,
   NetworkCaptureState,
@@ -16,6 +17,11 @@ import type {
 
 export const IpcChannel = {
   GetRuntimeStatus: 'runtime:get-status',
+  GetSettings: 'storage:get-settings',
+  UpdateSettings: 'storage:update-settings',
+  GetUser: 'storage:get-user',
+  RefreshUser: 'storage:refresh-user',
+  ListLogs: 'storage:list-logs',
   RefreshLessons: 'backend:refresh-lessons',
   ConnectLesson: 'backend:connect-lesson',
   ListProblems: 'backend:list-problems',
@@ -39,6 +45,11 @@ export const IpcChannel = {
 
 export interface DesktopApi {
   getRuntimeStatus(): Promise<RuntimeStatus>;
+  getSettings(): Promise<AppSettings>;
+  updateSettings(settings: Partial<AppSettings>): Promise<AppSettings>;
+  getUser(environment: BrowserEnvironment): Promise<UserProfile | null>;
+  refreshUser(environment: BrowserEnvironment): Promise<UserProfile>;
+  listLogs(limit?: number): Promise<readonly AppLogEntry[]>;
   refreshLessons(environment: BrowserEnvironment): Promise<readonly Lesson[]>;
   connectLesson(environment: BrowserEnvironment, id: string): Promise<void>;
   listProblems(lessonId: string): Promise<readonly ProblemContext[]>;

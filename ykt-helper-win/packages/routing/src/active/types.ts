@@ -8,6 +8,10 @@ export interface BrowserCredentials {
 
 export interface SessionCredentialSource {
   load(environment: BrowserEnvironment): Promise<BrowserCredentials>;
+  saveBearerToken?(
+    environment: BrowserEnvironment,
+    value: string | null,
+  ): Promise<void>;
 }
 
 export interface ActiveUser {

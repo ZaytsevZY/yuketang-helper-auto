@@ -18,6 +18,7 @@ describe('BackendRuntime', () => {
         'problems',
         'answer-validation',
         'fixture-replay',
+        'storage',
       ],
     });
     expect(await runtime.facade.listLessons()).toEqual([]);

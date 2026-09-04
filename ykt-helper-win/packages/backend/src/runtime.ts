@@ -2,12 +2,15 @@ import {
   ErrorCode,
   YuketangError,
   type AnswerInput,
+  type AppLogEntry,
+  type AppSettings,
   type BrowserEnvironment,
   type Lesson,
   type LessonEvent,
   type ProblemContext,
   type RuntimeStatus,
   type SubmissionResult,
+  type UserProfile,
   type ValidationResult,
   type YuketangFacade,
 } from '@ykt/contracts';
@@ -16,7 +19,13 @@ import {
   type RoutingService,
   type YuketangActiveClient,
 } from '@ykt/routing';
-import { MemoryKeyValueStore, type KeyValueStore } from '@ykt/storage';
+import {
+  MemoryAppDataStore,
+  MemoryKeyValueStore,
+  type AppDataStore,
+  type KeyValueStore,
+  type ResourceCache,
+} from '@ykt/storage';
 
 import {
   InMemoryLessonRepository,
@@ -34,10 +43,31 @@ class BaselineFacade implements YuketangFacade {
     private readonly lessons: LessonRepository,
     private readonly problems: ProblemService,
     private readonly activeLessons: ActiveLessonService | undefined,
+    private readonly storage: AppDataStore,
   ) {}
 
   async getStatus(): Promise<RuntimeStatus> {
     return this.status();
+  }
+
+  async getSettings(): Promise<AppSettings> {
+    return this.storage.getSettings();
+  }
+
+  async updateSettings(settings: Partial<AppSettings>): Promise<AppSettings> {
+    return this.storage.updateSettings(settings);
+  }
+
+  async getUser(environment: BrowserEnvironment): Promise<UserProfile | null> {
+    return this.storage.getUser(environment);
+  }
+
+  async refreshUser(environment: BrowserEnvironment): Promise<UserProfile> {
+    return this.requireActiveClient().refreshUser(environment);
+  }
+
+  async listLogs(limit?: number): Promise<readonly AppLogEntry[]> {
+    return this.storage.listLogs(limit);
   }
 
   async listLessons(): Promise<readonly Lesson[]> {
@@ -95,6 +125,8 @@ export interface BackendRuntimeOptions {
   store?: KeyValueStore;
   lessons?: LessonRepository;
   activeClient?: YuketangActiveClient;
+  dataStore?: AppDataStore;
+  resourceCache?: ResourceCache;
 }
 
 export class BackendRuntime {
@@ -102,13 +134,21 @@ export class BackendRuntime {
   readonly store: KeyValueStore;
   readonly lessons: LessonRepository;
   readonly activeLessons: ActiveLessonService | undefined;
+  readonly dataStore: AppDataStore;
+  readonly resourceCache: ResourceCache | undefined;
   #running = false;
 
   constructor(options: BackendRuntimeOptions = {}) {
     this.store = options.store ?? new MemoryKeyValueStore();
+    this.dataStore = options.dataStore ?? new MemoryAppDataStore();
+    this.resourceCache = options.resourceCache;
     this.lessons = options.lessons ?? new InMemoryLessonRepository();
     this.activeLessons = options.activeClient
-      ? new ActiveLessonService(options.activeClient, this.lessons)
+      ? new ActiveLessonService(
+          options.activeClient,
+          this.lessons,
+          this.dataStore,
+        )
       : undefined;
     this.facade = new BaselineFacade(
       () => this.status(),
@@ -116,16 +156,31 @@ export class BackendRuntime {
       this.lessons,
       new ProblemService(this.lessons),
       this.activeLessons,
+      this.dataStore,
     );
   }
 
   async start(): Promise<void> {
+    await this.dataStore.cleanup();
     this.#running = true;
+    await this.dataStore.appendLog({
+      level: 'info',
+      scope: 'runtime',
+      message: 'Backend runtime started.',
+    });
   }
 
   async stop(): Promise<void> {
-    this.activeLessons?.close();
+    if (!this.#running) return;
     this.#running = false;
+    this.activeLessons?.close();
+    await this.dataStore.appendLog({
+      level: 'info',
+      scope: 'runtime',
+      message: 'Backend runtime stopped.',
+    });
+    this.resourceCache?.close();
+    this.dataStore.close();
   }
 
   private status(): RuntimeStatus {
@@ -138,6 +193,8 @@ export class BackendRuntime {
         'problems',
         'answer-validation',
         'fixture-replay',
+        'storage',
+        ...(this.resourceCache ? ['resource-cache'] : []),
         ...(this.activeLessons
           ? ['active-client', 'lesson-websocket', 'answer-submission']
           : []),

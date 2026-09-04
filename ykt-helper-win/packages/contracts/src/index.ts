@@ -5,3 +5,4 @@ export * from './events.js';
 export * from './facade.js';
 export * from './ipc.js';
 export * from './network.js';
+export * from './storage.js';
