@@ -1,5 +1,6 @@
 // src/ai/deepseek.js
 import { gm } from '../core/env.js';
+import { resolveTemperature } from './model-params.js';
 
 export function queryDeepSeek(question, aiCfg) {
   const { apiKey, endpoint, model, temperature, maxTokens } = aiCfg || {};
@@ -19,7 +20,7 @@ export function queryDeepSeek(question, aiCfg) {
           { role: 'system', content: '你是一个专业学习助手，你的任务是帮助回答雨课堂中的题目。请按照要求的格式回答，先给出答案，然后给出解释。' },
           { role: 'user', content: question },
         ],
-        temperature,
+        temperature: resolveTemperature(model, temperature),
         max_tokens: maxTokens,
       }),
       onload: (res) => {

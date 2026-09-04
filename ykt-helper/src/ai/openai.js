@@ -1,5 +1,6 @@
 // src/ai/kimi.js
 import { gm } from '../core/env.js';
+import { resolveTemperature } from './model-params.js';
 
 // 将后端 problemType 数字映射为 Step1/Step2 使用的 question_type 字符串
 // 约定：
@@ -54,16 +55,15 @@ function makeChatUrl(profile) {
 // -----------------------------------------------
 const BASE_SYSTEM_PROMPT = [
   '1) 任何时候优先遵循【用户输入（优先级最高）】中的明确要求；',
-  '2) 当输入是课件页面（PPT）图像或题干文本时，先判断是否存在“明确题目”；',
-  '3) 若存在明确题目，则输出以下格式的内容：',
+  '2) 当输入是课件页面（PPT）图像或题干文本时，必须先判断是否存在完整、明确、可作答的题目；',
+  '3) 若存在明确题目，第一行必须以“答案:”开头，并严格使用以下格式：',
   '   单选：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个，如A',
   '   多选：格式要求：\n答案: [多个字母用顿号分开]\n解释: [选择理由]\n\n注意：格式如A、B、C',
   '   投票：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个选项，如A',
   '   填空/主观题: 格式要求：答案: [直接给出答案内容]，解释: [补充说明]',
-  '4) 若识别不到明确题目，直接使用回答用户输入的问题',
-  '3) 如果PROMPT格式不正确，或者你只接收了图片，输出：',
-  '   STATE: NO_PROMPT',
-  '   SUMMARY: <介绍页面/上下文的主要内容>',
+  '4) 若不存在明确题目，或题干/选项残缺，必须且只能输出以下两行；禁止输出“答案:”或猜测选项：',
+  'STATE: NO_PROMPT',
+  'SUMMARY: <客观介绍页面可见内容及缺失的信息>',
 ].join('\n');
 
 // Vision 补充：识别题型与版面元素的步骤说明
@@ -114,7 +114,7 @@ export async function queryAI(question, aiCfg) {
             ],
           },
         ],
-        temperature: 0.6,
+        temperature: resolveTemperature(model, 0.6),
       }),
       onload: (res) => {
         try {
@@ -230,7 +230,7 @@ async function singleStepVisionCall(profile, cleanBase64List, textPrompt, option
     {
       model: visionModel,
       messages,
-      temperature: 0.3,
+      temperature: resolveTemperature(visionModel, 0.3),
     },
     '[AI OpenAI Vision 单步]',
     timeoutMs,
@@ -367,7 +367,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
       {
         model: visionModel,
         messages: step1Messages,
-        temperature: 0.1,
+        temperature: resolveTemperature(visionModel, 0.1),
       },
       '[AI OpenAI Vision Step1]',
       timeoutMs,
@@ -494,7 +494,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
       {
         model: textModel,
         messages: step2Messages,
-        temperature: 0.2,
+        temperature: resolveTemperature(textModel, 0.2),
       },
       '[AI OpenAI Vision Step2]',
       timeoutMs,
@@ -561,7 +561,7 @@ export async function queryOCRVision(imageBase64, aiCfg) {
           ],
         },
       ],
-      temperature: 0.1,
+      temperature: resolveTemperature(profile.visionModel || profile.model, 0.1),
     },
     '[AI OCR Vision]',
     60000,
@@ -623,7 +623,7 @@ export async function queryTranslationText(text, targetLanguage, aiCfg) {
           ],
         },
       ],
-      temperature: 0.1,
+      temperature: resolveTemperature(profile.model, 0.1),
     },
     '[AI Translate]',
     60000,
@@ -635,4 +635,3 @@ export async function queryTranslationText(text, targetLanguage, aiCfg) {
   }
   return String(content).trim();
 }
-

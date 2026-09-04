@@ -143,7 +143,12 @@ export function formatProblemForDisplay(problem, TYPE_MAP) {
 // 改进的答案解析函数
 export function parseAIAnswer(problem, aiAnswer) {
   try {
-    const lines = String(aiAnswer || '').split('\n');
+    const rawAnswer = String(aiAnswer || '');
+    if (/^\s*STATE\s*:\s*NO[_\s-]*PROMPT\s*$/im.test(rawAnswer)) {
+      console.log('[雨课堂助手][INFO][parseAIAnswer] 模型判定无题目，不生成建议答案');
+      return null;
+    }
+    const lines = rawAnswer.split('\n');
     let answerLine = '';
     let answerIdx = -1;
 
@@ -179,7 +184,13 @@ export function parseAIAnswer(problem, aiAnswer) {
 
     // 如果仍然没有任何答案内容，退回到第一行兜底
     if (!answerLine) {
-      answerLine = (lines[0] || '').trim();
+      const firstLine = (lines[0] || '').trim();
+      const isChoice = problem.problemType === 1 || problem.problemType === 2 || problem.problemType === 3;
+      if (isChoice && !/^(?:[A-Z]+|[A-Z](?:[、,，\s]+[A-Z])+)$/i.test(firstLine)) {
+        console.log('[雨课堂助手][INFO][parseAIAnswer] 选择题缺少明确答案行，拒绝猜测');
+        return null;
+      }
+      answerLine = firstLine;
     }
 
     console.log(
@@ -192,14 +203,16 @@ export function parseAIAnswer(problem, aiAnswer) {
     switch (problem.problemType) {
       case 1: // 单选题
       case 3: { // 投票题
-        let m = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/);
-        if (m) {
-          console.log('[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析结果:', [m[0]]);
-          return [m[0]];
+        const validOptions = new Set((problem.options || []).map((option) => String(option.key || '').toUpperCase()));
+        const letters = answerLine.match(/\b[A-Z]\b/g) || [];
+        const matched = letters.find((letter) => validOptions.size === 0 || validOptions.has(letter));
+        if (matched) {
+          console.log('[雨课堂助手][INFO][parseAIAnswer] 单选/投票解析结果:', [matched]);
+          return [matched];
         }
         
         const chineseMatch = answerLine.match(/选择?([ABCDEFGHIJKLMNOPQRSTUVWXYZ])/);
-        if (chineseMatch) {
+        if (chineseMatch && (validOptions.size === 0 || validOptions.has(chineseMatch[1]))) {
           console.log('[雨课堂助手][INFO][parseAIAnswer] 单选/投票中文解析结果:', [chineseMatch[1]]);
           return [chineseMatch[1]];
         }
@@ -209,13 +222,16 @@ export function parseAIAnswer(problem, aiAnswer) {
       }
       
       case 2: { // 多选题
+        const validOptions = new Set((problem.options || []).map((option) => String(option.key || '').toUpperCase()));
+        const validOnly = (letters) => letters.filter((letter) => validOptions.size === 0 || validOptions.has(letter));
         if (answerLine.includes('、')) {
           const options = answerLine.split('、')
             .map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/))
             .filter(m => m)
             .map(m => m[0]);
-          if (options.length > 0) {
-            const result = [...new Set(options)].sort();
+          const filtered = validOnly(options);
+          if (filtered.length > 0) {
+            const result = [...new Set(filtered)].sort();
             console.log('[雨课堂助手][INFO][parseAIAnswer] 多选顿号解析结果:', result);
             return result;
           }
@@ -226,14 +242,15 @@ export function parseAIAnswer(problem, aiAnswer) {
             .map(s => s.trim().match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/))
             .filter(m => m)
             .map(m => m[0]);
-          if (options.length > 0) {
-            const result = [...new Set(options)].sort();
+          const filtered = validOnly(options);
+          if (filtered.length > 0) {
+            const result = [...new Set(filtered)].sort();
             console.log('[雨课堂助手][INFO][parseAIAnswer] 多选逗号解析结果:', result);
             return result;
           }
         }
         
-        const letters = answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g);
+        const letters = validOnly(answerLine.match(/[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g) || []);
         if (letters && letters.length > 1) {
           const result = [...new Set(letters)].sort();
           console.log('[雨课堂助手][INFO][parseAIAnswer] 多选连续解析结果:', result);

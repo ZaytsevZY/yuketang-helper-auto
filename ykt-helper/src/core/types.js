@@ -25,7 +25,7 @@ export const DEFAULT_CONFIG = {
     translateApi: '',
     translateApiKey: '',
     translateModel: '',
-    temperature: 0.3,
+    temperature: 1,
     maxTokens: 1000,
   },
   profiles: [

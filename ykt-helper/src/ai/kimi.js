@@ -1,5 +1,6 @@
 // src/ai/kimi.js
 import { gm } from '../core/env.js';
+import { resolveTemperature } from './model-params.js';
 
 // -----------------------------------------------
 // Unified Prompt blocks for Text & Vision
@@ -70,7 +71,7 @@ export async function queryKimi(question, aiCfg) {
                         ]
                     }
                 ],
-                temperature: 0.6
+                temperature: resolveTemperature('moonshot-v1-8k', 0.6)
             }),
             onload: (res) => {
                 try {
@@ -167,7 +168,7 @@ export async function queryKimiVision(imageBase64, textPrompt, aiCfg) {
             data: JSON.stringify({
                 model: 'moonshot-v1-8k-vision-preview', // ✅ 使用 Vision 专用模型
                 messages: messages,
-                temperature: 0.3, // ✅ 根据文档示例调整
+                temperature: resolveTemperature('moonshot-v1-8k-vision-preview', 0.3),
                 // 不需要 max_tokens，文档中没有提到
             }),
             onload: (res) => {
