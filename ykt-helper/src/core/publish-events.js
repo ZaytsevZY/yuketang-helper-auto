@@ -1,6 +1,7 @@
 const ASSESSMENT_MARKERS = ['problem', 'quiz', 'exam', 'test', 'exercise', 'paper'];
 const COURSEWARE_MARKERS = ['presentation', 'courseware', 'ppt', 'slide'];
 const PUBLISH_ACTION = /^(send|publish|open|start|release)/;
+const COURSEWARE_PUBLISH_ACTION = /^(send|publish|release)/;
 const ENTITY_KEYS = [
   'quiz', 'exam', 'test', 'exercise', 'paper', 'problemGroup', 'problem_group',
   'problem', 'presentation', 'courseware', 'activity',
@@ -81,7 +82,10 @@ function getDetail(message, entity) {
 function getCategory(op) {
   if (op === 'unlockproblem') return null;
   if (op === 'probleminfo' || includesOneOf(op, ASSESSMENT_MARKERS)) return 'assessment';
-  if (includesOneOf(op, COURSEWARE_MARKERS)) return 'courseware';
+  // 打开旧课件、翻页等操作也会带 presentation/slide，不能误落入通用发布提醒。
+  if (includesOneOf(op, COURSEWARE_MARKERS)) {
+    return COURSEWARE_PUBLISH_ACTION.test(op) ? 'courseware' : null;
+  }
   if (PUBLISH_ACTION.test(op)) return 'other';
   return null;
 }

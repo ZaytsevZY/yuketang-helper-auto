@@ -51,6 +51,24 @@ test('classifies a published presentation as a courseware reminder', async () =>
   });
 });
 
+test('does not mistake a displayed slide for a newly published courseware item', async () => {
+  const { classifyPublishEvent } = await loadPublishEvents();
+
+  assert.equal(classifyPublishEvent({
+    op: 'showslide',
+    data: { slide: { id: 'slide-2', title: '第 2 页' } },
+  }), null);
+});
+
+test('does not treat opening an existing presentation as a courseware publication', async () => {
+  const { classifyPublishEvent } = await loadPublishEvents();
+
+  assert.equal(classifyPublishEvent({
+    op: 'openpresentation',
+    presentation: { id: 'ppt-9', title: '概率论第 2 讲' },
+  }), null);
+});
+
 test('keeps an unclassified publish event selectable as a generic release reminder', async () => {
   const { classifyPublishEvent } = await loadPublishEvents();
 
