@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/surface">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/browserToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="6dp"
+            android:background="@color/brand_green_dark">
+
+            <ImageButton
+                android:id="@+id/backButton"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/back"
+                android:src="@drawable/ic_back"
+                app:tint="@android:color/white" />
+
+            <ImageButton
+                android:id="@+id/forwardButton"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/forward"
+                android:src="@drawable/ic_forward"
+                app:tint="@android:color/white" />
+
+            <ImageButton
+                android:id="@+id/reloadButton"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/reload"
+                android:src="@drawable/ic_reload"
+                app:tint="@android:color/white" />
+
+            <Spinner
+                android:id="@+id/environmentSpinner"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:popupTheme="@style/ThemeOverlay.Material3.Light"
+                android:contentDescription="雨课堂服务器" />
+
+            <ImageButton
+                android:id="@+id/assistantButton"
+                android:layout_width="48dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/assistant"
+                android:src="@drawable/ic_assistant"
+                app:tint="@android:color/white" />
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/pageProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:max="100"
+            android:visibility="gone" />
+
+        <WebView
+            android:id="@+id/webView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/assistantSheet"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="@drawable/bottom_sheet_background"
+        android:elevation="12dp"
+        app:behavior_hideable="false"
+        app:behavior_peekHeight="64dp"
+        app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior">
+
+        <LinearLayout
+            android:id="@+id/sheetHeader"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingTop="8dp">
+
+            <View
+                android:layout_width="42dp"
+                android:layout_height="5dp"
+                android:background="@drawable/handle_background" />
+
+            <TextView
+                android:id="@+id/sheetTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="雨课堂助手"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:fillViewport="true"
+            android:scrollbars="none">
+
+            <com.google.android.material.button.MaterialButtonToggleGroup
+                android:id="@+id/assistantTabs"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:paddingHorizontal="8dp"
+                app:selectionRequired="true"
+                app:singleSelection="true">
+
+                <com.google.android.material.button.MaterialButton android:id="@+id/tabClassroom" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="课堂" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/tabProblems" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="题目" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/tabAi" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="AI" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/tabCourseware" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="课件" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/tabModels" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="模型" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/tabSettings" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="设置" />
+            </com.google.android.material.button.MaterialButtonToggleGroup>
+        </HorizontalScrollView>
+
+        <FrameLayout
+            android:id="@+id/assistantContent"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+    </LinearLayout>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

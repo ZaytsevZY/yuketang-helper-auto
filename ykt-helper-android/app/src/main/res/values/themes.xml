@@ -1,0 +1,11 @@
+<resources>
+    <style name="Theme.YuketangHelper" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/brand_green</item>
+        <item name="colorPrimaryDark">@color/brand_green_dark</item>
+        <item name="colorSecondary">@color/brand_green</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">@color/brand_green_dark</item>
+        <item name="android:navigationBarColor">@color/surface</item>
+    </style>
+</resources>

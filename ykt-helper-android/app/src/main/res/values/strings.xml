@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">雨课堂助手</string>
+    <string name="back">后退</string>
+    <string name="forward">前进</string>
+    <string name="reload">刷新</string>
+    <string name="assistant">助手</string>
+</resources>
