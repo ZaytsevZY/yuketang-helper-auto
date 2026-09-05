@@ -5,30 +5,29 @@
   <a href="https://github.com/ZaytsevZY/yuketang-helper-auto/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="license"/>
   </a>
-  <a href="./release/ykt-helper-1213.user.js">
-    <img src="https://img.shields.io/badge/version-1.21.3-blue.svg" alt="版本">
+  <a href="manifest.json">
+    <img src="https://img.shields.io/badge/version-1.21.0-blue.svg" alt="版本">
   </a>
   <a href="#">
     <img src="https://img.shields.io/badge/platform-Chrome%20%7C%20Edge-green.svg" alt="适配平台">
   </a>
 </a>
 
+![](./static/logo.png)
 
 <html>
     <h1 align="center">
-       雨课堂助手(JS版)
+       雨课堂助手
     </h1>
     <h3 align="center">
-       Yuketang Helper Auto
-    </h3>
-    <h3 align="center">
-       适用于雨课堂/荷塘雨课堂
+       Yuketang Helper AI
     </h3>
 </html>
 
-> 最后更新时间：2026.09.05
 
 ## 项目说明
+
+> 最后更新时间：2026.03.12
 
 - 项目灵感来自于：[雨课堂助手](https://github.com/hotwords123/yuketang-helper.git)，本项目已兼容`ykt-helper v1.5.1`。
 
@@ -48,19 +47,17 @@
   - 使用edge，你需要打开**拓展-管理拓展-开发者模式**，再开启篡改猴插件中的**允许注入脚本**和**允许访问文件URL权限**
   - 使用chrome，你需要打开 **（右上角三点）-拓展程序-管理拓展程序-开发者模式**，再开启插件面板中的**允许运行用户脚本**和**允许访问文件网址**
 
-- 可直接[安装上游正式的 1.21.3 发布脚本](https://raw.githubusercontent.com/ZaytsevZY/yuketang-helper-auto/main/release/ykt-helper-1213.user.js)。
+- 在安装对应插件后，可以[一键安装](https://update.greasyfork.org/scripts/531469/AI%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B.user.js)本项目的稳定版本；(一般不是最新版)
 
-- 也可以[安装 GreasyFork 的稳定版本](https://update.greasyfork.org/scripts/531469/AI%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B.user.js)；它通常不是最新版本。
+  - 如果你需要最新版本的脚本，请在`dev-2.0`获取
 
-  - 如需查看上游开发中的版本，请到上游仓库的 `dev-2.0` 分支获取。
-
-  - 此 fork 的各版本成品位于 [`release/`](./release) 目录。
+  - 你可以在`/release`目录获取`1.18.x-1.21.x`版本
 
   - 你可以在`/ykt-helper-allinone`获取更早的版本
 
-- 或手动创建新脚本，将 `release/ykt-helper-<版本号>.user.js` 的内容复制到篡改猴的新建脚本中。
+- 或手动创建新脚本，复制```yuketang-helper-ai-<版本号>.js```到篡改猴新建脚本中。
 
-- 当前构建版本为 `1.21.3`，支持：
+- 目前持续更新的版本是`1.21.x`，支持：
 
   - `148.0.7778.98-chrome`及以下的chrome
 
@@ -68,7 +65,7 @@
 
 ## 源代码
 
-- 我们重构的代码放在 [`ykt-helper/src`](./ykt-helper/src) 文件夹中，建议在此处加入新功能或进行修改；
+- 我们重构的代码放在`../ykt-helper/src`文件夹中，建议在此处加入新功能或进行修改；
 
 - 关于代码的开发和组装方法，请参考[脚本的开发和组装](./ykt-helper/readme.md)。
 
@@ -88,16 +85,6 @@
 
 - 继承原版脚本的上课/下课/习题提示，防止上课摸鱼错过习题。（需要打开浏览器）
 
-- 设置中可分别选择是否提醒：新题/答题开始、考试/测试题组发布、课件发布、其他发布、下课，以及自动作答的排队、开始、成功、失败；系统通知、页面弹窗和提示声音也都可以单独关闭。工具栏铃铛仍是总开关。
-
-- 打开或翻阅旧课件不会触发课件发布提醒；发布类提醒只提示，不会自动作答或提交。
-
-- 手机进入 `/m/v2` 时会启用“仅提醒”模式：右下角铃铛可打开同一套细分提醒开关和亮屏设置，且不会启动自动作答或自动进入课堂。
-
-- 若启用“系统通知”，还需要在 Edge/浏览器的应用通知设置中允许通知；脚本不会自行申请或改变系统权限。
-
-- 可选开启“课堂保持亮屏”，仅在可见的课堂页防止自动熄屏；手动锁屏、切换后台后的冻结和系统省电限制无法绕过。
-
 - 若要查看这堂课的所有习题信息，可以点击工具栏的「查看课件和幻灯片」 :receipt: 图标。
 
 - 可以在设置 :gear: 中修改习题提醒的方式。
@@ -109,7 +96,6 @@
 ![](./static/ai.png)
 
 - 支持使用各种VLM智能解答课堂习题，需要在设置 :gear: 界面**自行设置密钥**
-- 每个 AI Profile 都可以单独设置 Temperature（0–2）。留空时不会向 API 发送该参数，交由模型使用默认值；对不接受自定义 Temperature 的模型可保持留空。
 - 支持所有题型，包括单选，多选，填空，简答，投票
 - 点击工具栏的「AI解答当前习题」 :robot: 即可解答
 - 如果你没有摸鱼，在作答结束之前你将能够修改AI作答的结果
@@ -205,10 +191,6 @@
 请在[更新记录](./changelog.md)中查看详细的更新记录。
 
 ---
-
-- 1.21.3: 汇总 Profile Temperature、入口页与 `/m/v2` 注入、细分课堂提醒、发布事件去重与误报修复、课堂保持亮屏；手机版为仅提醒模式
-
-- 1.21.2: 适配所有雨课堂服务器网页
 
 - 1.21.1: 课件翻译
 
