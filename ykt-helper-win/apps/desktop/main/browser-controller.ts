@@ -15,6 +15,8 @@ const SESSION_PARTITION = 'persist:yuketang-browser';
 const TOOLBAR_HEIGHT = 96;
 const NETWORK_LAB_EXPANDED_HEIGHT = 300;
 const NETWORK_LAB_COLLAPSED_HEIGHT = 43;
+const ASSISTANT_PANEL_EXPANDED_WIDTH = 380;
+const ASSISTANT_PANEL_COLLAPSED_WIDTH = 44;
 
 export class BrowserController {
   readonly #view: WebContentsView;
@@ -22,6 +24,7 @@ export class BrowserController {
   #loading = false;
   #errorMessage: string | null = null;
   #networkLabHeight = NETWORK_LAB_EXPANDED_HEIGHT;
+  #assistantPanelWidth = ASSISTANT_PANEL_EXPANDED_WIDTH;
 
   constructor(
     private readonly window: BrowserWindow,
@@ -91,6 +94,13 @@ export class BrowserController {
     this.#networkLabHeight = collapsed
       ? NETWORK_LAB_COLLAPSED_HEIGHT
       : NETWORK_LAB_EXPANDED_HEIGHT;
+    this.resize();
+  }
+
+  setAssistantPanelCollapsed(collapsed: boolean): void {
+    this.#assistantPanelWidth = collapsed
+      ? ASSISTANT_PANEL_COLLAPSED_WIDTH
+      : ASSISTANT_PANEL_EXPANDED_WIDTH;
     this.resize();
   }
 
@@ -200,7 +210,7 @@ export class BrowserController {
     this.#view.setBounds({
       x: 0,
       y: TOOLBAR_HEIGHT,
-      width,
+      width: Math.max(0, width - this.#assistantPanelWidth),
       height: Math.max(0, height - TOOLBAR_HEIGHT - this.#networkLabHeight),
     });
   }

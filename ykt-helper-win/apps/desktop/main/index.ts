@@ -7,6 +7,8 @@ import {
   dialog,
   ipcMain,
   Menu,
+  Notification,
+  shell,
   type WebContents,
 } from 'electron';
 import { createBackendRuntime, type BackendRuntime } from '@ykt/backend';
@@ -14,6 +16,13 @@ import {
   IpcChannel,
   isBrowserEnvironment,
   type AnswerInput,
+  type ConnectAiProfileInput,
+  type GenerateAnswerProposalInput,
+  type RecognizeSlideInput,
+  type Presentation,
+  type SourceModuleId,
+  type TranslateTextInput,
+  type UpdateAiProfileSelectionInput,
 } from '@ykt/contracts';
 import { YuketangActiveClient } from '@ykt/routing';
 import {
@@ -23,6 +32,7 @@ import {
 } from '@ykt/storage';
 
 import { BrowserController } from './browser-controller.js';
+import { isAllowedYuketangUrl } from './browser-policy.js';
 import { ElectronSessionCredentialSource } from './electron-session-credentials.js';
 import { ElectronSafeStorageCodec } from './electron-safe-storage-codec.js';
 import { NetworkLabController } from './network-lab-controller.js';
@@ -71,6 +81,71 @@ function registerIpc(): void {
     }
     return getRuntime().facade.updateSettings(patch);
   });
+  ipcMain.handle(IpcChannel.ResetSettings, async (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    return getRuntime().facade.resetSettings();
+  });
+  ipcMain.handle(IpcChannel.ListAiProfiles, async (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    return getRuntime().facade.listAiProfiles();
+  });
+  ipcMain.handle(IpcChannel.ConnectAiProfile, async (event, input: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    assertConnectAiProfileInput(input);
+    return getRuntime().facade.connectAiProfile(input);
+  });
+  ipcMain.handle(IpcChannel.RefreshAiProfile, async (event, id: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (typeof id !== 'string') throw new Error('Invalid AI Profile id.');
+    return getRuntime().facade.refreshAiProfile(id);
+  });
+  ipcMain.handle(
+    IpcChannel.UpdateAiProfileSelection,
+    async (event, input: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      assertUpdateAiProfileSelectionInput(input);
+      return getRuntime().facade.updateAiProfileSelection(input);
+    },
+  );
+  ipcMain.handle(IpcChannel.DeleteAiProfile, async (event, id: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (typeof id !== 'string') throw new Error('Invalid AI Profile id.');
+    return getRuntime().facade.deleteAiProfile(id);
+  });
+  ipcMain.handle(IpcChannel.SelectAiProfile, async (event, id: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (typeof id !== 'string') throw new Error('Invalid AI Profile id.');
+    return getRuntime().facade.selectAiProfile(id);
+  });
+  ipcMain.handle(
+    IpcChannel.GenerateAnswerProposal,
+    async (event, input: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      assertGenerateProposalInput(input);
+      const imageUrls = await Promise.all(
+        (input.imageUrls ?? []).map(prepareAiImage),
+      );
+      return getRuntime().facade.generateAnswerProposal({
+        problemId: input.problemId,
+        imageUrls,
+        ...(input.customPrompt === undefined
+          ? {}
+          : { customPrompt: input.customPrompt }),
+      });
+    },
+  );
+  ipcMain.handle(IpcChannel.RecognizeSlide, async (event, input: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    assertRecognizeSlideInput(input);
+    return getRuntime().facade.recognizeSlide({
+      imageUrl: await prepareAiImage(input.imageUrl),
+    });
+  });
+  ipcMain.handle(IpcChannel.TranslateText, async (event, input: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    assertTranslateTextInput(input);
+    return getRuntime().facade.translateText(input);
+  });
   ipcMain.handle(IpcChannel.GetUser, async (event, environment: unknown) => {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
     if (!isBrowserEnvironment(environment)) {
@@ -105,6 +180,10 @@ function registerIpc(): void {
       return getRuntime().facade.refreshLessons(environment);
     },
   );
+  ipcMain.handle(IpcChannel.ListLessons, async (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    return getRuntime().facade.listLessons();
+  });
   ipcMain.handle(
     IpcChannel.ConnectLesson,
     async (event, environment: unknown, lessonId: unknown) => {
@@ -120,6 +199,14 @@ function registerIpc(): void {
     if (typeof lessonId !== 'string') throw new Error('Invalid lesson id.');
     return getRuntime().facade.listProblems(lessonId);
   });
+  ipcMain.handle(
+    IpcChannel.ListPresentations,
+    async (event, lessonId: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (typeof lessonId !== 'string') throw new Error('Invalid lesson id.');
+      return getRuntime().facade.listPresentations(lessonId);
+    },
+  );
   ipcMain.handle(IpcChannel.ValidateAnswer, async (event, input: unknown) => {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
     assertAnswerInput(input);
@@ -167,6 +254,16 @@ function registerIpc(): void {
       getBrowserController().setNetworkLabCollapsed(collapsed);
     },
   );
+  ipcMain.handle(
+    IpcChannel.SetAssistantPanelCollapsed,
+    (event, collapsed: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (typeof collapsed !== 'boolean') {
+        throw new Error('Invalid assistant panel state.');
+      }
+      getBrowserController().setAssistantPanelCollapsed(collapsed);
+    },
+  );
   ipcMain.handle(IpcChannel.GetNetworkSnapshot, (event) => {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
     return getNetworkLabController().getSnapshot();
@@ -205,6 +302,57 @@ function registerIpc(): void {
     );
     return { filePath: result.filePath };
   });
+  ipcMain.handle(
+    IpcChannel.ExportPresentationPdf,
+    async (event, lessonId: unknown, presentationId: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (typeof lessonId !== 'string' || typeof presentationId !== 'string') {
+        throw new Error('Invalid presentation export request.');
+      }
+      const presentations =
+        await getRuntime().facade.listPresentations(lessonId);
+      const presentation = presentations.find(
+        (item) => item.id === presentationId,
+      );
+      if (!presentation) throw new Error('Presentation was not found.');
+      return exportPresentationPdf(presentation);
+    },
+  );
+  ipcMain.handle(
+    IpcChannel.DownloadSlide,
+    async (event, imageUrl: unknown, suggestedName: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (
+        typeof imageUrl !== 'string' ||
+        typeof suggestedName !== 'string' ||
+        !isHttpsUrl(imageUrl)
+      ) {
+        throw new Error('Invalid slide download request.');
+      }
+      return downloadSlide(imageUrl, suggestedName);
+    },
+  );
+  ipcMain.handle(
+    IpcChannel.ShowNotification,
+    async (event, title: unknown, body: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (typeof title !== 'string' || typeof body !== 'string') {
+        throw new Error('Invalid notification.');
+      }
+      if (Notification.isSupported()) {
+        new Notification({
+          title: title.slice(0, 80),
+          body: body.slice(0, 500),
+        }).show();
+      }
+    },
+  );
+  ipcMain.handle(IpcChannel.OpenSourceModule, async (event, id: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (!isSourceModuleId(id)) throw new Error('Invalid source module.');
+    const error = await shell.openPath(sourceModulePath(id));
+    if (error) throw new Error(error);
+  });
 }
 
 function assertTrustedIpc(sender: WebContents, senderUrl: string): void {
@@ -239,6 +387,98 @@ function assertAnswerInput(value: unknown): asserts value is AnswerInput {
   }
 }
 
+function assertConnectAiProfileInput(
+  value: unknown,
+): asserts value is ConnectAiProfileInput {
+  if (
+    !isRecord(value) ||
+    typeof value.baseUrl !== 'string' ||
+    typeof value.apiKey !== 'string'
+  ) {
+    throw new Error('Invalid AI connection.');
+  }
+}
+
+function assertUpdateAiProfileSelectionInput(
+  value: unknown,
+): asserts value is UpdateAiProfileSelectionInput {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.model !== 'string' ||
+    typeof value.visionModel !== 'string' ||
+    typeof value.ocrModel !== 'string' ||
+    typeof value.translationModel !== 'string'
+  ) {
+    throw new Error('Invalid AI model selection.');
+  }
+}
+
+function assertGenerateProposalInput(
+  value: unknown,
+): asserts value is GenerateAnswerProposalInput {
+  if (
+    !isRecord(value) ||
+    typeof value.problemId !== 'string' ||
+    (value.customPrompt !== undefined &&
+      typeof value.customPrompt !== 'string') ||
+    (value.imageUrls !== undefined &&
+      (!Array.isArray(value.imageUrls) ||
+        !value.imageUrls.every((url) => typeof url === 'string')))
+  ) {
+    throw new Error('Invalid AI proposal request.');
+  }
+}
+
+function assertRecognizeSlideInput(
+  value: unknown,
+): asserts value is RecognizeSlideInput {
+  if (!isRecord(value) || typeof value.imageUrl !== 'string') {
+    throw new Error('Invalid OCR request.');
+  }
+}
+
+function assertTranslateTextInput(
+  value: unknown,
+): asserts value is TranslateTextInput {
+  if (
+    !isRecord(value) ||
+    typeof value.text !== 'string' ||
+    typeof value.targetLanguage !== 'string'
+  ) {
+    throw new Error('Invalid translation request.');
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+async function prepareAiImage(value: string): Promise<string> {
+  if (value.startsWith('data:image/')) return value;
+  if (!isHttpsUrl(value)) throw new Error('课件图片必须使用 HTTPS。');
+  const response =
+    await getBrowserController().webContents.session.fetch(value);
+  if (!response.ok)
+    throw new Error(`课件图片读取失败：HTTP ${response.status}`);
+  const contentType = (response.headers.get('content-type') ?? 'image/jpeg')
+    .split(';')[0]!
+    .trim();
+  if (!contentType.startsWith('image/')) throw new Error('课件资源不是图片。');
+  const body = Buffer.from(await response.arrayBuffer());
+  if (body.byteLength > 16 * 1024 * 1024)
+    throw new Error('课件图片超过 16MB。');
+  return `data:${contentType};base64,${body.toString('base64')}`;
+}
+
 function getBrowserController(): BrowserController {
   if (!browserController) throw new Error('Browser is not ready.');
   return browserController;
@@ -252,6 +492,138 @@ function getRuntime(): BackendRuntime {
 function getNetworkLabController(): NetworkLabController {
   if (!networkLabController) throw new Error('Network lab is not ready.');
   return networkLabController;
+}
+
+async function exportPresentationPdf(
+  presentation: Presentation,
+): Promise<{ filePath: string } | null> {
+  if (!mainWindow) throw new Error('Desktop window is not ready.');
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: '导出课件 PDF',
+    defaultPath: `${safeFileName(presentation.title || '雨课堂课件')}.pdf`,
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+
+  const printWindow = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      partition: 'persist:yuketang-browser',
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    },
+  });
+  try {
+    await printWindow.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(presentationHtml(presentation))}`,
+    );
+    await printWindow.webContents.executeJavaScript(`
+      Promise.race([
+        Promise.all(Array.from(document.images).map((image) =>
+          image.complete
+            ? Promise.resolve()
+            : new Promise((resolve) => {
+                image.addEventListener('load', resolve, { once: true });
+                image.addEventListener('error', resolve, { once: true });
+              })
+        )),
+        new Promise((resolve) => setTimeout(resolve, 15000))
+      ])
+    `);
+    const pdf = await printWindow.webContents.printToPDF({
+      printBackground: true,
+      pageSize: 'A4',
+    });
+    await writeFile(result.filePath, pdf);
+    return { filePath: result.filePath };
+  } finally {
+    printWindow.destroy();
+  }
+}
+
+async function downloadSlide(
+  imageUrl: string,
+  suggestedName: string,
+): Promise<{ filePath: string } | null> {
+  if (!mainWindow) throw new Error('Desktop window is not ready.');
+  const response =
+    await getBrowserController().webContents.session.fetch(imageUrl);
+  if (!response.ok)
+    throw new Error(`课件图片下载失败：HTTP ${response.status}`);
+  const contentType = response.headers.get('content-type') ?? '';
+  const extension = imageExtension(contentType, imageUrl);
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: '下载当前课件页',
+    defaultPath: `${safeFileName(suggestedName || '课件页')}${extension}`,
+    filters: [{ name: '图片', extensions: [extension.slice(1)] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+  await writeFile(result.filePath, Buffer.from(await response.arrayBuffer()));
+  return { filePath: result.filePath };
+}
+
+function imageExtension(contentType: string, imageUrl: string): string {
+  if (/image\/png/i.test(contentType)) return '.png';
+  if (/image\/webp/i.test(contentType)) return '.webp';
+  if (/image\/gif/i.test(contentType)) return '.gif';
+  const path = new URL(imageUrl).pathname;
+  const match = /\.(png|webp|gif|jpe?g)$/i.exec(path);
+  return match ? `.${match[1]!.toLowerCase().replace('jpeg', 'jpg')}` : '.jpg';
+}
+
+function presentationHtml(presentation: Presentation): string {
+  const slides = presentation.slides
+    .map((slide, index) => {
+      const image =
+        slide.imageUrl && isAllowedYuketangUrl(slide.imageUrl)
+          ? `<img src="${escapeHtml(slide.imageUrl)}" alt="第 ${index + 1} 页" />`
+          : '<div class="missing">该页没有可导出的图片</div>';
+      return `<section class="slide"><header>${index + 1} / ${presentation.slides.length}</header>${image}</section>`;
+    })
+    .join('');
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://yuketang.cn https://*.yuketang.cn; style-src 'unsafe-inline'"><title>${escapeHtml(presentation.title)}</title><style>@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{margin:0;color:#1f2924;font-family:"Microsoft YaHei","Segoe UI",sans-serif}.slide{display:grid;width:100%;height:190mm;grid-template-rows:8mm 1fr;break-after:page;page-break-after:always}.slide:last-child{break-after:auto;page-break-after:auto}header{color:#65736b;font-size:9pt;text-align:right}img{width:100%;height:100%;object-fit:contain}.missing{display:grid;place-items:center;border:1px solid #d9e1dc;color:#77847d}</style></head><body>${slides}</body></html>`;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[character] ?? character,
+  );
+}
+
+function safeFileName(value: string): string {
+  return value.replace(/[\\/:*?"<>|]/g, '-').trim() || '雨课堂课件';
+}
+
+function isSourceModuleId(value: unknown): value is SourceModuleId {
+  return ['renderer', 'ipc', 'backend', 'routing', 'storage'].includes(
+    value as SourceModuleId,
+  );
+}
+
+function sourceModulePath(id: SourceModuleId): string {
+  const paths: Record<SourceModuleId, string> = {
+    renderer: join(__dirname, '../../renderer/src/App.vue'),
+    ipc: join(__dirname, '../../preload/index.ts'),
+    backend: join(__dirname, '../../../../packages/backend/src/runtime.ts'),
+    routing: join(
+      __dirname,
+      '../../../../packages/routing/src/active/client.ts',
+    ),
+    storage: join(
+      __dirname,
+      '../../../../packages/storage/src/sqlite-app-data-store.ts',
+    ),
+  };
+  return paths[id];
 }
 
 async function createWindow(): Promise<void> {
@@ -306,6 +678,7 @@ async function createWindow(): Promise<void> {
   runtime = createBackendRuntime({
     dataStore,
     resourceCache,
+    secretStore,
     activeClient: new YuketangActiveClient({
       credentials: new ElectronSessionCredentialSource(
         browserController.webContents,
