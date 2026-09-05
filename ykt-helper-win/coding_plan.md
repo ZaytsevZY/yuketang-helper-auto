@@ -415,16 +415,19 @@ Skills 不直接访问数据库或 Routing 内部模块，只调用公开 CLI。
 
 任务：
 
-- 迁移课堂、课件、题目和设置页面。
+- 迁移课堂、课件、题目和设置页面至顶栏。
 - 增加题目上下文与网络来源联动。
 - 增加手工答题、验证、确认提交。
 - 迁移课件图片、PDF、OCR 和翻译。
+- 将 AI Profile 作为独立页面迁移，覆盖 LLM、VLM、OCR 与 Translate 模型分工；AI 服务通过兼容接口的 `/models` 动态发现模型并以卡片管理，不再预置过时的 Kimi 模型。
 - 提供“查看对应源码模块”和数据流说明入口。
 - 增加操作历史与错误诊断页面。
 
 验收：
 
 - GUI 达到现有 userscript 的主要功能覆盖。
+- 输入 Base URL 与 API Key 后能够从 `/models` 获取模型并加入 Profile 池；Moonshot 新接口是基础功能测试项。
+- API Key 仅保存到系统凭据存储，普通设置与日志只保留 Profile 元数据和配置状态。
 - 用户能看到数据来自哪个 HTTP API 或 WS 事件。
 
 ### M7：CLI 与 Skills

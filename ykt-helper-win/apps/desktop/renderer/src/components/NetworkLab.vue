@@ -210,7 +210,7 @@ function shortUrl(value: string): string {
         :title="collapsed ? '展开网络实验室' : '收起网络实验室'"
         @click="toggleCollapsed"
       >
-        {{ collapsed ? '⌃ 展开' : '⌄ 收起' }}
+        {{ collapsed ? '展开' : '收起' }}
       </button>
     </header>
 
@@ -269,13 +269,15 @@ function shortUrl(value: string): string {
 <style scoped>
 .network-lab {
   position: fixed;
+  z-index: 3;
   right: 0;
   bottom: 0;
   left: 0;
+  right: var(--assistant-width);
   height: 300px;
-  border-top: 1px solid #cbd6d0;
-  background: #f7faf8;
-  color: #25362d;
+  border-top: 1px solid var(--line-strong);
+  background: var(--surface-subtle);
+  color: var(--text);
 }
 
 .network-lab.collapsed {
@@ -292,7 +294,7 @@ function shortUrl(value: string): string {
   align-items: center;
   gap: 8px;
   padding: 0 12px;
-  border-bottom: 1px solid #d9e1dc;
+  border-bottom: 1px solid var(--line);
   font-size: 12px;
   overflow-x: auto;
 }
@@ -305,18 +307,18 @@ function shortUrl(value: string): string {
 .lab-toolbar button,
 .filters button {
   height: 27px;
-  border: 1px solid #ccd7d1;
+  border: 1px solid var(--line-strong);
   border-radius: 5px;
   background: #fff;
-  color: #405149;
+  color: var(--text);
   cursor: pointer;
 }
 
 .lab-toolbar .collapse-toggle {
   min-width: 62px;
-  border-color: #b7c9bf;
-  background: #eef6f2;
-  color: #176f48;
+  border-color: #9fc6ae;
+  background: var(--green-soft);
+  color: var(--green-strong);
 }
 
 .filters {
@@ -338,15 +340,15 @@ function shortUrl(value: string): string {
 }
 
 .filters button.active {
-  border-color: #198955;
-  background: #e7f5ed;
-  color: #126d43;
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green-strong);
 }
 
 .search {
   width: min(260px, 24vw);
   height: 28px;
-  border: 1px solid #ccd7d1;
+  border: 1px solid var(--line-strong);
   border-radius: 5px;
   outline: none;
   padding: 0 8px;
@@ -354,7 +356,8 @@ function shortUrl(value: string): string {
 }
 
 .search:focus {
-  border-color: #198955;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgb(8 138 87 / 14%);
 }
 
 .deep-toggle {
@@ -366,7 +369,7 @@ function shortUrl(value: string): string {
 
 .lab-count {
   margin-left: auto;
-  color: #77837d;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
@@ -378,7 +381,7 @@ function shortUrl(value: string): string {
 
 .entry-list {
   overflow: auto;
-  border-right: 1px solid #d9e1dc;
+  border-right: 1px solid var(--line);
   background: #fff;
 }
 
@@ -389,7 +392,7 @@ function shortUrl(value: string): string {
   align-items: center;
   gap: 8px;
   border: 0;
-  border-bottom: 1px solid #edf1ef;
+  border-bottom: 1px solid var(--line);
   background: #fff;
   padding: 6px 10px;
   text-align: left;
@@ -398,13 +401,13 @@ function shortUrl(value: string): string {
 
 .entry-row:hover,
 .entry-row.selected {
-  background: #eef6f2;
+  background: var(--green-soft);
 }
 
 .entry-kind {
   width: 42px;
   flex: 0 0 auto;
-  color: #237a50;
+  color: var(--green-strong);
   font-size: 10px;
   font-weight: 700;
 }
@@ -436,7 +439,7 @@ function shortUrl(value: string): string {
 
 .entry-main small {
   margin-top: 3px;
-  color: #89928d;
+  color: var(--text-muted);
   font-size: 10px;
 }
 
@@ -454,7 +457,7 @@ function shortUrl(value: string): string {
 }
 
 .detail-pane section + section {
-  border-left: 1px solid #d9e1dc;
+  border-left: 1px solid var(--line);
 }
 
 .detail-pane h3 {
@@ -480,7 +483,7 @@ function shortUrl(value: string): string {
 
 .empty {
   margin: 32px 0;
-  color: #8a958f;
+  color: var(--text-muted);
   text-align: center;
   font-size: 12px;
 }
@@ -499,5 +502,20 @@ function shortUrl(value: string): string {
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 680px) {
+  .network-lab {
+    display: none;
+  }
+}
+
+.entry-kind,
+.entry-main strong,
+.entry-main small,
+.detail-pane h3,
+.detail-pane pre,
+.lab-message {
+  font-size: 12px;
 }
 </style>

@@ -1,20 +1,30 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   IpcChannel,
+  type AiProfileView,
   type AnswerInput,
+  type AnswerProposal,
   type AppLogEntry,
   type AppSettings,
   type BrowserEnvironment,
   type BrowserState,
+  type ConnectAiProfileInput,
   type DesktopApi,
   type FixtureExportResult,
+  type GenerateAnswerProposalInput,
+  type GeneratedTextResult,
   type NetworkCaptureState,
   type NetworkEntry,
   type NetworkSnapshot,
   type Lesson,
   type ProblemContext,
+  type Presentation,
   type RuntimeStatus,
+  type RecognizeSlideInput,
+  type SourceModuleId,
   type SubmissionResult,
+  type TranslateTextInput,
+  type UpdateAiProfileSelectionInput,
   type UserProfile,
   type ValidationResult,
 } from '@ykt/contracts';
@@ -29,6 +39,47 @@ const api: DesktopApi = Object.freeze({
       IpcChannel.UpdateSettings,
       settings,
     ) as Promise<AppSettings>,
+  resetSettings: () =>
+    ipcRenderer.invoke(IpcChannel.ResetSettings) as Promise<AppSettings>,
+  listAiProfiles: () =>
+    ipcRenderer.invoke(IpcChannel.ListAiProfiles) as Promise<
+      readonly AiProfileView[]
+    >,
+  connectAiProfile: (input: ConnectAiProfileInput) =>
+    ipcRenderer.invoke(IpcChannel.ConnectAiProfile, input) as Promise<
+      readonly AiProfileView[]
+    >,
+  refreshAiProfile: (id: string) =>
+    ipcRenderer.invoke(IpcChannel.RefreshAiProfile, id) as Promise<
+      readonly AiProfileView[]
+    >,
+  updateAiProfileSelection: (input: UpdateAiProfileSelectionInput) =>
+    ipcRenderer.invoke(IpcChannel.UpdateAiProfileSelection, input) as Promise<
+      readonly AiProfileView[]
+    >,
+  deleteAiProfile: (id: string) =>
+    ipcRenderer.invoke(IpcChannel.DeleteAiProfile, id) as Promise<
+      readonly AiProfileView[]
+    >,
+  selectAiProfile: (id: string) =>
+    ipcRenderer.invoke(IpcChannel.SelectAiProfile, id) as Promise<
+      readonly AiProfileView[]
+    >,
+  generateAnswerProposal: (input: GenerateAnswerProposalInput) =>
+    ipcRenderer.invoke(
+      IpcChannel.GenerateAnswerProposal,
+      input,
+    ) as Promise<AnswerProposal>,
+  recognizeSlide: (input: RecognizeSlideInput) =>
+    ipcRenderer.invoke(
+      IpcChannel.RecognizeSlide,
+      input,
+    ) as Promise<GeneratedTextResult>,
+  translateText: (input: TranslateTextInput) =>
+    ipcRenderer.invoke(
+      IpcChannel.TranslateText,
+      input,
+    ) as Promise<GeneratedTextResult>,
   getUser: (environment: BrowserEnvironment) =>
     ipcRenderer.invoke(
       IpcChannel.GetUser,
@@ -47,12 +98,18 @@ const api: DesktopApi = Object.freeze({
     ipcRenderer.invoke(IpcChannel.RefreshLessons, environment) as Promise<
       readonly Lesson[]
     >,
+  listLessons: () =>
+    ipcRenderer.invoke(IpcChannel.ListLessons) as Promise<readonly Lesson[]>,
   connectLesson: (environment: BrowserEnvironment, id: string) =>
     ipcRenderer.invoke(
       IpcChannel.ConnectLesson,
       environment,
       id,
     ) as Promise<void>,
+  listPresentations: (lessonId: string) =>
+    ipcRenderer.invoke(IpcChannel.ListPresentations, lessonId) as Promise<
+      readonly Presentation[]
+    >,
   listProblems: (lessonId: string) =>
     ipcRenderer.invoke(IpcChannel.ListProblems, lessonId) as Promise<
       readonly ProblemContext[]
@@ -85,6 +142,11 @@ const api: DesktopApi = Object.freeze({
       IpcChannel.SetNetworkLabCollapsed,
       collapsed,
     ) as Promise<void>,
+  setAssistantPanelCollapsed: (collapsed: boolean) =>
+    ipcRenderer.invoke(
+      IpcChannel.SetAssistantPanelCollapsed,
+      collapsed,
+    ) as Promise<void>,
   onBrowserStateChanged: (listener: (state: BrowserState) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
@@ -110,6 +172,26 @@ const api: DesktopApi = Object.freeze({
     ipcRenderer.invoke(
       IpcChannel.ExportNetworkFixture,
     ) as Promise<FixtureExportResult | null>,
+  exportPresentationPdf: (lessonId: string, presentationId: string) =>
+    ipcRenderer.invoke(
+      IpcChannel.ExportPresentationPdf,
+      lessonId,
+      presentationId,
+    ) as Promise<FixtureExportResult | null>,
+  downloadSlide: (imageUrl: string, suggestedName: string) =>
+    ipcRenderer.invoke(
+      IpcChannel.DownloadSlide,
+      imageUrl,
+      suggestedName,
+    ) as Promise<FixtureExportResult | null>,
+  showNotification: (title: string, body: string) =>
+    ipcRenderer.invoke(
+      IpcChannel.ShowNotification,
+      title,
+      body,
+    ) as Promise<void>,
+  openSourceModule: (id: SourceModuleId) =>
+    ipcRenderer.invoke(IpcChannel.OpenSourceModule, id) as Promise<void>,
   onNetworkEntryAdded: (listener: (entry: NetworkEntry) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

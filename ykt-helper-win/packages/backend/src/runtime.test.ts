@@ -19,6 +19,10 @@ describe('BackendRuntime', () => {
         'answer-validation',
         'fixture-replay',
         'storage',
+        'ai-profiles',
+        'ai-proposals',
+        'ocr',
+        'translation',
       ],
     });
     expect(await runtime.facade.listLessons()).toEqual([]);
