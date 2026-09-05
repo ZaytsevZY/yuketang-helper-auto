@@ -1,6 +1,16 @@
 import { isPublishReminderEnabled } from '../core/publish-events.js';
 
-export function createPublishReminder({ notify, now = () => Date.now(), dedupeMs = 60_000 } = {}) {
+/**
+ * Shares the short de-duplication window used by every realtime reminder.
+ * Different event kinds have their own dedupe keys, so a new question cannot
+ * suppress a courseware notification (or the other way around).
+ */
+export function createEventReminder({
+  notify,
+  isEnabled = () => true,
+  now = () => Date.now(),
+  dedupeMs = 60_000,
+} = {}) {
   const seenUntil = new Map();
 
   function prune(time) {
@@ -11,7 +21,7 @@ export function createPublishReminder({ notify, now = () => Date.now(), dedupeMs
 
   return {
     handle(event, config) {
-      if (!event || !isPublishReminderEnabled(event, config)) return false;
+      if (!event || !event.dedupeKey || !isEnabled(event, config)) return false;
 
       const time = now();
       prune(time);
@@ -22,4 +32,11 @@ export function createPublishReminder({ notify, now = () => Date.now(), dedupeMs
       return true;
     },
   };
+}
+
+export function createPublishReminder(options = {}) {
+  return createEventReminder({
+    ...options,
+    isEnabled: options.isEnabled || isPublishReminderEnabled,
+  });
 }

@@ -4,9 +4,11 @@ import { ui } from '../ui-api.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
 import { storage } from '../../core/storage.js';
 import { screenWakeLock } from '../../core/screen-wake-lock.js';
+import { applyProfileForm, readReminderForm, syncReminderForm } from '../../core/settings-form.js';
 
 let mounted = false;
 let root;
+let syncMountedForm = () => {};
 
 // ---- AI Profile helpers ----
 function ensureAIProfiles(configAI) {
@@ -83,9 +85,18 @@ export function mountSettingsPanel() {
   const $notifyDur = root.querySelector('#ykt-input-notify-duration');
   const $notifyVol = root.querySelector('#ykt-input-notify-volume');
   const $notifyAll = root.querySelector('#ykt-input-notify-all');
+  const $notifyProblemStart = root.querySelector('#ykt-input-notify-problem-start');
   const $notifyAssessment = root.querySelector('#ykt-input-notify-assessment-publish');
   const $notifyCourseware = root.querySelector('#ykt-input-notify-courseware-publish');
   const $notifyOther = root.querySelector('#ykt-input-notify-other-publish');
+  const $notifyLessonFinished = root.querySelector('#ykt-input-notify-lesson-finished');
+  const $notifyAutoAnswerScheduled = root.querySelector('#ykt-input-notify-auto-answer-scheduled');
+  const $notifyAutoAnswerStarted = root.querySelector('#ykt-input-notify-auto-answer-started');
+  const $notifyAutoAnswerSucceeded = root.querySelector('#ykt-input-notify-auto-answer-succeeded');
+  const $notifyAutoAnswerFailed = root.querySelector('#ykt-input-notify-auto-answer-failed');
+  const $notifyNative = root.querySelector('#ykt-input-notify-native');
+  const $notifyPopup = root.querySelector('#ykt-input-notify-popup');
+  const $notifySound = root.querySelector('#ykt-input-notify-sound');
   const $keepScreenAwake = root.querySelector('#ykt-input-keep-screen-awake');
   const $iftex = root.querySelector('#ykt-ui-tex');
 
@@ -95,6 +106,21 @@ export function mountSettingsPanel() {
   const $preview   = root.querySelector('#ykt-btn-preview-audio');
   const $clear     = root.querySelector('#ykt-btn-clear-audio');
   const $audioName = root.querySelector('#ykt-tip-audio-name');
+  const reminderFields = {
+    notifyProblems: $notifyAll,
+    notifyProblemStarts: $notifyProblemStart,
+    notifyAssessmentPublishes: $notifyAssessment,
+    notifyCoursewarePublishes: $notifyCourseware,
+    notifyOtherPublishes: $notifyOther,
+    notifyLessonFinished: $notifyLessonFinished,
+    notifyAutoAnswerScheduled: $notifyAutoAnswerScheduled,
+    notifyAutoAnswerStarted: $notifyAutoAnswerStarted,
+    notifyAutoAnswerSucceeded: $notifyAutoAnswerSucceeded,
+    notifyAutoAnswerFailed: $notifyAutoAnswerFailed,
+    notifyNative: $notifyNative,
+    notifyPopup: $notifyPopup,
+    notifySound: $notifySound,
+  };
 
   // Profile UI
   function refreshProfileSelect() {
@@ -171,33 +197,30 @@ export function mountSettingsPanel() {
     loadProfileToForm(ai.activeProfileId);
   });
 
-  // 初始化原有 UI 配置
+  function syncFormFromConfig() {
+    ensureAIProfiles(ui.config.ai || (ui.config.ai = {}));
+    refreshProfileSelect();
+    loadProfileToForm(ui.config.ai.activeProfileId);
 
-  $autoJoin.checked = !!ui.config.autoJoinEnabled;
-  $autoJoinAutoAnswer.checked = !!ui.config.autoAnswerOnAutoJoin;
-  $auto.checked = !!ui.config.autoAnswer;
-  $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
-
-  $iftex.checked = !!ui.config.iftex;
-
-  $delay.value = Math.floor((ui.config.autoAnswerDelay || 3000) / 1000);
-  $rand.value = Math.floor((ui.config.autoAnswerRandomDelay || 1500) / 1000);
-
-  $priority.checked = (ui.config.aiSlidePickPriority !== false);
-
-  $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5000) / 1000);
-  $notifyVol.value = Math.round(100 * (ui.config.notifyVolume ?? 0.6));
-  $notifyAll.checked = ui.config.notifyProblems !== false;
-  $notifyAssessment.checked = ui.config.notifyAssessmentPublishes !== false;
-  $notifyCourseware.checked = ui.config.notifyCoursewarePublishes !== false;
-  $notifyOther.checked = ui.config.notifyOtherPublishes !== false;
-  $keepScreenAwake.checked = !!ui.config.keepScreenAwake;
-
-  if (ui.config.customNotifyAudioName) {
-    $audioName.textContent = `当前：${ui.config.customNotifyAudioName}`;
-  } else {
-    $audioName.textContent = '当前：使用内置“叮-咚”提示音';
+    $autoJoin.checked = !!ui.config.autoJoinEnabled;
+    $autoJoinAutoAnswer.checked = !!ui.config.autoAnswerOnAutoJoin;
+    $auto.checked = !!ui.config.autoAnswer;
+    $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
+    $iftex.checked = !!ui.config.iftex;
+    $delay.value = Math.floor((ui.config.autoAnswerDelay || 3000) / 1000);
+    $rand.value = Math.floor((ui.config.autoAnswerRandomDelay || 1500) / 1000);
+    $priority.checked = ui.config.aiSlidePickPriority !== false;
+    $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5000) / 1000);
+    $notifyVol.value = Math.round(100 * (ui.config.notifyVolume ?? 0.6));
+    syncReminderForm(reminderFields, ui.config);
+    $keepScreenAwake.checked = !!ui.config.keepScreenAwake;
+    $audioName.textContent = ui.config.customNotifyAudioName
+      ? `当前：${ui.config.customNotifyAudioName}`
+      : '当前：使用内置“叮-咚”提示音';
   }
+
+  syncMountedForm = syncFormFromConfig;
+  syncFormFromConfig();
 
   // 保存设置
 
@@ -206,31 +229,31 @@ export function mountSettingsPanel() {
     const ai = ui.config.ai;
     const pid = ai.activeProfileId;
     const p = ai.profiles.find(x => x.id === pid);
-    if (p) {
-      p.name = $profileName.value.trim() || p.name;
-      p.baseUrl = $baseUrl.value.trim() || p.baseUrl;
-      p.apiKey = $api.value.trim();
-      p.model = $model.value.trim() || p.model;
-      p.visionModel = $visionModel.value.trim() || p.visionModel;
-      const rawTemperature = $temperature.value.trim();
-      if (rawTemperature === '') {
-        p.temperature = '';
-      } else {
-        const temperature = Number(rawTemperature);
-        if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
-          ui.toast('Temperature 必须是 0 到 2 之间的数字，或留空', 3000);
-          return;
-        }
-        p.temperature = temperature;
-      }
-      ai.ocrApi = $ocrApi.value.trim();
-      ai.ocrApiKey = $ocrApiKey.value.trim();
-      ai.translateApi = $translateApi.value.trim();
-      ai.translateApiKey = $translateApiKey.value.trim();
-      ai.translateModel = $translateModel.value.trim();
-      const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
-    if (curOpt) curOpt.textContent = p.name || p.id;
+    if (!p) {
+      ui.toast('当前 AI 配置不存在，请重新选择后保存', 3000);
+      return;
     }
+
+    const profileResult = applyProfileForm(p, {
+      name: $profileName.value,
+      baseUrl: $baseUrl.value,
+      apiKey: $api.value,
+      model: $model.value,
+      visionModel: $visionModel.value,
+      temperature: $temperature.value,
+    });
+    if (!profileResult.ok) {
+      ui.toast('Temperature 必须是 0 到 2 之间的数字，或留空', 3000);
+      return;
+    }
+
+    ai.ocrApi = $ocrApi.value.trim();
+    ai.ocrApiKey = $ocrApiKey.value.trim();
+    ai.translateApi = $translateApi.value.trim();
+    ai.translateApiKey = $translateApiKey.value.trim();
+    ai.translateModel = $translateModel.value.trim();
+    const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
+    if (curOpt) curOpt.textContent = p.name || p.id;
 
     ai.kimiApiKey = p.apiKey;
     storage.set('kimiApiKey', p.apiKey);
@@ -244,10 +267,7 @@ export function mountSettingsPanel() {
     ui.config.aiSlidePickPriority = !!$priority.checked;
     ui.config.notifyPopupDuration = Math.max(2000, (+$notifyDur.value || 0) * 1000);
     ui.config.notifyVolume = Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100));
-    ui.config.notifyProblems = !!$notifyAll.checked;
-    ui.config.notifyAssessmentPublishes = !!$notifyAssessment.checked;
-    ui.config.notifyCoursewarePublishes = !!$notifyCourseware.checked;
-    ui.config.notifyOtherPublishes = !!$notifyOther.checked;
+    Object.assign(ui.config, readReminderForm(reminderFields));
     ui.config.keepScreenAwake = !!$keepScreenAwake.checked;
 
     ui.saveConfig();
@@ -276,35 +296,9 @@ export function mountSettingsPanel() {
 
     ensureAIProfiles(ui.config.ai);
 
-    const active = getActiveProfile(ui.config.ai);
-
-    // 更新表单
-    refreshProfileSelect();
-    loadProfileToForm(active.id);
-
-    $autoJoin.checked = false;
-    $autoJoinAutoAnswer.checked = true;
-    $auto.checked = ui.config.autoAnswer;
-    $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
-    $iftex.checked = !!ui.config.iftex;
-
-    $delay.value = Math.floor(ui.config.autoAnswerDelay / 1000);
-    $rand.value = Math.floor(ui.config.autoAnswerRandomDelay / 1000);
-    $priority.checked = !!ui.config.aiSlidePickPriority;
-
-    $notifyDur.value = 5;
-    $notifyVol.value = 60;
-    $notifyAll.checked = ui.config.notifyProblems !== false;
-    $notifyAssessment.checked = ui.config.notifyAssessmentPublishes !== false;
-    $notifyCourseware.checked = ui.config.notifyCoursewarePublishes !== false;
-    $notifyOther.checked = ui.config.notifyOtherPublishes !== false;
-    $keepScreenAwake.checked = !!ui.config.keepScreenAwake;
-    $ocrApi.value = ui.config.ai.ocrApi || '';
-    $ocrApiKey.value = ui.config.ai.ocrApiKey || '';
-    $translateApi.value = ui.config.ai.translateApi || '';
-    $translateApiKey.value = ui.config.ai.translateApiKey || '';
-    $translateModel.value = ui.config.ai.translateModel || '';
-    $audioName.textContent = '当前：使用内置“叮-咚”提示音';
+    ui.config.autoJoinEnabled = false;
+    ui.config.autoAnswerOnAutoJoin = true;
+    syncFormFromConfig();
 
     storage.set('kimiApiKey', '');
 
@@ -394,6 +388,7 @@ export function showSettingsPanel(visible = true) {
   mountSettingsPanel();
   const panel = document.getElementById('ykt-settings-panel');
   if (!panel) return;
+  if (visible) syncMountedForm();
   panel.classList.toggle('visible', !!visible);
 }
 

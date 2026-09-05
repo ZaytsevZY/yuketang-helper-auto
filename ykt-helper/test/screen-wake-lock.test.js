@@ -66,6 +66,21 @@ function makeWakeLockEnvironment({ pathname = '/v2/web/lesson/42' } = {}) {
   return { document, location, navigator, requests, sentinels };
 }
 
+function makeDeferredWakeLockEnvironment({ pathname = '/v2/web/lesson/42' } = {}) {
+  const document = new FakeDocument();
+  const requests = [];
+  const resolvers = [];
+  const navigator = {
+    wakeLock: {
+      request(type) {
+        requests.push(type);
+        return new Promise(resolve => resolvers.push(resolve));
+      },
+    },
+  };
+  return { document, location: { pathname }, navigator, requests, resolvers };
+}
+
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 
 test('recognizes both classroom URL shapes', async () => {
@@ -73,6 +88,7 @@ test('recognizes both classroom URL shapes', async () => {
 
   assert.equal(isClassroomPath('/lesson/fullscreen/v3/lesson-1'), true);
   assert.equal(isClassroomPath('/v2/web/lesson/lesson-1'), true);
+  assert.equal(isClassroomPath('/m/v2'), true);
   assert.equal(isClassroomPath('/v2/web/index'), false);
 });
 
@@ -158,4 +174,52 @@ test('reports an unsupported browser without throwing', async () => {
 
   assert.equal(result.active, false);
   assert.equal(result.reason, 'unsupported');
+});
+
+test('shares an in-flight request so disabling always releases the acquired sentinel', async () => {
+  const { createScreenWakeLock } = await loadScreenWakeLock();
+  const env = makeDeferredWakeLockEnvironment();
+  const wakeLock = createScreenWakeLock({
+    getDocument: () => env.document,
+    getLocation: () => env.location,
+    getNavigator: () => env.navigator,
+  });
+
+  const first = wakeLock.setEnabled(true);
+  const second = wakeLock.sync();
+  await flush();
+
+  assert.deepEqual(env.requests, ['screen']);
+
+  const sentinel = new FakeWakeLockSentinel();
+  env.resolvers[0](sentinel);
+  await Promise.all([first, second]);
+  await wakeLock.setEnabled(false);
+
+  assert.equal(sentinel.released, true);
+  assert.equal(sentinel.releaseCount, 1);
+});
+
+test('releases a sentinel that resolves after the user disables wake lock', async () => {
+  const { createScreenWakeLock } = await loadScreenWakeLock();
+  const env = makeDeferredWakeLockEnvironment();
+  const wakeLock = createScreenWakeLock({
+    getDocument: () => env.document,
+    getLocation: () => env.location,
+    getNavigator: () => env.navigator,
+  });
+
+  const enable = wakeLock.setEnabled(true);
+  await flush();
+  assert.deepEqual(env.requests, ['screen']);
+
+  await wakeLock.setEnabled(false);
+  const sentinel = new FakeWakeLockSentinel();
+  env.resolvers[0](sentinel);
+  const result = await enable;
+
+  assert.equal(result.active, false);
+  assert.equal(result.reason, 'disabled');
+  assert.equal(sentinel.released, true);
+  assert.equal(sentinel.releaseCount, 1);
 });

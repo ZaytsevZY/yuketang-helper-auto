@@ -11,6 +11,7 @@ import * as ProbListPanel from './panels/problem-list.js';
 import * as ActivePanel from './panels/active-problems.js';
 import * as TutorialPanel from './panels/tutorial.js';
 import { PROBLEM_TYPE_MAP } from '../core/types.js'
+import { getReminderChannels, getReminderVolume, isReminderEnabled } from '../core/reminder-preferences.js';
 
 const _config = Object.assign({}, DEFAULT_CONFIG, storage.get('config', {}));
 _config.ai.kimiApiKey = storage.get('kimiApiKey', _config.ai.kimiApiKey);
@@ -169,15 +170,25 @@ export const ui = {
     try {
       const titleText = notice.title || '习题已发布';
       const nativeTitle = notice.nativeTitle || '雨课堂习题提示';
+      const detailText = notice.detail || this.getProblemDetail(problem);
+      const channels = getReminderChannels(this.config);
+      const volume = getReminderVolume(this.config);
       // 1) 原生通知（如果可用，备用，不阻碍自定义弹窗）
-      try {
-        this.nativeNotify?.({
-          title: nativeTitle,
-          text: this.getProblemDetail(problem),
-          image: slide?.thumbnail || null,
-          timeout: Math.max(2000, +this.config.notifyPopupDuration || 5000),
-        });
-      } catch {}
+      if (channels.native) {
+        try {
+          this.nativeNotify?.({
+            title: nativeTitle,
+            text: detailText,
+            image: slide?.thumbnail || null,
+            timeout: Math.max(2000, +this.config.notifyPopupDuration || 5000),
+          });
+        } catch {}
+      }
+
+      if (!channels.popup) {
+        if (channels.sound) this._playNotifySound(volume);
+        return;
+      }
 
       // 2) 自定义悬浮弹窗
       const wrapper = document.createElement('div');
@@ -255,7 +266,7 @@ export const ui = {
       closeBtn.addEventListener('mouseleave', () => (closeBtn.style.opacity = '0.7'));
 
       const detail = document.createElement('pre');
-      detail.textContent = this.getProblemDetail(problem);
+      detail.textContent = detailText;
       Object.assign(detail.style, {
         whiteSpace: 'pre-wrap',
         margin: 0,
@@ -282,20 +293,47 @@ export const ui = {
       };
       enableNotifyDrag(wrapper, head, (el) => this._bringToFront(el));
 
-      this._playNotifySound(+this.config.notifyVolume || 0.6);
+      if (channels.sound) this._playNotifySound(volume);
     } catch (e) {
       console.warn('[雨课堂助手][WARN][ui.notifyProblem] failed:', e);
     }
   },
 
+  /**
+   * Single embedded reminder interface used by desktop and mobile runtimes.
+   * Event selection happens here; delivery selection happens in notifyProblem.
+   */
+  notifyClassroomEvent(event = {}) {
+    if (!isReminderEnabled(event.kind, this.config)) return false;
+
+    const detail = event.detail || '课堂状态发生了变化';
+    this.notifyProblem(event.problem || {
+      problemId: event.dedupeKey || event.kind || 'CLASSROOM_EVENT',
+      body: detail,
+      options: [],
+    }, event.slide || null, {
+      title: event.title || '雨课堂提醒',
+      nativeTitle: event.nativeTitle || event.title || '雨课堂提醒',
+      detail,
+    });
+    return true;
+  },
+
   notifyPublish(event) {
     const title = event?.title || '课堂内容已发布';
     const detail = event?.detail || '教师发布了新的课堂内容';
-    this.notifyProblem({
-      problemId: event?.dedupeKey || 'PUBLISH',
-      body: detail,
-      options: [],
-    }, null, { title, nativeTitle: title });
+    const kind = {
+      assessment: 'assessment-publish',
+      courseware: 'courseware-publish',
+      other: 'other-publish',
+    }[event?.category];
+    return this.notifyClassroomEvent({
+      kind,
+      dedupeKey: event?.dedupeKey || 'PUBLISH',
+      title,
+      nativeTitle: title,
+      detail,
+    });
   },
 
   // 播放自定义提示音  

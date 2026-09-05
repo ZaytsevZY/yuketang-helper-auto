@@ -2,9 +2,9 @@
 import { gm } from '../core/env.js';
 import { actions } from '../state/actions.js';
 import { repo } from '../state/repo.js';
-import { getRealtimeEvent } from '../core/publish-events.js';
+import { dispatchRealtimeMessage } from '../core/realtime-dispatch.js';
 
-export function installWSInterceptor() {
+export function installWSInterceptor({ getRuntimeMode = () => 'desktop' } = {}) {
 
   // 环境识别（标准/荷塘/长江/未知），主要用于日志和后续按需适配
   function detectEnvironmentAndAdaptAPI() {
@@ -68,26 +68,29 @@ MyWebSocket.addHandler((ws, url) => {
     ws.listen((message) => {
       try {
         console.log('[雨课堂助手][INFO] WebSocket接收:', message);
-        const realtime = getRealtimeEvent(message);
-        switch (realtime?.kind) {
-          case 'timeline':
-            console.log('[雨课堂助手][INFO] 收到时间线:', message.timeline);
-            actions.onFetchTimeline(realtime.timeline);
-            break;
-          case 'unlockproblem':
-            console.log('[雨课堂助手][INFO] 收到解锁问题:', message.problem);
-            actions.onUnlockProblem(realtime.problem);
-            break;
-          case 'publish':
-            console.log('[雨课堂助手][INFO] 收到课堂发布:', realtime.event);
-            actions.onPublishEvent(realtime.event);
-            break;
-          case 'lessonfinished':
-            console.log('[雨课堂助手][INFO] 课程结束');
-            actions.onLessonFinished();
-            break;
-          default:
-            console.log('[雨课堂助手][WARN] 未知WebSocket操作:', message.op, message);
+        const dispatched = dispatchRealtimeMessage(message, {
+          getRuntimeMode,
+          handlers: {
+            onFetchTimeline(timeline, options) {
+              console.log('[雨课堂助手][INFO] 收到时间线:', message.timeline);
+              actions.onFetchTimeline(timeline, options);
+            },
+            onUnlockProblem(problem, options) {
+              console.log('[雨课堂助手][INFO] 收到解锁问题:', message.problem);
+              actions.onUnlockProblem(problem, options);
+            },
+            onPublishEvent(event, options) {
+              console.log('[雨课堂助手][INFO] 收到课堂发布:', event);
+              actions.onPublishEvent(event, options);
+            },
+            onLessonFinished(options) {
+              console.log('[雨课堂助手][INFO] 课程结束');
+              actions.onLessonFinished(options);
+            },
+          },
+        });
+        if (!dispatched.handled) {
+          console.log('[雨课堂助手][WARN] 未知WebSocket操作:', message.op, message);
         }
         // 监听后端传递的url
         const url = (function findUrl(obj){

@@ -5,6 +5,12 @@
 // @description  课堂习题提示，AI解答习题
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
+// @match        https://www.yuketang.cn/
+// @match        https://pro.yuketang.cn/
+// @match        https://changjiang.yuketang.cn/
+// @match        https://www.yuketang.cn/m/v2*
+// @match        https://pro.yuketang.cn/m/v2*
+// @match        https://changjiang.yuketang.cn/m/v2*
 // @match        https://pro.yuketang.cn/web/*
 // @match        https://changjiang.yuketang.cn/web/*
 // @match        https://*.yuketang.cn/lesson/fullscreen/v3/*
@@ -36,7 +42,21 @@
   // src/core/env.js
     const gm = {
     notify(opt) {
-      if (typeof window.GM_notification === "function") window.GM_notification(opt);
+      if (typeof window.GM_notification === "function") {
+        window.GM_notification(opt);
+        return;
+      }
+      // On mobile userscript hosts that do not expose GM_notification, use an
+      // already-granted browser notification permission.  Never request it
+      // automatically: the user controls that permission in the browser.
+            try {
+        if (window.Notification?.permission !== "granted") return;
+        const notice = new window.Notification(opt?.title || "雨课堂提醒", {
+          body: opt?.text || "",
+          icon: opt?.image || void 0
+        });
+        if (opt?.timeout > 0) setTimeout(() => notice.close?.(), opt.timeout);
+      } catch {}
     },
     addStyle(css) {
       if (typeof window.GM_addStyle === "function") window.GM_addStyle(css); else {
@@ -78,6 +98,115 @@
   function randInt(l, r) {
     return l + Math.floor(Math.random() * (r - l + 1));
   }
+  // src/core/reminder-preferences.js
+    const EVENT_PREFERENCE_KEYS = {
+    "problem-start": "notifyProblemStarts",
+    "assessment-publish": "notifyAssessmentPublishes",
+    "courseware-publish": "notifyCoursewarePublishes",
+    "other-publish": "notifyOtherPublishes",
+    "lesson-finished": "notifyLessonFinished",
+    "auto-answer-scheduled": "notifyAutoAnswerScheduled",
+    "auto-answer-started": "notifyAutoAnswerStarted",
+    "auto-answer-succeeded": "notifyAutoAnswerSucceeded",
+    "auto-answer-failed": "notifyAutoAnswerFailed"
+  };
+  const REMINDER_DEFAULTS = {
+    // 兼容旧版工具栏铃铛：关闭后静音所有课堂提醒。
+    notifyProblems: true,
+    // 事件开关
+    notifyProblemStarts: true,
+    notifyAssessmentPublishes: true,
+    notifyCoursewarePublishes: true,
+    notifyOtherPublishes: true,
+    notifyLessonFinished: true,
+    notifyAutoAnswerScheduled: true,
+    notifyAutoAnswerStarted: true,
+    notifyAutoAnswerSucceeded: true,
+    notifyAutoAnswerFailed: true,
+    // 提醒方式开关
+    notifyNative: true,
+    notifyPopup: true,
+    notifySound: true
+  };
+  const REMINDER_EVENT_OPTIONS = [ {
+    kind: "problem-start",
+    key: "notifyProblemStarts",
+    label: "新题 / 答题开始",
+    detail: "老师开启一道可作答的习题时提醒。"
+  }, {
+    kind: "assessment-publish",
+    key: "notifyAssessmentPublishes",
+    label: "考试 / 测试题组发布",
+    detail: "老师发布测试、考试或题组时提醒。"
+  }, {
+    kind: "courseware-publish",
+    key: "notifyCoursewarePublishes",
+    label: "新课件发布",
+    detail: "只在老师发布新课件时提醒；翻阅旧课件和翻页不会提醒。"
+  }, {
+    kind: "other-publish",
+    key: "notifyOtherPublishes",
+    label: "其他课堂发布",
+    detail: "服务器发送无法细分的发布事件时提醒。"
+  }, {
+    kind: "lesson-finished",
+    key: "notifyLessonFinished",
+    label: "课程结束",
+    detail: "老师结束当前课程时提醒。"
+  }, {
+    kind: "auto-answer-scheduled",
+    key: "notifyAutoAnswerScheduled",
+    label: "自动作答已排队",
+    detail: "脚本已经为新题安排延迟作答时提醒。"
+  }, {
+    kind: "auto-answer-started",
+    key: "notifyAutoAnswerStarted",
+    label: "自动作答开始",
+    detail: "脚本开始调用本地或 AI 作答流程时提醒。"
+  }, {
+    kind: "auto-answer-succeeded",
+    key: "notifyAutoAnswerSucceeded",
+    label: "自动作答成功",
+    detail: "答案提交成功时提醒。"
+  }, {
+    kind: "auto-answer-failed",
+    key: "notifyAutoAnswerFailed",
+    label: "自动作答失败",
+    detail: "截图、AI 分析或提交失败时提醒。"
+  } ];
+  const REMINDER_CHANNEL_OPTIONS = [ {
+    key: "notifyNative",
+    label: "系统通知",
+    detail: "调用浏览器 / 篡改猴的原生通知。"
+  }, {
+    key: "notifyPopup",
+    label: "页面弹窗",
+    detail: "在当前页面右下角显示提醒卡片。"
+  }, {
+    key: "notifySound",
+    label: "提示声音",
+    detail: "播放内置或自定义的提示音。"
+  } ];
+  const REMINDER_SETTING_KEYS = [ "notifyProblems", ...REMINDER_EVENT_OPTIONS.map(item => item.key), ...REMINDER_CHANNEL_OPTIONS.map(item => item.key) ];
+  function isReminderEnabled(kind, config = {}) {
+    const key = EVENT_PREFERENCE_KEYS[kind];
+    if (!key || config.notifyProblems === false) return false;
+    return config[key] !== false;
+  }
+  function getReminderChannels(config = {}) {
+    return {
+      native: config.notifyNative !== false,
+      popup: config.notifyPopup !== false,
+      sound: config.notifySound !== false
+    };
+  }
+  /** Keep an explicit 0-volume choice instead of falling back to the default. */  function getReminderVolume(config = {}) {
+    const rawValue = config.notifyVolume;
+    if (rawValue === "" || rawValue === void 0 || rawValue === null) return .6;
+    const value = Number(rawValue);
+    if (!Number.isFinite(value)) return .6;
+    return Math.max(0, Math.min(1, value));
+  }
   // src/core/types.js
     const PROBLEM_TYPE_MAP = {
     1: "单选题",
@@ -87,10 +216,11 @@
     5: "主观题"
   };
   const DEFAULT_CONFIG = {
-    notifyProblems: true,
+    ...REMINDER_DEFAULTS,
     autoAnswer: false,
     autoAnswerDelay: 3e3,
     autoAnswerRandomDelay: 2e3,
+    keepScreenAwake: false,
     iftex: true,
     ai: {
       provider: "kimi",
@@ -250,10 +380,186 @@
       setTimeout(() => el.remove(), 500);
     }, duration);
   }
-  var tpl$5 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>AI雨课堂助手设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    <span class="close-btn" id="ykt-settings-close"><i class="fas fa-times"></i></span>\n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：Kimi 8k / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.moonshot.cn/...">\n          <small>兼容 OpenAI 协议的服务端，例如 api.openai.com / api.moonshot.cn / 自建代理。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">文本模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：moonshot-v1-8k / gpt-4o-mini">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-vision-model">图像模型 ID:</label>\n          <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与文本模型相同">\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-temperature">Temperature:</label>\n          <input type="number" id="ykt-ai-temperature" min="0" max="2" step="0.01" placeholder="留空则不传">\n          <small>当前 Profile 专用。留空时不发送该参数，由模型决定默认值；部分 Kimi 模型要求留空。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-ocr-api">OCR模型API:</label>\n          <input type="text" id="ykt-ai-ocr-api" placeholder="留空则复用当前 AI Profile 的 URL">\n          <small>仅用于课件“文字识别”功能；留空时走当前 AI Profile。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-ocr-api-key">OCR API Key:</label>\n          <input type="password" id="ykt-ai-ocr-api-key" placeholder="留空则复用当前 AI Profile 的 API Key">\n          <small>仅用于课件 OCR；不填时自动回退到当前 AI Profile 的 API Key。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-translate-api">翻译模型API:</label>\n          <input type="text" id="ykt-ai-translate-api" placeholder="留空则复用当前 AI Profile 的 URL">\n          <small>仅用于 OCR 结果翻译；留空时复用当前 AI Profile 的 URL。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-translate-api-key">翻译 API Key:</label>\n          <input type="password" id="ykt-ai-translate-api-key" placeholder="留空则复用当前 AI Profile 的 API Key">\n          <small>仅用于 OCR 结果翻译；留空时复用当前 AI Profile 的 API Key。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-translate-model">翻译模型 ID:</label>\n          <input type="text" id="ykt-ai-translate-model" placeholder="留空则复用当前 AI Profile 的文本模型">\n          <small>建议填写纯文本模型；留空时复用当前 AI Profile 的文本模型。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>习题提醒</h4>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <div class="setting-item">\n          <label>自定义提示音（其一即可）</label>\n          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n            <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n            <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n            <button id="ykt-btn-apply-audio-url">应用URL</button>\n            <button id="ykt-btn-preview-audio">预览</button>\n            <button id="ykt-btn-clear-audio">清除自定义音频</button>\n          </div>\n          <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n          <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
+  var tpl$5 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>AI雨课堂助手设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    <span class="close-btn" id="ykt-settings-close"><i class="fas fa-times"></i></span>\n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：Kimi 8k / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.moonshot.cn/...">\n          <small>兼容 OpenAI 协议的服务端，例如 api.openai.com / api.moonshot.cn / 自建代理。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">文本模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：moonshot-v1-8k / gpt-4o-mini">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-vision-model">图像模型 ID:</label>\n          <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与文本模型相同">\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-temperature">Temperature:</label>\n          <input type="number" id="ykt-ai-temperature" min="0" max="2" step="0.01" placeholder="留空则不传">\n          <small>当前 Profile 专用。留空时不发送该参数，由模型决定默认值；部分 Kimi 模型要求留空。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-ocr-api">OCR模型API:</label>\n          <input type="text" id="ykt-ai-ocr-api" placeholder="留空则复用当前 AI Profile 的 URL">\n          <small>仅用于课件“文字识别”功能；留空时走当前 AI Profile。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-ocr-api-key">OCR API Key:</label>\n          <input type="password" id="ykt-ai-ocr-api-key" placeholder="留空则复用当前 AI Profile 的 API Key">\n          <small>仅用于课件 OCR；不填时自动回退到当前 AI Profile 的 API Key。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-translate-api">翻译模型API:</label>\n          <input type="text" id="ykt-ai-translate-api" placeholder="留空则复用当前 AI Profile 的 URL">\n          <small>仅用于 OCR 结果翻译；留空时复用当前 AI Profile 的 URL。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-translate-api-key">翻译 API Key:</label>\n          <input type="password" id="ykt-ai-translate-api-key" placeholder="留空则复用当前 AI Profile 的 API Key">\n          <small>仅用于 OCR 结果翻译；留空时复用当前 AI Profile 的 API Key。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-translate-model">翻译模型 ID:</label>\n          <input type="text" id="ykt-ai-translate-model" placeholder="留空则复用当前 AI Profile 的文本模型">\n          <small>建议填写纯文本模型；留空时复用当前 AI Profile 的文本模型。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>课堂提醒</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-all" />\n            <span class="checkmark"></span>\n            总提醒开关\n          </label>\n          <small>关闭后，下面每一种课堂事件都会静音；工具栏铃铛与此开关同步。</small>\n        </div>\n        <h5>提醒事件</h5>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-problem-start" />\n            <span class="checkmark"></span>\n            新题 / 答题开始\n          </label>\n          <small>老师开启一道可作答习题时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-assessment-publish" />\n            <span class="checkmark"></span>\n            考试/测试题组发布提醒\n          </label>\n          <small>老师发布测试、考试或题组时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-courseware-publish" />\n            <span class="checkmark"></span>\n            课件发布提醒\n          </label>\n          <small>只在发布新课件时提醒；翻阅旧课件和翻页不会提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-other-publish" />\n            <span class="checkmark"></span>\n            其他无法分类的发布提醒\n          </label>\n          <small>用于不同学校服务器的未知发布事件；若提醒过多可单独关闭。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-lesson-finished" />\n            <span class="checkmark"></span>\n            课程结束提醒\n          </label>\n          <small>老师结束当前课程时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-auto-answer-scheduled" />\n            <span class="checkmark"></span>\n            自动作答已排队\n          </label>\n          <small>脚本为新题安排延迟作答时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-auto-answer-started" />\n            <span class="checkmark"></span>\n            自动作答开始\n          </label>\n          <small>脚本开始执行本地或 AI 作答流程时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-auto-answer-succeeded" />\n            <span class="checkmark"></span>\n            自动作答成功\n          </label>\n          <small>答案提交成功时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-auto-answer-failed" />\n            <span class="checkmark"></span>\n            自动作答失败\n          </label>\n          <small>截图、AI 分析或答案提交失败时提醒。</small>\n        </div>\n        <h5>提醒方式</h5>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-native" />\n            <span class="checkmark"></span>\n            系统通知\n          </label>\n          <small>调用浏览器或篡改猴的原生通知。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-popup" />\n            <span class="checkmark"></span>\n            页面弹窗\n          </label>\n          <small>在当前页面右下角显示提醒卡片。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-sound" />\n            <span class="checkmark"></span>\n            提示声音\n          </label>\n          <small>播放内置或自定义提示音。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <div class="setting-item">\n          <label>自定义提示音（其一即可）</label>\n          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n            <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n            <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n            <button id="ykt-btn-apply-audio-url">应用URL</button>\n            <button id="ykt-btn-preview-audio">预览</button>\n            <button id="ykt-btn-clear-audio">清除自定义音频</button>\n          </div>\n          <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n          <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>课堂运行</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-keep-screen-awake" />\n            <span class="checkmark"></span>\n            课堂保持亮屏（仅防自动熄屏）\n          </label>\n          <small>仅在课堂页且页面可见时生效。无法阻止手动锁屏、切换到后台后的浏览器冻结；省电模式也可能拒绝该功能。</small>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
+  function defaultNavigator() {
+    if (typeof window !== "undefined") return window.navigator;
+    return typeof globalThis !== "undefined" ? globalThis.navigator : null;
+  }
+  function defaultDocument() {
+    return typeof document !== "undefined" ? document : null;
+  }
+  function defaultLocation() {
+    return typeof window !== "undefined" ? window.location : null;
+  }
+  function isClassroomPath(pathname = "") {
+    return /\/lesson\/fullscreen\/v3(?:\/|$)|\/v2\/web\/lesson(?:\/|$)|\/m\/v2(?:\/|$)/.test(pathname);
+  }
+  function createScreenWakeLock({getNavigator: getNavigator = defaultNavigator, getDocument: getDocument = defaultDocument, getLocation: getLocation = defaultLocation, onStatus: onStatus = () => {}} = {}) {
+    let enabled = false;
+    let sentinel = null;
+    let pendingRequest = null;
+    let observedDocument = null;
+    const report = (active, reason, error) => {
+      const status = {
+        active: active,
+        reason: reason
+      };
+      if (error) status.error = error;
+      try {
+        onStatus(status);
+      } catch {}
+      return status;
+    };
+    const getPathname = () => getLocation()?.pathname || "";
+    const isVisible = () => {
+      const doc = getDocument();
+      return !!doc && doc.hidden !== true && doc.visibilityState !== "hidden";
+    };
+    const inactiveReason = () => {
+      if (!enabled) return "disabled";
+      if (!isClassroomPath(getPathname())) return "not-classroom";
+      if (!isVisible()) return "hidden";
+      const wakeLock = getNavigator()?.wakeLock;
+      if (!wakeLock || typeof wakeLock.request !== "function") return "unsupported";
+      return "released";
+    };
+    const releaseSentinel = async () => {
+      const current = sentinel;
+      sentinel = null;
+      if (!current || typeof current.release !== "function") return;
+      try {
+        await current.release();
+      } catch {}
+    };
+    const onVisibilityChange = () => {
+      void sync();
+    };
+    const observeVisibility = () => {
+      const doc = getDocument();
+      if (!doc || doc === observedDocument || typeof doc.addEventListener !== "function") return;
+      if (observedDocument && typeof observedDocument.removeEventListener === "function") observedDocument.removeEventListener("visibilitychange", onVisibilityChange);
+      observedDocument = doc;
+      doc.addEventListener("visibilitychange", onVisibilityChange);
+    };
+    const attachSentinel = current => {
+      if (!current || typeof current.addEventListener !== "function") return;
+      current.addEventListener("release", () => {
+        if (sentinel === current) {
+          sentinel = null;
+          report(false, "released");
+        }
+      });
+    };
+    async function sync() {
+      observeVisibility();
+      const reason = inactiveReason();
+      if (reason !== "released") {
+        await releaseSentinel();
+        return report(false, reason);
+      }
+      if (sentinel && sentinel.released !== true) return report(true, "active");
+      sentinel = null;
+      if (pendingRequest) return pendingRequest;
+      const requestPromise = Promise.resolve().then(async () => {
+        try {
+          let requested;
+          try {
+            requested = await getNavigator().wakeLock.request("screen");
+          } catch (error) {
+            return report(false, "request-failed", error);
+          }
+          // Settings, route, or visibility may change while the browser shows its
+          // permission prompt. Never retain a sentinel that is no longer eligible.
+                    const afterRequestReason = inactiveReason();
+          if (afterRequestReason !== "released") {
+            try {
+              await (requested?.release?.());
+            } catch {}
+            return report(false, afterRequestReason);
+          }
+          sentinel = requested;
+          attachSentinel(requested);
+          return report(true, "active");
+        } finally {
+          // Clear before callers observe completion, so an immediately released
+          // sentinel can always be reacquired by the next sync().
+          if (pendingRequest === requestPromise) pendingRequest = null;
+        }
+      });
+      pendingRequest = requestPromise;
+      return requestPromise;
+    }
+    async function setEnabled(nextEnabled) {
+      enabled = !!nextEnabled;
+      return sync();
+    }
+    async function dispose() {
+      enabled = false;
+      if (observedDocument && typeof observedDocument.removeEventListener === "function") observedDocument.removeEventListener("visibilitychange", onVisibilityChange);
+      observedDocument = null;
+      await releaseSentinel();
+    }
+    return {
+      setEnabled: setEnabled,
+      sync: sync,
+      dispose: dispose,
+      getState() {
+        return {
+          enabled: enabled,
+          active: !!sentinel && sentinel.released !== true
+        };
+      }
+    };
+  }
+  const screenWakeLock = createScreenWakeLock();
+  // src/core/settings-form.js
+    function text(value) {
+    return String(value ?? "").trim();
+  }
+  /**
+   * Validate every value before changing the profile.  This keeps an invalid
+   * temperature from partially saving a new API URL, key, or model name.
+   */  function applyProfileForm(profile, fields = {}) {
+    if (!profile || typeof profile !== "object") return {
+      ok: false,
+      field: "profile"
+    };
+    const rawTemperature = text(fields.temperature);
+    let temperature = "";
+    if (rawTemperature !== "") {
+      temperature = Number(rawTemperature);
+      if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) return {
+        ok: false,
+        field: "temperature"
+      };
+    }
+    const next = {
+      name: text(fields.name) || profile.name,
+      baseUrl: text(fields.baseUrl) || profile.baseUrl,
+      apiKey: text(fields.apiKey),
+      model: text(fields.model) || profile.model,
+      visionModel: text(fields.visionModel) || profile.visionModel,
+      temperature: temperature
+    };
+    Object.assign(profile, next);
+    return {
+      ok: true,
+      profile: profile
+    };
+  }
+  /** Refresh every reminder input whenever a settings surface becomes visible. */  function syncReminderForm(fields = {}, config = {}) {
+    for (const key of REMINDER_SETTING_KEYS) {
+      const field = fields[key];
+      if (field) field.checked = config[key] !== false;
+    }
+  }
+  function readReminderForm(fields = {}) {
+    return Object.fromEntries(REMINDER_SETTING_KEYS.map(key => [ key, !!fields[key]?.checked ]));
+  }
   // settings.js (new version)
-    let mounted$5 = false;
-  let root$4;
+    let mounted$6 = false;
+  let root$5;
+  let syncMountedForm = () => {};
   // ---- AI Profile helpers ----
     function ensureAIProfiles(configAI) {
     if (!configAI) return;
@@ -273,54 +579,77 @@
     }
     if (!configAI.activeProfileId) configAI.activeProfileId = configAI.profiles[0].id;
   }
-  function getActiveProfile$1(configAI) {
-    ensureAIProfiles(configAI);
-    const list = configAI.profiles;
-    const id = configAI.activeProfileId;
-    return list.find(p => p.id === id) || list[0];
-  }
   // ------------------------------
     function mountSettingsPanel() {
-    if (mounted$5) return root$4;
+    if (mounted$6) return root$5;
     // 注入 HTML
-        root$4 = document.createElement("div");
-    root$4.innerHTML = tpl$5;
-    document.body.appendChild(root$4.firstElementChild);
-    root$4 = document.getElementById("ykt-settings-panel");
+        root$5 = document.createElement("div");
+    root$5.innerHTML = tpl$5;
+    document.body.appendChild(root$5.firstElementChild);
+    root$5 = document.getElementById("ykt-settings-panel");
     const aiCfg = ui.config.ai || (ui.config.ai = {});
     ensureAIProfiles(aiCfg);
     // === 获取所有 AI Profile 相关的 DOM ===
-        const $profileSelect = root$4.querySelector("#ykt-ai-profile-select");
-    const $profileAdd = root$4.querySelector("#ykt-ai-profile-add");
-    const $profileDel = root$4.querySelector("#ykt-ai-profile-del");
-    const $profileName = root$4.querySelector("#ykt-ai-profile-name");
-    const $baseUrl = root$4.querySelector("#ykt-ai-base-url");
-    const $api = root$4.querySelector("#kimi-api-key");
-    const $model = root$4.querySelector("#ykt-ai-model");
-    const $visionModel = root$4.querySelector("#ykt-ai-vision-model");
-    const $temperature = root$4.querySelector("#ykt-ai-temperature");
-    const $ocrApi = root$4.querySelector("#ykt-ai-ocr-api");
-    const $ocrApiKey = root$4.querySelector("#ykt-ai-ocr-api-key");
-    const $translateApi = root$4.querySelector("#ykt-ai-translate-api");
-    const $translateApiKey = root$4.querySelector("#ykt-ai-translate-api-key");
-    const $translateModel = root$4.querySelector("#ykt-ai-translate-model");
+        const $profileSelect = root$5.querySelector("#ykt-ai-profile-select");
+    const $profileAdd = root$5.querySelector("#ykt-ai-profile-add");
+    const $profileDel = root$5.querySelector("#ykt-ai-profile-del");
+    const $profileName = root$5.querySelector("#ykt-ai-profile-name");
+    const $baseUrl = root$5.querySelector("#ykt-ai-base-url");
+    const $api = root$5.querySelector("#kimi-api-key");
+    const $model = root$5.querySelector("#ykt-ai-model");
+    const $visionModel = root$5.querySelector("#ykt-ai-vision-model");
+    const $temperature = root$5.querySelector("#ykt-ai-temperature");
+    const $ocrApi = root$5.querySelector("#ykt-ai-ocr-api");
+    const $ocrApiKey = root$5.querySelector("#ykt-ai-ocr-api-key");
+    const $translateApi = root$5.querySelector("#ykt-ai-translate-api");
+    const $translateApiKey = root$5.querySelector("#ykt-ai-translate-api-key");
+    const $translateModel = root$5.querySelector("#ykt-ai-translate-model");
     // === 其他 UI 原有字段 ===
-        const $auto = root$4.querySelector("#ykt-input-auto-answer");
-    const $autoJoin = root$4.querySelector("#ykt-input-auto-join");
-    const $autoJoinAutoAnswer = root$4.querySelector("#ykt-input-auto-join-auto-answer");
-    const $autoAnalyze = root$4.querySelector("#ykt-input-ai-auto-analyze");
-    const $delay = root$4.querySelector("#ykt-input-answer-delay");
-    const $rand = root$4.querySelector("#ykt-input-random-delay");
-    const $priority = root$4.querySelector("#ykt-ai-pick-main-first");
-    const $notifyDur = root$4.querySelector("#ykt-input-notify-duration");
-    const $notifyVol = root$4.querySelector("#ykt-input-notify-volume");
-    const $iftex = root$4.querySelector("#ykt-ui-tex");
-    const $audioFile = root$4.querySelector("#ykt-input-notify-audio-file");
-    const $audioUrl = root$4.querySelector("#ykt-input-notify-audio-url");
-    const $applyUrl = root$4.querySelector("#ykt-btn-apply-audio-url");
-    const $preview = root$4.querySelector("#ykt-btn-preview-audio");
-    const $clear = root$4.querySelector("#ykt-btn-clear-audio");
-    const $audioName = root$4.querySelector("#ykt-tip-audio-name");
+        const $auto = root$5.querySelector("#ykt-input-auto-answer");
+    const $autoJoin = root$5.querySelector("#ykt-input-auto-join");
+    const $autoJoinAutoAnswer = root$5.querySelector("#ykt-input-auto-join-auto-answer");
+    const $autoAnalyze = root$5.querySelector("#ykt-input-ai-auto-analyze");
+    const $delay = root$5.querySelector("#ykt-input-answer-delay");
+    const $rand = root$5.querySelector("#ykt-input-random-delay");
+    const $priority = root$5.querySelector("#ykt-ai-pick-main-first");
+    const $notifyDur = root$5.querySelector("#ykt-input-notify-duration");
+    const $notifyVol = root$5.querySelector("#ykt-input-notify-volume");
+    const $notifyAll = root$5.querySelector("#ykt-input-notify-all");
+    const $notifyProblemStart = root$5.querySelector("#ykt-input-notify-problem-start");
+    const $notifyAssessment = root$5.querySelector("#ykt-input-notify-assessment-publish");
+    const $notifyCourseware = root$5.querySelector("#ykt-input-notify-courseware-publish");
+    const $notifyOther = root$5.querySelector("#ykt-input-notify-other-publish");
+    const $notifyLessonFinished = root$5.querySelector("#ykt-input-notify-lesson-finished");
+    const $notifyAutoAnswerScheduled = root$5.querySelector("#ykt-input-notify-auto-answer-scheduled");
+    const $notifyAutoAnswerStarted = root$5.querySelector("#ykt-input-notify-auto-answer-started");
+    const $notifyAutoAnswerSucceeded = root$5.querySelector("#ykt-input-notify-auto-answer-succeeded");
+    const $notifyAutoAnswerFailed = root$5.querySelector("#ykt-input-notify-auto-answer-failed");
+    const $notifyNative = root$5.querySelector("#ykt-input-notify-native");
+    const $notifyPopup = root$5.querySelector("#ykt-input-notify-popup");
+    const $notifySound = root$5.querySelector("#ykt-input-notify-sound");
+    const $keepScreenAwake = root$5.querySelector("#ykt-input-keep-screen-awake");
+    const $iftex = root$5.querySelector("#ykt-ui-tex");
+    const $audioFile = root$5.querySelector("#ykt-input-notify-audio-file");
+    const $audioUrl = root$5.querySelector("#ykt-input-notify-audio-url");
+    const $applyUrl = root$5.querySelector("#ykt-btn-apply-audio-url");
+    const $preview = root$5.querySelector("#ykt-btn-preview-audio");
+    const $clear = root$5.querySelector("#ykt-btn-clear-audio");
+    const $audioName = root$5.querySelector("#ykt-tip-audio-name");
+    const reminderFields = {
+      notifyProblems: $notifyAll,
+      notifyProblemStarts: $notifyProblemStart,
+      notifyAssessmentPublishes: $notifyAssessment,
+      notifyCoursewarePublishes: $notifyCourseware,
+      notifyOtherPublishes: $notifyOther,
+      notifyLessonFinished: $notifyLessonFinished,
+      notifyAutoAnswerScheduled: $notifyAutoAnswerScheduled,
+      notifyAutoAnswerStarted: $notifyAutoAnswerStarted,
+      notifyAutoAnswerSucceeded: $notifyAutoAnswerSucceeded,
+      notifyAutoAnswerFailed: $notifyAutoAnswerFailed,
+      notifyNative: $notifyNative,
+      notifyPopup: $notifyPopup,
+      notifySound: $notifySound
+    };
     // Profile UI
         function refreshProfileSelect() {
       const ai = ui.config.ai;
@@ -386,47 +715,55 @@
       refreshProfileSelect();
       loadProfileToForm(ai.activeProfileId);
     });
-    // 初始化原有 UI 配置
-        $autoJoin.checked = !!ui.config.autoJoinEnabled;
-    $autoJoinAutoAnswer.checked = !!ui.config.autoAnswerOnAutoJoin;
-    $auto.checked = !!ui.config.autoAnswer;
-    $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
-    $iftex.checked = !!ui.config.iftex;
-    $delay.value = Math.floor((ui.config.autoAnswerDelay || 3e3) / 1e3);
-    $rand.value = Math.floor((ui.config.autoAnswerRandomDelay || 1500) / 1e3);
-    $priority.checked = ui.config.aiSlidePickPriority !== false;
-    $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5e3) / 1e3);
-    $notifyVol.value = Math.round(100 * (ui.config.notifyVolume ?? .6));
-    if (ui.config.customNotifyAudioName) $audioName.textContent = `当前：${ui.config.customNotifyAudioName}`; else $audioName.textContent = "当前：使用内置“叮-咚”提示音";
+    function syncFormFromConfig() {
+      ensureAIProfiles(ui.config.ai || (ui.config.ai = {}));
+      refreshProfileSelect();
+      loadProfileToForm(ui.config.ai.activeProfileId);
+      $autoJoin.checked = !!ui.config.autoJoinEnabled;
+      $autoJoinAutoAnswer.checked = !!ui.config.autoAnswerOnAutoJoin;
+      $auto.checked = !!ui.config.autoAnswer;
+      $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
+      $iftex.checked = !!ui.config.iftex;
+      $delay.value = Math.floor((ui.config.autoAnswerDelay || 3e3) / 1e3);
+      $rand.value = Math.floor((ui.config.autoAnswerRandomDelay || 1500) / 1e3);
+      $priority.checked = ui.config.aiSlidePickPriority !== false;
+      $notifyDur.value = Math.floor((ui.config.notifyPopupDuration || 5e3) / 1e3);
+      $notifyVol.value = Math.round(100 * (ui.config.notifyVolume ?? .6));
+      syncReminderForm(reminderFields, ui.config);
+      $keepScreenAwake.checked = !!ui.config.keepScreenAwake;
+      $audioName.textContent = ui.config.customNotifyAudioName ? `当前：${ui.config.customNotifyAudioName}` : "当前：使用内置“叮-咚”提示音";
+    }
+    syncMountedForm = syncFormFromConfig;
+    syncFormFromConfig();
     // 保存设置
-        root$4.querySelector("#ykt-btn-settings-save").addEventListener("click", () => {
+        root$5.querySelector("#ykt-btn-settings-save").addEventListener("click", async () => {
       // --- 保存当前 Profile ---
       const ai = ui.config.ai;
       const pid = ai.activeProfileId;
       const p = ai.profiles.find(x => x.id === pid);
-      if (p) {
-        p.name = $profileName.value.trim() || p.name;
-        p.baseUrl = $baseUrl.value.trim() || p.baseUrl;
-        p.apiKey = $api.value.trim();
-        p.model = $model.value.trim() || p.model;
-        p.visionModel = $visionModel.value.trim() || p.visionModel;
-        const rawTemperature = $temperature.value.trim();
-        if (rawTemperature === "") p.temperature = ""; else {
-          const temperature = Number(rawTemperature);
-          if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
-            ui.toast("Temperature 必须是 0 到 2 之间的数字，或留空", 3e3);
-            return;
-          }
-          p.temperature = temperature;
-        }
-        ai.ocrApi = $ocrApi.value.trim();
-        ai.ocrApiKey = $ocrApiKey.value.trim();
-        ai.translateApi = $translateApi.value.trim();
-        ai.translateApiKey = $translateApiKey.value.trim();
-        ai.translateModel = $translateModel.value.trim();
-        const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
-        if (curOpt) curOpt.textContent = p.name || p.id;
+      if (!p) {
+        ui.toast("当前 AI 配置不存在，请重新选择后保存", 3e3);
+        return;
       }
+      const profileResult = applyProfileForm(p, {
+        name: $profileName.value,
+        baseUrl: $baseUrl.value,
+        apiKey: $api.value,
+        model: $model.value,
+        visionModel: $visionModel.value,
+        temperature: $temperature.value
+      });
+      if (!profileResult.ok) {
+        ui.toast("Temperature 必须是 0 到 2 之间的数字，或留空", 3e3);
+        return;
+      }
+      ai.ocrApi = $ocrApi.value.trim();
+      ai.ocrApiKey = $ocrApiKey.value.trim();
+      ai.translateApi = $translateApi.value.trim();
+      ai.translateApiKey = $translateApiKey.value.trim();
+      ai.translateModel = $translateModel.value.trim();
+      const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
+      if (curOpt) curOpt.textContent = p.name || p.id;
       ai.kimiApiKey = p.apiKey;
       storage.set("kimiApiKey", p.apiKey);
       ui.config.autoJoinEnabled = !!$autoJoin.checked;
@@ -439,40 +776,29 @@
       ui.config.aiSlidePickPriority = !!$priority.checked;
       ui.config.notifyPopupDuration = Math.max(2e3, (+$notifyDur.value || 0) * 1e3);
       ui.config.notifyVolume = Math.max(0, Math.min(1, (+$notifyVol.value || 60) / 100));
+      Object.assign(ui.config, readReminderForm(reminderFields));
+      ui.config.keepScreenAwake = !!$keepScreenAwake.checked;
       ui.saveConfig();
+      document.getElementById("ykt-btn-bell")?.classList.toggle("active", ui.config.notifyProblems);
       ui.updateAutoAnswerBtn();
-      ui.toast("设置已保存");
+      const wakeLockStatus = await screenWakeLock.setEnabled(ui.config.keepScreenAwake);
+      if (ui.config.keepScreenAwake && wakeLockStatus.reason === "not-classroom") ui.toast("设置已保存；进入课堂页后将尝试保持亮屏", 3e3); else if (ui.config.keepScreenAwake && wakeLockStatus.reason === "unsupported") ui.toast("设置已保存；当前浏览器不支持课堂保持亮屏", 3500); else if (ui.config.keepScreenAwake && wakeLockStatus.reason === "request-failed") ui.toast("设置已保存；系统未允许保持亮屏，请检查省电模式或浏览器权限", 4e3); else ui.toast("设置已保存");
     });
     //--------------------------------------
     //            重置为默认
     //--------------------------------------
-        root$4.querySelector("#ykt-btn-settings-reset").addEventListener("click", () => {
+        root$5.querySelector("#ykt-btn-settings-reset").addEventListener("click", async () => {
       if (!confirm("确定要重置为默认设置吗？")) return;
       Object.assign(ui.config, JSON.parse(JSON.stringify(DEFAULT_CONFIG)));
       ensureAIProfiles(ui.config.ai);
-      const active = getActiveProfile$1(ui.config.ai);
-      // 更新表单
-            refreshProfileSelect();
-      loadProfileToForm(active.id);
-      $autoJoin.checked = false;
-      $autoJoinAutoAnswer.checked = true;
-      $auto.checked = ui.config.autoAnswer;
-      $autoAnalyze.checked = !!ui.config.aiAutoAnalyze;
-      $iftex.checked = !!ui.config.iftex;
-      $delay.value = Math.floor(ui.config.autoAnswerDelay / 1e3);
-      $rand.value = Math.floor(ui.config.autoAnswerRandomDelay / 1e3);
-      $priority.checked = !!ui.config.aiSlidePickPriority;
-      $notifyDur.value = 5;
-      $notifyVol.value = 60;
-      $ocrApi.value = ui.config.ai.ocrApi || "";
-      $ocrApiKey.value = ui.config.ai.ocrApiKey || "";
-      $translateApi.value = ui.config.ai.translateApi || "";
-      $translateApiKey.value = ui.config.ai.translateApiKey || "";
-      $translateModel.value = ui.config.ai.translateModel || "";
-      $audioName.textContent = "当前：使用内置“叮-咚”提示音";
+      ui.config.autoJoinEnabled = false;
+      ui.config.autoAnswerOnAutoJoin = true;
+      syncFormFromConfig();
       storage.set("kimiApiKey", "");
       ui.saveConfig();
+      document.getElementById("ykt-btn-bell")?.classList.toggle("active", ui.config.notifyProblems);
       ui.updateAutoAnswerBtn();
+      await screenWakeLock.setEnabled(false);
       ui.toast("设置已重置");
     });
     // 音频设置
@@ -524,7 +850,7 @@
       ui.toast("已清除自定义音频");
     });
     // 测试提醒
-        const $btnTest = root$4.querySelector("#ykt-btn-test-notify");
+        const $btnTest = root$5.querySelector("#ykt-btn-test-notify");
     if ($btnTest) $btnTest.addEventListener("click", () => {
       const mockProblem = {
         problemId: "TEST-001",
@@ -536,14 +862,15 @@
       });
     });
     // 关闭按钮
-        root$4.querySelector("#ykt-settings-close").addEventListener("click", () => showSettingsPanel(false));
-    mounted$5 = true;
-    return root$4;
+        root$5.querySelector("#ykt-settings-close").addEventListener("click", () => showSettingsPanel(false));
+    mounted$6 = true;
+    return root$5;
   }
   function showSettingsPanel(visible = true) {
     mountSettingsPanel();
     const panel = document.getElementById("ykt-settings-panel");
     if (!panel) return;
+    if (visible) syncMountedForm();
     panel.classList.toggle("visible", !!visible);
   }
   function toggleSettingsPanel() {
@@ -1284,8 +1611,8 @@
   }
   const L$2 = (...a) => console.log("[雨课堂助手][DBG][ai]", ...a);
   const W$2 = (...a) => console.warn("[雨课堂助手][WARN][ai]", ...a);
-  let mounted$4 = false;
-  let root$3;
+  let mounted$5 = false;
+  let root$4;
   let preferredSlideFromPresentation = null;
  // 启用来自presentation的页面
     let preferredSlidesFromPresentation = [];
@@ -1515,12 +1842,12 @@
     };
   }
   function mountAIPanel() {
-    if (mounted$4) return root$3;
+    if (mounted$5) return root$4;
     normalizeRepoSlidesKeys$1("ai.mount");
     const host = document.createElement("div");
     host.innerHTML = tpl$4;
     document.body.appendChild(host.firstElementChild);
-    root$3 = document.getElementById("ykt-ai-answer-panel");
+    root$4 = document.getElementById("ykt-ai-answer-panel");
     $$4("#ykt-ai-close")?.addEventListener("click", () => showAIPanel(false));
     $$4("#ykt-ai-ask")?.addEventListener("click", askAIFusionMode);
     waitForVueReady().then(() => {
@@ -1608,13 +1935,13 @@
       renderQuestion();
       renderSelectedPPTPreview();
     });
-    mounted$4 = true;
+    mounted$5 = true;
     L$2("mountAIPanel 完成, cfg.aiSlidePickPriority=", ui?.config?.aiSlidePickPriority);
-    return root$3;
+    return root$4;
   }
   function showAIPanel(v = true) {
     mountAIPanel();
-    root$3.classList.toggle("visible", !!v);
+    root$4.classList.toggle("visible", !!v);
     if (v) {
       renderQuestion();
       if (ui.config.aiAutoAnalyze) queueMicrotask(() => {
@@ -1922,7 +2249,7 @@
     return askAIFusionMode();
   }
   var tpl$3 = '<div id="ykt-presentation-panel" class="ykt-panel">\n  <style>\n    #ykt-presentation-panel .slide-thumb.selected {\n      outline: 2px solid #3b82f6;\n      outline-offset: 2px;\n    }\n  </style>\n  <div class="panel-header">\n    <h3>课件查看</h3>\n    <div class="panel-controls">\n      <label>\n        <input type="checkbox" id="ykt-show-all-slides"> 切换全部页面/问题页面\n      </label>\n      <button id="ykt-ask-current">提问当前PPT</button>\n      <button id="ykt-ocr-current">文字识别</button>\n      <button id="ykt-open-problem-list">题目列表</button>\n      <button id="ykt-download-current">截图下载</button>\n      <button id="ykt-download-pdf">整册下载(PDF)</button>\n      <span class="close-btn" id="ykt-presentation-close"><i class="fas fa-times"></i></span>\n    </div>\n  </div>\n\n  <div class="panel-body">\n    <div class="panel-left">\n      <div id="ykt-presentation-list" class="presentation-list"></div>\n    </div>\n    <div class="panel-right">\n      <div id="ykt-slide-view" class="slide-view">\n        <div class="slide-cover">\n          <div class="empty-message">选择左侧的幻灯片查看详情</div>\n        </div>\n        <div id="ykt-problem-view" class="problem-view"></div>\n      </div>\n      <div id="ykt-ocr-panel" class="ocr-panel">\n        <div class="ocr-head">\n          <span>文字结果</span>\n          <span id="ykt-ocr-status" class="ocr-status">未开始</span>\n        </div>\n        <div id="ykt-ocr-tip" class="ocr-tip">选择课件页后点击“文字识别”。</div>\n        <textarea id="ykt-ocr-result" class="ocr-result" readonly placeholder="识别结果会显示在这里，支持直接复制。"></textarea>\n        <div class="ocr-translate-bar">\n          <label for="ykt-translate-target">目标语言</label>\n          <input type="text" id="ykt-translate-target" class="ocr-target-input" placeholder="默认使用浏览器语言">\n          <button id="ykt-translate-toggle">翻译</button>\n          <span id="ykt-translate-status" class="ocr-status">未翻译</span>\n        </div>\n        <div id="ykt-translate-tip" class="ocr-tip">默认翻译到浏览器语言，也可手动修改目标语言。</div>\n      </div>\n    </div>\n  </div>\n</div>\n';
-  let mounted$3 = false;
+  let mounted$4 = false;
   let host;
   let staticReportReady = false;
  //已结束课程
@@ -2342,7 +2669,7 @@
     return true;
   }
   function mountPresentationPanel() {
-    if (mounted$3) return host;
+    if (mounted$4) return host;
     normalizeRepoSlidesKeys("presentation.mount");
     const wrapper = document.createElement("div");
     wrapper.innerHTML = tpl$3;
@@ -2415,7 +2742,7 @@
       L$1("切换 showAllSlides =", ui.config.showAllSlides);
       updatePresentationList();
     });
-    mounted$3 = true;
+    mounted$4 = true;
     renderOCRState();
     renderTranslationState();
     L$1("mountPresentationPanel 完成");
@@ -3361,25 +3688,25 @@
     detail.appendChild(editorBox);
   }
   // ========== 面板生命周期 ==========
-    let mounted$2 = false;
-  let root$2;
+    let mounted$3 = false;
+  let root$3;
   function mountProblemListPanel() {
-    if (mounted$2) return root$2;
+    if (mounted$3) return root$3;
     const wrap = document.createElement("div");
     wrap.innerHTML = tpl$2;
     document.body.appendChild(wrap.firstElementChild);
-    root$2 = document.getElementById("ykt-problem-list-panel");
+    root$3 = document.getElementById("ykt-problem-list-panel");
     $$2("#ykt-problem-list-close")?.addEventListener("click", () => showProblemListPanel(false));
     window.addEventListener("ykt:open-problem-list", () => showProblemListPanel(true));
-    mounted$2 = true;
+    mounted$3 = true;
     // 首次挂载时就做一次灌入
         hydrateProblemsFromPresentations();
     updateProblemList();
-    return root$2;
+    return root$3;
   }
   function showProblemListPanel(visible = true) {
     mountProblemListPanel();
-    root$2.classList.toggle("visible", !!visible);
+    root$3.classList.toggle("visible", !!visible);
     if (visible) {
       // 面板打开时再做一次灌入
       hydrateProblemsFromPresentations();
@@ -3436,20 +3763,20 @@
     });
   }
   var tpl$1 = '<div id="ykt-active-problems-panel" class="ykt-active-wrapper">\n  <div id="ykt-active-problems" class="active-problems"></div>\n</div>\n';
-  let mounted$1 = false;
-  let root$1;
+  let mounted$2 = false;
+  let root$2;
   function $$1(sel) {
     return document.querySelector(sel);
   }
   function mountActiveProblemsPanel() {
-    if (mounted$1) return root$1;
+    if (mounted$2) return root$2;
     const wrap = document.createElement("div");
     wrap.innerHTML = tpl$1;
     document.body.appendChild(wrap.firstElementChild);
-    root$1 = document.getElementById("ykt-active-problems-panel");
-    mounted$1 = true;
+    root$2 = document.getElementById("ykt-active-problems-panel");
+    mounted$2 = true;
     setInterval(() => updateActiveProblems(), 1e3);
-    return root$1;
+    return root$2;
   }
   function updateActiveProblems() {
     mountActiveProblemsPanel();
@@ -3489,31 +3816,31 @@
       card.appendChild(bar);
       box.appendChild(card);
     });
-    if (!hasActiveProblems) root$1.style.display = "none"; else root$1.style.display = "";
+    if (!hasActiveProblems) root$2.style.display = "none"; else root$2.style.display = "";
   }
-  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>雨课堂助手使用教程</h3>\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\n  </div>\n\n  <div class="panel-body">\n    <div class="tutorial-content">\n      <h4>工具版本</h4>\n      <p>1.21.3</p>\n\n      <h4>功能介绍</h4>\n      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>\n      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">GitHub</a></p>\n      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B-%E6%A8%A1%E5%9D%97%E5%8C%96%E6%9E%84%E5%BB%BA%E7%89%88" target="_blank" rel="noopener">GreasyFork</a></p>\n\n      <h4>工具栏按钮说明</h4>\n      <ul>\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>\n        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面，提问可见内容。</li>\n        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\n        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>\n        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>\n      </ul>\n\n      <h4>自动作答</h4>\n      <ul>\n        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>\n        <li>需要配置 LLM API 密钥。</li>\n        <li>答案来自 AI，结果仅供参考。</li>\n      </ul>\n\n      <h4>AI 解答</h4>\n      <ol>\n        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>\n        <li>每个 AI Profile 可单独设置 Temperature（0–2）；留空时使用模型默认值，不会发送该参数。</li>\n        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>\n      </ol>\n\n      <h4>注意事项</h4>\n      <p>1) 仅供学习参考，请独立思考；</p>\n      <p>2) 合理使用 API 额度；</p>\n      <p>3) 答案不保证 100% 正确；</p>\n      <p>4) 自动作答有一定风险，谨慎开启。</p>\n\n      <h4>联系方式</h4>\n      <ul>\n        <li>请在<a href="https://github.com/ZaytsevZY/yuketang-helper-auto/issues" target="_blank" rel="noopener">GitHub Issues</a>提出问题</li>\n      </ul>\n    </div>\n  </div>\n</div>\n';
-  let mounted = false;
-  let root;
+  var tpl = '<div id="ykt-tutorial-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>雨课堂助手使用教程</h3>\n    <span class="close-btn" id="ykt-tutorial-close"><i class="fas fa-times"></i></span>\n  </div>\n\n  <div class="panel-body">\n    <div class="tutorial-content">\n      <h4>工具版本</h4>\n      <p>1.21.3</p>\n\n      <h4>功能介绍</h4>\n      <p>AI雨课堂助手是一个为雨课堂提供辅助功能的工具，可以帮助你更好地参与课堂互动。</p>\n      <p>项目仓库：<a href="https://github.com/ZaytsevZY/yuketang-helper-auto" target="_blank" rel="noopener">GitHub</a></p>\n      <p>脚本安装：<a href="https://greasyfork.org/zh-CN/scripts/531469-ai%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B-%E6%A8%A1%E5%9D%97%E5%8C%96%E6%9E%84%E5%BB%BA%E7%89%88" target="_blank" rel="noopener">GreasyFork</a></p>\n\n      <h4>工具栏按钮说明</h4>\n      <ul>\n        <li><i class="fas fa-bell"></i> <b>习题提醒</b>：切换是否在新习题出现时显示通知提示（蓝色=开启）。</li>\n        <li><i class="fas fa-file-powerpoint"></i> <b>课件浏览</b>：查看课件与题目页面，提问可见内容。</li>\n        <li><i class="fas fa-robot"></i> <b>AI 解答</b>：向 AI 询问当前题目并显示建议答案。</li>\n        <li><i class="fas fa-magic-wand-sparkles"></i> <b>自动作答</b>：切换自动作答（蓝色=开启）。</li>\n        <li><i class="fas fa-cog"></i> <b>设置</b>：配置 API 密钥与自动作答参数。</li>\n        <li><i class="fas fa-question-circle"></i> <b>使用教程</b>：显示/隐藏当前教程页面。</li>\n      </ul>\n\n      <h4>自动作答</h4>\n      <ul>\n        <li>在设置中开启自动作答并配置延迟/随机延迟。</li>\n        <li>需要配置 LLM API 密钥。</li>\n        <li>答案来自 AI，结果仅供参考。</li>\n      </ul>\n\n      <h4>AI 解答</h4>\n      <ol>\n        <li>点击设置（<i class="fas fa-cog"></i>）填入 API Key。</li>\n        <li>每个 AI Profile 可单独设置 Temperature（0–2）；留空时使用模型默认值，不会发送该参数。</li>\n        <li>点击 AI 解答（<i class="fas fa-robot"></i>）后会对“当前题目/最近遇到的题目”询问并解析。</li>\n      </ol>\n\n      <h4>课堂提醒、手机版与亮屏</h4>\n      <ul>\n        <li>设置中可以分别控制新题、题组发布、课件发布、其他发布、下课以及自动作答的每个阶段；系统通知、页面弹窗和提示音也可单独关闭。</li>\n        <li>打开或翻阅旧课件不会触发课件发布提醒；发布类提醒只提示，不会自动作答或提交。</li>\n        <li>手机进入 <code>/m/v2</code> 时会使用“仅提醒”模式，点击右下角铃铛即可设置提醒和亮屏，不会启动自动作答。</li>\n        <li>系统通知需由浏览器或篡改猴授予权限；脚本不会自动请求或修改系统通知权限。</li>\n        <li>“课堂保持亮屏”仅在可见的课堂页防止自动熄屏，无法阻止手动锁屏、后台冻结或系统省电策略。</li>\n      </ul>\n\n      <h4>注意事项</h4>\n      <p>1) 仅供学习参考，请独立思考；</p>\n      <p>2) 合理使用 API 额度；</p>\n      <p>3) 答案不保证 100% 正确；</p>\n      <p>4) 自动作答有一定风险，谨慎开启。</p>\n\n      <h4>联系方式</h4>\n      <ul>\n        <li>请在<a href="https://github.com/ZaytsevZY/yuketang-helper-auto/issues" target="_blank" rel="noopener">GitHub Issues</a>提出问题</li>\n      </ul>\n    </div>\n  </div>\n</div>\n';
+  let mounted$1 = false;
+  let root$1;
   function $(sel) {
     return document.querySelector(sel);
   }
   function mountTutorialPanel() {
-    if (mounted) return root;
+    if (mounted$1) return root$1;
     const host = document.createElement("div");
     host.innerHTML = tpl;
     document.body.appendChild(host.firstElementChild);
-    root = document.getElementById("ykt-tutorial-panel");
+    root$1 = document.getElementById("ykt-tutorial-panel");
     $("#ykt-tutorial-close")?.addEventListener("click", () => showTutorialPanel(false));
-    mounted = true;
-    return root;
+    mounted$1 = true;
+    return root$1;
   }
   function showTutorialPanel(visible = true) {
     mountTutorialPanel();
-    root.classList.toggle("visible", !!visible);
+    root$1.classList.toggle("visible", !!visible);
   }
   function toggleTutorialPanel() {
     mountTutorialPanel();
-    const vis = root.classList.contains("visible");
+    const vis = root$1.classList.contains("visible");
     showTutorialPanel(!vis);
     const helpBtn = document.getElementById("ykt-btn-help");
     if (helpBtn) helpBtn.classList.toggle("active", !vis);
@@ -3655,17 +3982,26 @@
       window.addEventListener("ykt:open-ai", () => this.showAIPanel(true));
     },
     // 题目提醒
-    notifyProblem(problem, slide) {
+    notifyProblem(problem, slide, notice = {}) {
       try {
+        const titleText = notice.title || "习题已发布";
+        const nativeTitle = notice.nativeTitle || "雨课堂习题提示";
+        const detailText = notice.detail || this.getProblemDetail(problem);
+        const channels = getReminderChannels(this.config);
+        const volume = getReminderVolume(this.config);
         // 1) 原生通知（如果可用，备用，不阻碍自定义弹窗）
-        try {
+                if (channels.native) try {
           this.nativeNotify?.({
-            title: "雨课堂习题提示",
-            text: this.getProblemDetail(problem),
+            title: nativeTitle,
+            text: detailText,
             image: slide?.thumbnail || null,
             timeout: Math.max(2e3, +this.config.notifyPopupDuration || 5e3)
           });
         } catch {}
+        if (!channels.popup) {
+          if (channels.sound) this._playNotifySound(volume);
+          return;
+        }
         // 2) 自定义悬浮弹窗
                 const wrapper = document.createElement("div");
         wrapper.className = "ykt-problem-notify";
@@ -3717,7 +4053,7 @@
           touchAction: "none"
         });
         const title = document.createElement("div");
-        title.textContent = "习题已发布";
+        title.textContent = titleText;
         Object.assign(title.style, {
           fontWeight: "600",
           fontSize: "15px",
@@ -3740,7 +4076,7 @@
         closeBtn.addEventListener("mouseenter", () => closeBtn.style.opacity = "1");
         closeBtn.addEventListener("mouseleave", () => closeBtn.style.opacity = "0.7");
         const detail = document.createElement("pre");
-        detail.textContent = this.getProblemDetail(problem);
+        detail.textContent = detailText;
         Object.assign(detail.style, {
           whiteSpace: "pre-wrap",
           margin: 0,
@@ -3763,10 +4099,44 @@
           wrapper.remove();
         };
         enableNotifyDrag(wrapper, head, el => this._bringToFront(el));
-        this._playNotifySound(+this.config.notifyVolume || .6);
+        if (channels.sound) this._playNotifySound(volume);
       } catch (e) {
         console.warn("[雨课堂助手][WARN][ui.notifyProblem] failed:", e);
       }
+    },
+    /**
+     * Single embedded reminder interface used by desktop and mobile runtimes.
+     * Event selection happens here; delivery selection happens in notifyProblem.
+     */
+    notifyClassroomEvent(event = {}) {
+      if (!isReminderEnabled(event.kind, this.config)) return false;
+      const detail = event.detail || "课堂状态发生了变化";
+      this.notifyProblem(event.problem || {
+        problemId: event.dedupeKey || event.kind || "CLASSROOM_EVENT",
+        body: detail,
+        options: []
+      }, event.slide || null, {
+        title: event.title || "雨课堂提醒",
+        nativeTitle: event.nativeTitle || event.title || "雨课堂提醒",
+        detail: detail
+      });
+      return true;
+    },
+    notifyPublish(event) {
+      const title = event?.title || "课堂内容已发布";
+      const detail = event?.detail || "教师发布了新的课堂内容";
+      const kind = {
+        assessment: "assessment-publish",
+        courseware: "courseware-publish",
+        other: "other-publish"
+      }[event?.category];
+      return this.notifyClassroomEvent({
+        kind: kind,
+        dedupeKey: event?.dedupeKey || "PUBLISH",
+        title: title,
+        nativeTitle: title,
+        detail: detail
+      });
     },
     // 播放自定义提示音  
     _playNotifySound(volume = .6) {
@@ -4155,12 +4525,212 @@
     // 抛给上层，由上层走“直跳 lesson 页”的兜底逻辑
         throw new Error("checkinClass HTTP 400");
   }
+  const ASSESSMENT_MARKERS = [ "problem", "quiz", "exam", "test", "exercise", "paper" ];
+  const COURSEWARE_MARKERS = [ "presentation", "courseware", "ppt", "slide" ];
+  const PUBLISH_ACTION = /^(send|publish|open|start|release)/;
+  const COURSEWARE_PUBLISH_ACTION = /^(send|publish|release)/;
+  const ASSESSMENT_PUBLISH_ACTION = /^(send|publish|start|release)/;
+  const ENTITY_KEYS = [ "quiz", "exam", "test", "exercise", "paper", "problemGroup", "problem_group", "problem", "presentation", "courseware", "activity" ];
+  const NESTED_PAYLOAD_KEYS = [ "data", "payload", "result", "content" ];
+  function normalizeOp(message) {
+    return String(message?.op || message?.type || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+  function includesOneOf(value, markers) {
+    return markers.some(marker => value.includes(marker));
+  }
+  function getEntity(message) {
+    const queue = [ message ];
+    const visited = new Set;
+    let fallback = message && typeof message === "object" ? message : {};
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || typeof current !== "object" || visited.has(current)) continue;
+      visited.add(current);
+      for (const key of ENTITY_KEYS) {
+        const entity = current[key];
+        if (entity && typeof entity === "object") return entity;
+      }
+      for (const key of NESTED_PAYLOAD_KEYS) {
+        const nested = current[key];
+        if (nested && typeof nested === "object") {
+          fallback = nested;
+          if (Array.isArray(nested)) queue.push(...nested); else queue.push(nested);
+        }
+      }
+    }
+    return fallback;
+  }
+  function firstText(source, keys) {
+    for (const key of keys) {
+      const value = source?.[key];
+      if (value === void 0 || value === null || typeof value === "object") continue;
+      if (String(value).trim()) return String(value).trim();
+    }
+    return "";
+  }
+  const IDENTIFIER_KEYS = [ "id", "uuid", "quizId", "quiz_id", "examId", "exam_id", "testId", "test_id", "exerciseId", "exercise_id", "presentationId", "presentation_id", "problemId", "problem_id", "problemid", "presentation", "activityId", "activity_id" ];
+  function findNestedText(source, keys) {
+    const queue = [ source ];
+    const visited = new Set;
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || typeof current !== "object" || visited.has(current)) continue;
+      visited.add(current);
+      const value = firstText(current, keys);
+      if (value) return value;
+      for (const key of NESTED_PAYLOAD_KEYS) {
+        const nested = current[key];
+        if (Array.isArray(nested)) queue.push(...nested); else if (nested && typeof nested === "object") queue.push(nested);
+      }
+    }
+    return "";
+  }
+  function getIdentifier(message, entity, op) {
+    return firstText(entity, IDENTIFIER_KEYS) || findNestedText(message, IDENTIFIER_KEYS) || op;
+  }
+  function getDetail(message, entity) {
+    return firstText(entity, [ "title", "name", "subject", "label", "body" ]) || firstText(message, [ "title", "name", "subject", "label" ]) || "教师发布了新的课堂内容";
+  }
+  function getCategory(op) {
+    if (op === "unlockproblem") return null;
+    if (op === "probleminfo") return "assessment";
+    // 结果、关闭、展示、更新等操作同样会带 problem，不能当成新题发布。
+        if (includesOneOf(op, ASSESSMENT_MARKERS)) return ASSESSMENT_PUBLISH_ACTION.test(op) ? "assessment" : null;
+    // 打开旧课件、翻页等操作也会带 presentation/slide，不能误落入通用发布提醒。
+        if (includesOneOf(op, COURSEWARE_MARKERS)) return COURSEWARE_PUBLISH_ACTION.test(op) ? "courseware" : null;
+    if (PUBLISH_ACTION.test(op)) return "other";
+    return null;
+  }
+  function classifyPublishEvent(message) {
+    const op = normalizeOp(message);
+    const category = getCategory(op);
+    if (!category) return null;
+    const entity = getEntity(message);
+    const id = getIdentifier(message, entity, op);
+    const detail = getDetail(message, entity);
+    const title = {
+      assessment: "考试/测试题组已发布",
+      courseware: "课件已发布",
+      other: "课堂内容已发布"
+    }[category];
+    return {
+      category: category,
+      dedupeKey: `${category}:${id}`,
+      title: title,
+      detail: detail
+    };
+  }
+  function isPublishReminderEnabled(event, config = {}) {
+    if (!event?.category) return false;
+    const kind = {
+      assessment: "assessment-publish",
+      courseware: "courseware-publish",
+      other: "other-publish"
+    }[event.category];
+    return kind ? isReminderEnabled(kind, config) : false;
+  }
+  function getRealtimeEvent(message) {
+    const op = normalizeOp(message);
+    if (op === "fetchtimeline") return {
+      kind: "timeline",
+      timeline: message?.timeline
+    };
+    if (op === "unlockproblem") {
+      const rawProblem = message?.problem;
+      const problem = rawProblem && typeof rawProblem === "object" ? {
+        ...message,
+        ...rawProblem
+      } : {
+        ...message,
+        prob: message?.prob ?? rawProblem ?? message?.problemid
+      };
+      return {
+        kind: "unlockproblem",
+        problem: problem
+      };
+    }
+    if (op === "lessonfinished") return {
+      kind: "lessonfinished"
+    };
+    const event = classifyPublishEvent(message);
+    return event ? {
+      kind: "publish",
+      event: event
+    } : null;
+  }
+  /**
+   * Shares the short de-duplication window used by every realtime reminder.
+   * Different event kinds have their own dedupe keys, so a new question cannot
+   * suppress a courseware notification (or the other way around).
+   */  function createEventReminder({notify: notify, isEnabled: isEnabled = () => true, now: now = () => Date.now(), dedupeMs: dedupeMs = 6e4} = {}) {
+    const seenUntil = new Map;
+    function prune(time) {
+      for (const [key, expiresAt] of seenUntil) if (expiresAt <= time) seenUntil.delete(key);
+    }
+    return {
+      handle(event, config) {
+        if (!event || !event.dedupeKey || !isEnabled(event, config)) return false;
+        const time = now();
+        prune(time);
+        if (seenUntil.has(event.dedupeKey)) return false;
+        seenUntil.set(event.dedupeKey, time + dedupeMs);
+        notify?.(event);
+        return true;
+      }
+    };
+  }
+  function createPublishReminder(options = {}) {
+    return createEventReminder({
+      ...options,
+      isEnabled: options.isEnabled || isPublishReminderEnabled
+    });
+  }
   // src/state/actions.js
     let _autoLoopStarted = false;
   let _autoJoinStarted = false;
   let _autoOnLessonClickStarted = false;
   let _autoOnLessonClickInProgress = false;
   let _routerHooked = false;
+  const publishReminder = createPublishReminder({
+    notify: event => ui.notifyPublish(event)
+  });
+  const problemStartReminder = createEventReminder({
+    notify: event => ui.notifyClassroomEvent(event),
+    isEnabled: (_event, config) => isReminderEnabled("problem-start", config)
+  });
+  const AUTO_ANSWER_EVENT_META = {
+    "auto-answer-scheduled": [ "自动作答已排队", "脚本已为这道题安排自动作答。" ],
+    "auto-answer-started": [ "自动作答开始", "脚本正在处理这道题。" ],
+    "auto-answer-succeeded": [ "自动作答成功", "这道题的答案已提交。" ],
+    "auto-answer-failed": [ "自动作答失败", "这道题未能完成自动作答。" ]
+  };
+  function firstValue(...values) {
+    return values.find(value => value !== void 0 && value !== null && String(value).trim() !== "");
+  }
+  function notifyProblemStart(data, problem, slide) {
+    const payload = data && typeof data === "object" ? data : {};
+    const problemId = firstValue(problem?.problemId, problem?.id, payload.prob, payload.problemId, payload.problemid, payload.problem?.problemId, payload.problem?.id);
+    const detail = problem?.body || payload.body || payload.title || payload.name || "老师已开启一道新题，请打开课堂查看。";
+    return problemStartReminder.handle({
+      kind: "problem-start",
+      dedupeKey: `problem-start:${problemId || payload.sid || payload.dt || "unknown"}`,
+      title: "习题已发布",
+      nativeTitle: "雨课堂习题提示",
+      detail: detail,
+      problem: problem,
+      slide: slide
+    }, ui.config);
+  }
+  function notifyAutoAnswer(kind, problem, detail) {
+    const [title, defaultDetail] = AUTO_ANSWER_EVENT_META[kind] || [ "自动作答提示", "自动作答状态发生变化。" ];
+    return ui.notifyClassroomEvent({
+      kind: kind,
+      dedupeKey: `${kind}:${problem?.problemId || Date.now()}`,
+      title: title,
+      detail: detail || defaultDetail,
+      problem: problem
+    });
+  }
   // 无AI默认答案生成
     function makeDefaultAnswer(problem) {
     switch (problem.problemType) {
@@ -4216,6 +4786,7 @@
       return;
     }
     status.answering = true;
+    notifyAutoAnswer("auto-answer-started", problem);
     try {
       console.log("[雨课堂助手][INFO][AutoAnswer] =================================");
       console.log("[雨课堂助手][INFO][AutoAnswer] 开始自动答题");
@@ -4237,6 +4808,7 @@
                 actions.onAnswerProblem(problem.problemId, parsed);
         status.done = true;
         status.answering = false;
+        notifyAutoAnswer("auto-answer-succeeded", problem, "这道题已使用本地默认答案提交。");
         ui.toast("使用默认答案完成作答（未配置 API Key）", 3e3);
         showAutoAnswerPopup(problem, "（本地默认答案：无 API Key）");
         console.log("[雨课堂助手][INFO][AutoAnswer] 默认答案提交流程结束");
@@ -4255,6 +4827,7 @@
         if (!fallbackImage) {
           status.answering = false;
           console.error("[雨课堂助手][ERR][AutoAnswer] 所有截图方法都失败");
+          notifyAutoAnswer("auto-answer-failed", problem, "无法获取题目图像，已跳过自动作答。");
           return ui.toast("无法获取题目图像，跳过自动作答", 3e3);
         }
         imageBase64 = fallbackImage;
@@ -4273,6 +4846,7 @@
       if (!parsed) {
         status.answering = false;
         console.error("[雨课堂助手][ERR][AutoAnswer] 解析失败，AI回答格式不正确");
+        notifyAutoAnswer("auto-answer-failed", problem, "无法解析 AI 返回的答案，已跳过自动作答。");
         return ui.toast("无法解析AI答案，请检查格式", 3e3);
       }
       console.log("[雨课堂助手][INFO][AutoAnswer] 准备提交答案:", JSON.stringify(parsed));
@@ -4288,18 +4862,20 @@
             actions.onAnswerProblem(problem.problemId, parsed);
       status.done = true;
       status.answering = false;
+      notifyAutoAnswer("auto-answer-succeeded", problem);
       ui.toast(`自动作答完成`, 3e3);
       showAutoAnswerPopup(problem, aiAnswer);
     } catch (e) {
       console.error("[雨课堂助手][ERR][AutoAnswer] 失败:", e);
       console.error("[雨课堂助手][ERR][AutoAnswer] 错误堆栈:", e.stack);
       status.answering = false;
+      notifyAutoAnswer("auto-answer-failed", problem, `自动作答失败：${e?.message || "未知错误"}`);
       ui.toast(`自动作答失败: ${e.message}`, 4e3);
     }
   }
   const actions = {
-    onFetchTimeline(timeline) {
-      for (const piece of timeline) if (piece.type === "problem") this.onUnlockProblem(piece);
+    onFetchTimeline(timeline, options = {}) {
+      for (const piece of Array.isArray(timeline) ? timeline : []) if (piece?.type === "problem") this.onUnlockProblem(piece, options);
     },
     onPresentationLoaded(id, data) {
       repo.setPresentation(id, data);
@@ -4313,45 +4889,58 @@
       }
       ui.updatePresentationList();
     },
-    onUnlockProblem(data) {
-      const problem = repo.problems.get(data.prob);
-      const slide = repo.slides.get(data.sid);
+    onUnlockProblem(data, {notificationOnly: notificationOnly = false} = {}) {
+      const payload = data && typeof data === "object" ? data : {};
+      const problemId = firstValue(payload.prob, payload.problemId, payload.problemid, payload.problem?.problemId, payload.problem?.id, payload.id);
+      const slideId = firstValue(payload.sid, payload.slideId, payload.slide?.id);
+      const problem = repo.problems.get(problemId);
+      const slide = repo.slides.get(slideId);
       if (!problem || !slide) {
+        if (notificationOnly) return notifyProblemStart(payload, problem, slide);
         console.log("[雨课堂助手][ERR][onUnlockProblem] 题目或幻灯片不存在");
-        return;
+        return false;
       }
       console.log("[雨课堂助手][DBG][onUnlockProblem] 题目解锁");
-      console.log("[雨课堂助手][DBG][onUnlockProblem] 题目ID:", data.prob);
-      console.log("[雨课堂助手][DBG][onUnlockProblem] 幻灯片ID:", data.sid);
-      console.log("[雨课堂助手][DBG][onUnlockProblem] 课件ID:", data.pres);
+      console.log("[雨课堂助手][DBG][onUnlockProblem] 题目ID:", problemId);
+      console.log("[雨课堂助手][DBG][onUnlockProblem] 幻灯片ID:", slideId);
+      console.log("[雨课堂助手][DBG][onUnlockProblem] 课件ID:", payload.pres);
       const status = {
-        presentationId: data.pres,
-        slideId: data.sid,
-        startTime: data.dt,
-        endTime: data.dt + 1e3 * data.limit,
+        presentationId: payload.pres,
+        slideId: slideId,
+        startTime: payload.dt,
+        endTime: payload.dt + 1e3 * payload.limit,
         done: !!problem.result,
         autoAnswerTime: null,
         answering: false
       };
-      repo.problemStatus.set(data.prob, status);
+      repo.problemStatus.set(problemId, status);
       if (Date.now() > status.endTime || problem.result) {
         console.log("[雨课堂助手][WARN][onUnlockProblem] 题目已过期或已作答，跳过");
         return;
       }
-      if (ui.config.notifyProblems) ui.notifyProblem(problem, slide);
+      const notified = notifyProblemStart(payload, problem, slide);
+      if (notificationOnly) return notified;
       if (ui.config.autoAnswer) {
         const delay = ui.config.autoAnswerDelay + randInt(0, ui.config.autoAnswerRandomDelay);
         status.autoAnswerTime = Date.now() + delay;
         console.log(`[雨课堂助手][INFO][onUnlockProblem] 将在 ${Math.floor(delay / 1e3)} 秒后自动作答`);
         ui.toast(`将在 ${Math.floor(delay / 1e3)} 秒后使用融合模式自动作答`, 3e3);
+        notifyAutoAnswer("auto-answer-scheduled", problem, `将在约 ${Math.floor(delay / 1e3)} 秒后开始自动作答。`);
       }
       ui.updateActiveProblems();
+      return notified;
+    },
+    onPublishEvent(event) {
+      const notified = publishReminder.handle(event, ui.config);
+      if (notified) console.log("[雨课堂助手][INFO][Publish] 已提醒发布事件:", event.category, event.dedupeKey);
+      return notified;
     },
     onLessonFinished() {
-      ui.nativeNotify({
+      return ui.notifyClassroomEvent({
+        kind: "lesson-finished",
+        dedupeKey: `lesson-finished:${repo.currentLessonId || Date.now()}`,
         title: "下课提示",
-        text: "当前课程已结束",
-        timeout: 5e3
+        detail: "当前课程已结束。"
       });
     },
     onAnswerProblem(problemId, result) {
@@ -4423,6 +5012,7 @@
       repo.loadStoredPresentations();
       this.maybeStartAutoJoin();
       this.installRouterRearm();
+      void screenWakeLock.setEnabled(ui.config.keepScreenAwake);
     },
     startAutoAnswerLoop() {
       if (_autoLoopStarted) return;
@@ -4501,6 +5091,7 @@
         _autoOnLessonClickInProgress = false;
         // 每次路由变更都尝试启动（内部有防重，所以安全）
                 this.maybeStartAutoJoin();
+        void screenWakeLock.sync();
       };
       const wrap = (obj, key) => {
         const orig = obj[key];
@@ -4649,8 +5240,46 @@
             });
     }
   };
+  // src/core/realtime-dispatch.js
+  /**
+   * Converts a raw realtime frame into an action call without coupling the
+   * protocol parser to desktop-only behavior.  The same frame can therefore be
+   * used by the /m/v2 reminder runtime without enabling auto-answer.
+   */  function dispatchRealtimeMessage(message, {getRuntimeMode: getRuntimeMode = () => "desktop", handlers: handlers = {}} = {}) {
+    const realtime = getRealtimeEvent(message);
+    const notificationOnly = getRuntimeMode() === "mobile-reminder";
+    const options = {
+      notificationOnly: notificationOnly
+    };
+    let handled = true;
+    switch (realtime?.kind) {
+     case "timeline":
+      handlers.onFetchTimeline?.(realtime.timeline, options);
+      break;
+
+     case "unlockproblem":
+      handlers.onUnlockProblem?.(realtime.problem, options);
+      break;
+
+     case "publish":
+      handlers.onPublishEvent?.(realtime.event, options);
+      break;
+
+     case "lessonfinished":
+      handlers.onLessonFinished?.(options);
+      break;
+
+     default:
+      handled = false;
+    }
+    return {
+      realtime: realtime,
+      notificationOnly: notificationOnly,
+      handled: handled
+    };
+  }
   // src/net/ws-interceptor.js
-    function installWSInterceptor() {
+    function installWSInterceptor({getRuntimeMode: getRuntimeMode = () => "desktop"} = {}) {
     // 环境识别（标准/荷塘/长江/未知），主要用于日志和后续按需适配
     function detectEnvironmentAndAdaptAPI() {
       const hostname = location.hostname;
@@ -4714,25 +5343,28 @@
             ws.listen(message => {
         try {
           console.log("[雨课堂助手][INFO] WebSocket接收:", message);
-          switch (message.op) {
-           case "fetchtimeline":
-            console.log("[雨课堂助手][INFO] 收到时间线:", message.timeline);
-            actions.onFetchTimeline(message.timeline);
-            break;
-
-           case "unlockproblem":
-            console.log("[雨课堂助手][INFO] 收到解锁问题:", message.problem);
-            actions.onUnlockProblem(message.problem);
-            break;
-
-           case "lessonfinished":
-            console.log("[雨课堂助手][INFO] 课程结束");
-            actions.onLessonFinished();
-            break;
-
-           default:
-            console.log("[雨课堂助手][WARN] 未知WebSocket操作:", message.op, message);
-          }
+          const dispatched = dispatchRealtimeMessage(message, {
+            getRuntimeMode: getRuntimeMode,
+            handlers: {
+              onFetchTimeline(timeline, options) {
+                console.log("[雨课堂助手][INFO] 收到时间线:", message.timeline);
+                actions.onFetchTimeline(timeline, options);
+              },
+              onUnlockProblem(problem, options) {
+                console.log("[雨课堂助手][INFO] 收到解锁问题:", message.problem);
+                actions.onUnlockProblem(problem, options);
+              },
+              onPublishEvent(event, options) {
+                console.log("[雨课堂助手][INFO] 收到课堂发布:", event);
+                actions.onPublishEvent(event, options);
+              },
+              onLessonFinished(options) {
+                console.log("[雨课堂助手][INFO] 课程结束");
+                actions.onLessonFinished(options);
+              }
+            }
+          });
+          if (!dispatched.handled) console.log("[雨课堂助手][WARN] 未知WebSocket操作:", message.op, message);
           // 监听后端传递的url
                     const url = function findUrl(obj) {
             if (!obj || typeof obj !== "object") return null;
@@ -4901,13 +5533,98 @@
       ui.toggleTutorialPanel?.();
     });
   }
+  // src/core/runtime-mode.js
+    function isMobileReminderPath(pathname = "") {
+    return /^\/m\/v2(?:\/|$)/.test(String(pathname));
+  }
+  /** Mobile /m/v2 only monitors classroom events; it never starts auto-answer. */  function getRuntimeMode(pathname = "") {
+    return isMobileReminderPath(pathname) ? "mobile-reminder" : "desktop";
+  }
+  /** Root URLs are redirect entry points, not a full desktop runtime yet. */  function shouldStartDesktopRuntime(pathname = "") {
+    const normalizedPath = String(pathname);
+    return normalizedPath !== "/" && normalizedPath !== "" && getRuntimeMode(normalizedPath) === "desktop";
+  }
+  // src/ui/mobile-reminder-panel.js
+    let mounted = false;
+  let root = null;
+  function optionRow(option) {
+    return `\n    <label class="ykt-mobile-reminder-row">\n      <span class="ykt-mobile-reminder-copy">\n        <strong>${option.label}</strong>\n        <small>${option.detail}</small>\n      </span>\n      <input type="checkbox" data-reminder-field="${option.key}" />\n    </label>`;
+  }
+  function installStyles() {
+    if (document.getElementById("ykt-mobile-reminder-styles")) return;
+    const style = document.createElement("style");
+    style.id = "ykt-mobile-reminder-styles";
+    style.textContent = `\n    #ykt-mobile-reminder-root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }\n    #ykt-mobile-reminder-toggle {\n      position: fixed; right: 16px; bottom: 22px; z-index: 2147483000;\n      width: 52px; height: 52px; border: 0; border-radius: 50%;\n      background: #1368d5; color: #fff; box-shadow: 0 8px 22px rgba(0, 61, 153, .36);\n      font-size: 23px; line-height: 1; touch-action: manipulation;\n    }\n    #ykt-mobile-reminder-sheet {\n      position: fixed; inset: auto 0 0; z-index: 2147483001;\n      max-height: min(82vh, 760px); overflow: auto; box-sizing: border-box;\n      padding: 16px 16px calc(18px + env(safe-area-inset-bottom));\n      background: #f8fbff; color: #16304e; border-radius: 18px 18px 0 0;\n      box-shadow: 0 -12px 30px rgba(5, 42, 89, .22);\n      transform: translateY(105%); transition: transform .18s ease-out;\n      visibility: hidden;\n    }\n    #ykt-mobile-reminder-root.ykt-mobile-reminder-open #ykt-mobile-reminder-sheet {\n      transform: translateY(0); visibility: visible;\n    }\n    .ykt-mobile-reminder-header { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }\n    .ykt-mobile-reminder-header > div { flex: 1; }\n    .ykt-mobile-reminder-header p { margin: 3px 0 0; color: #5e7189; font-size: 12px; line-height: 1.45; }\n    .ykt-mobile-reminder-eyebrow { color: #1368d5; font-weight: 700; font-size: 11px; letter-spacing: .08em; }\n    .ykt-mobile-reminder-header h2 { margin: 1px 0 0; font-size: 20px; color: #102a46; }\n    .ykt-mobile-reminder-close { border: 0; background: transparent; font-size: 26px; color: #5d6c7c; padding: 0 4px; }\n    .ykt-mobile-reminder-section { margin: 13px 0; border: 1px solid #d7e4f5; border-radius: 12px; overflow: hidden; background: #fff; }\n    .ykt-mobile-reminder-section h3 { margin: 0; padding: 10px 12px; color: #254767; background: #eff6ff; font-size: 13px; }\n    .ykt-mobile-reminder-row { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-top: 1px solid #edf2f8; }\n    .ykt-mobile-reminder-row:first-of-type { border-top: 0; }\n    .ykt-mobile-reminder-copy { flex: 1; min-width: 0; }\n    .ykt-mobile-reminder-copy strong { display: block; font-size: 14px; font-weight: 650; }\n    .ykt-mobile-reminder-copy small { display: block; margin-top: 3px; color: #687a8e; font-size: 11px; line-height: 1.35; }\n    .ykt-mobile-reminder-row input[type="checkbox"] { width: 20px; height: 20px; accent-color: #1368d5; flex: 0 0 auto; }\n    .ykt-mobile-reminder-number { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-top: 1px solid #edf2f8; font-size: 13px; }\n    .ykt-mobile-reminder-number label { flex: 1; }\n    .ykt-mobile-reminder-number input { width: 72px; border: 1px solid #c6d7ec; border-radius: 8px; padding: 7px; font-size: 14px; }\n    .ykt-mobile-reminder-actions { display: flex; gap: 8px; margin-top: 14px; }\n    .ykt-mobile-reminder-actions button { flex: 1; min-height: 42px; border-radius: 10px; font-size: 14px; font-weight: 650; }\n    #ykt-mobile-reminder-test { border: 1px solid #9abbe5; background: #fff; color: #155eaf; }\n    #ykt-mobile-reminder-close-sheet { border: 0; background: #1368d5; color: #fff; }\n    #ykt-mobile-reminder-status { min-height: 18px; margin: 8px 2px 0; color: #64778c; font-size: 11px; }\n    @media (prefers-reduced-motion: reduce) {\n      #ykt-mobile-reminder-sheet { transition: none; }\n    }\n  `;
+    document.head.appendChild(style);
+  }
+  function mountMobileReminderPanel() {
+    if (mounted) return root;
+    installStyles();
+    root = document.createElement("div");
+    root.id = "ykt-mobile-reminder-root";
+    root.innerHTML = `\n    <button id="ykt-mobile-reminder-toggle" type="button" aria-label="打开课堂提醒控制" aria-expanded="false">🔔</button>\n    <section id="ykt-mobile-reminder-sheet" aria-label="课堂提醒控制">\n      <header class="ykt-mobile-reminder-header">\n        <div>\n          <div class="ykt-mobile-reminder-eyebrow">CLASSROOM SIGNAL</div>\n          <h2>提醒控制</h2>\n          <p>手机版只监听课堂事件，不会启动自动作答或自动进入课堂。</p>\n        </div>\n        <button class="ykt-mobile-reminder-close" type="button" aria-label="关闭提醒控制">×</button>\n      </header>\n      <div class="ykt-mobile-reminder-section">\n        <label class="ykt-mobile-reminder-row">\n          <span class="ykt-mobile-reminder-copy">\n            <strong>总提醒开关</strong>\n            <small>关闭后，下面的所有课堂事件都不会提醒。</small>\n          </span>\n          <input type="checkbox" data-reminder-field="notifyProblems" />\n        </label>\n      </div>\n      <div class="ykt-mobile-reminder-section">\n        <h3>提醒事件</h3>\n        ${REMINDER_EVENT_OPTIONS.map(optionRow).join("")}\n      </div>\n      <div class="ykt-mobile-reminder-section">\n        <h3>提醒方式</h3>\n        ${REMINDER_CHANNEL_OPTIONS.map(optionRow).join("")}\n        <div class="ykt-mobile-reminder-number">\n          <label for="ykt-mobile-reminder-duration">页面弹窗停留（秒）</label>\n          <input id="ykt-mobile-reminder-duration" type="number" min="2" max="60" inputmode="numeric" />\n        </div>\n        <div class="ykt-mobile-reminder-number">\n          <label for="ykt-mobile-reminder-volume">提示音量（0–100）</label>\n          <input id="ykt-mobile-reminder-volume" type="number" min="0" max="100" inputmode="numeric" />\n        </div>\n      </div>\n      <div class="ykt-mobile-reminder-section">\n        <h3>课堂运行</h3>\n        <label class="ykt-mobile-reminder-row">\n          <span class="ykt-mobile-reminder-copy">\n            <strong>课堂保持亮屏</strong>\n            <small>仅防自动熄屏；锁屏、后台冻结和系统省电策略无法由脚本绕过。</small>\n          </span>\n          <input id="ykt-mobile-reminder-wake-lock" type="checkbox" />\n        </label>\n      </div>\n      <div class="ykt-mobile-reminder-actions">\n        <button id="ykt-mobile-reminder-test" type="button">测试当前提醒方式</button>\n        <button id="ykt-mobile-reminder-close-sheet" type="button">完成</button>\n      </div>\n      <div id="ykt-mobile-reminder-status" role="status"></div>\n    </section>`;
+    document.body.appendChild(root);
+    const $toggle = root.querySelector("#ykt-mobile-reminder-toggle");
+    const $sheet = root.querySelector("#ykt-mobile-reminder-sheet");
+    const $close = root.querySelector(".ykt-mobile-reminder-close");
+    const $closeSheet = root.querySelector("#ykt-mobile-reminder-close-sheet");
+    const $test = root.querySelector("#ykt-mobile-reminder-test");
+    const $status = root.querySelector("#ykt-mobile-reminder-status");
+    const $duration = root.querySelector("#ykt-mobile-reminder-duration");
+    const $volume = root.querySelector("#ykt-mobile-reminder-volume");
+    const $wakeLock = root.querySelector("#ykt-mobile-reminder-wake-lock");
+    const reminderFields = Object.fromEntries([ ...root.querySelectorAll("[data-reminder-field]") ].map(field => [ field.dataset.reminderField, field ]));
+    const setOpen = next => {
+      root.classList.toggle("ykt-mobile-reminder-open", next);
+      $toggle.setAttribute("aria-expanded", String(next));
+      if (next) sync();
+    };
+    const showWakeLockStatus = status => {
+      if (!$wakeLock.checked) $status.textContent = "设置已保存。"; else if (status.reason === "active") $status.textContent = "已请求保持亮屏。"; else if (status.reason === "unsupported") $status.textContent = "当前浏览器不支持保持亮屏。"; else if (status.reason === "request-failed") $status.textContent = "系统未允许保持亮屏，请检查浏览器或省电设置。"; else $status.textContent = "设置已保存；页面可见时会尝试保持亮屏。";
+    };
+    const save = async () => {
+      Object.assign(ui.config, readReminderForm(reminderFields));
+      ui.config.notifyPopupDuration = Math.max(2e3, (+$duration.value || 0) * 1e3);
+      ui.config.notifyVolume = Math.max(0, Math.min(1, (+$volume.value || 0) / 100));
+      ui.config.keepScreenAwake = !!$wakeLock.checked;
+      ui.saveConfig();
+      const wakeLockStatus = await screenWakeLock.setEnabled(ui.config.keepScreenAwake);
+      showWakeLockStatus(wakeLockStatus);
+    };
+    const sync = () => {
+      syncReminderForm(reminderFields, ui.config);
+      $duration.value = Math.floor((ui.config.notifyPopupDuration || 5e3) / 1e3);
+      $volume.value = Math.round(100 * (ui.config.notifyVolume ?? .6));
+      $wakeLock.checked = !!ui.config.keepScreenAwake;
+      $status.textContent = "每项修改会自动保存。";
+    };
+    $toggle.addEventListener("click", () => setOpen(!root.classList.contains("ykt-mobile-reminder-open")));
+    $close.addEventListener("click", () => setOpen(false));
+    $closeSheet.addEventListener("click", () => setOpen(false));
+    $sheet.addEventListener("change", () => {
+      void save();
+    });
+    $test.addEventListener("click", () => {
+      ui.notifyProblem({
+        problemId: "MOBILE-REMINDER-TEST",
+        body: "【测试提醒】当前已按所选提醒方式发送。",
+        options: []
+      }, null, {
+        title: "课堂提醒测试",
+        nativeTitle: "课堂提醒测试"
+      });
+    });
+    sync();
+    mounted = true;
+    return root;
+  }
   // src/index.js
-    (function loadFA() {
+    function loadFA() {
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css";
     document.head.appendChild(link);
-  })();
+  }
   function maybeAutoReloadOnMount() {
     try {
       // If the script is mounted after DOM is already ready, reload once so XHR/WS interceptors can arm early.
@@ -4936,6 +5653,10 @@
             pathname: window.location.pathname,
             hidden: document.hidden
           });
+          if (getRuntimeMode(window.location.pathname) === "mobile-reminder") {
+            console.log("[雨课堂助手][DEBUG] skip reload: mobile reminder mode");
+            return;
+          }
           if (skipLessonPages && /\/lesson\//.test(window.location.pathname)) {
             console.log("[雨课堂助手][DEBUG] skip reload: lesson page");
             return;
@@ -4952,25 +5673,78 @@
       }, intervalMs);
     } catch {}
   }
-  (function main() {
+  let desktopStarted = false;
+  let mobileReminderStarted = false;
+  let runtimeBootQueued = false;
+  function startDesktopRuntime() {
+    if (desktopStarted) return;
+    desktopStarted = true;
     if (maybeAutoReloadOnMount()) return;
     startPeriodicReload({
       intervalMs: 1 * 60 * 1e3,
       onlyWhenHidden: false,
       skipLessonPages: true
     });
-    // 样式/图标
-        injectStyles();
-    // 挂 UI
-        ui._mountAll?.();
-    // 再装网络拦截
-        installWSInterceptor();
+    loadFA();
+    injectStyles();
+    ui._mountAll?.();
     installXHRInterceptor();
-    // 加载工具条
-        installToolbar();
-    // 启动自动作答轮询
-        actions.startAutoAnswerLoop();
-    // 更新课件加载
-        actions.launchLessonHelper();
+    installToolbar();
+    actions.startAutoAnswerLoop();
+    actions.launchLessonHelper();
+  }
+  function startMobileReminderRuntime() {
+    if (mobileReminderStarted) return;
+    mobileReminderStarted = true;
+    mountMobileReminderPanel();
+    void screenWakeLock.setEnabled(ui.config.keepScreenAwake);
+    console.log("[雨课堂助手][INFO] 已启动 /m/v2 手机版仅提醒模式");
+  }
+  function bootCurrentRuntime() {
+    const pathname = window.location.pathname;
+    const mode = getRuntimeMode(pathname);
+    if (mode === "mobile-reminder") {
+      startMobileReminderRuntime();
+      return;
+    }
+    // 根地址只是站点的跳转入口。等待它进入实际路由，避免手机被重定向到
+    // /m/v2 时先启动桌面的自动作答和完整面板。
+        if (shouldStartDesktopRuntime(pathname)) startDesktopRuntime();
+  }
+  function queueRuntimeBoot() {
+    if (runtimeBootQueued) return;
+    runtimeBootQueued = true;
+    const run = () => {
+      runtimeBootQueued = false;
+      bootCurrentRuntime();
+    };
+    if (document.body) Promise.resolve().then(run); else document.addEventListener("DOMContentLoaded", run, {
+      once: true
+    });
+  }
+  function installRuntimeRouteWatcher() {
+    const target = gm.uw || window;
+    const history = target.history;
+    for (const key of [ "pushState", "replaceState" ]) {
+      const original = history?.[key];
+      if (typeof original !== "function") continue;
+      history[key] = function(...args) {
+        const result = original.apply(this, args);
+        queueRuntimeBoot();
+        return result;
+      };
+    }
+    target.addEventListener?.("popstate", queueRuntimeBoot);
+    target.addEventListener?.("hashchange", queueRuntimeBoot);
+  }
+  (function main() {
+    // WebSocket needs to be patched at document-start.  Its mode callback is
+    // evaluated for every received frame, so a root URL redirect to /m/v2 is
+    // safe without a second page refresh.
+    installWSInterceptor({
+      getRuntimeMode: () => getRuntimeMode(window.location.pathname)
+    });
+    installRuntimeRouteWatcher();
+    queueRuntimeBoot();
   })();
 })();

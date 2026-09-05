@@ -50,3 +50,22 @@ test('allows the same group to notify again after the dedupe window', async () =
   assert.equal(reminder.handle(assessment, {}), true);
   assert.equal(notices.length, 2);
 });
+
+test('dedupes repeated new-problem websocket frames independently of publish events', async () => {
+  const { createEventReminder } = await loadPublishReminder();
+  const notices = [];
+  const reminder = createEventReminder({
+    notify: event => notices.push(event),
+    isEnabled: (_event, config) => config.notifyProblemStarts !== false,
+    now: () => 1_000,
+  });
+  const event = {
+    kind: 'problem-start',
+    dedupeKey: 'problem-start:problem-101',
+  };
+
+  assert.equal(reminder.handle(event, {}), true);
+  assert.equal(reminder.handle(event, {}), false);
+  assert.equal(reminder.handle(event, { notifyProblemStarts: false }), false);
+  assert.deepEqual(notices, [event]);
+});

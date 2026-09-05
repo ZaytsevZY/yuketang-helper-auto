@@ -1,6 +1,6 @@
 # ykt-helper 开发文档
 
-> 当前发布版本为 1.21.6，正式用户脚本位于 [`../release/ykt-helper-1216.user.js`](../release/ykt-helper-1216.user.js)。`flat/` 是旧版扁平化实现，不参与当前发布。
+> 当前发布版本为 1.21.3，正式用户脚本位于 [`../release/ykt-helper-1213.user.js`](../release/ykt-helper-1213.user.js)。`flat/` 是旧版扁平化实现，不参与当前发布。
 
 ## 项目构建
 
@@ -17,7 +17,7 @@ npm run dev          # 开发模式（监听文件变化）
 ```
 
 ### 使用方式
-构建后的当前产物是 `dist/ykt-helper-1216.user.js`；发布前将它与根目录的 `../release/ykt-helper-1216.user.js` 保持完全一致，再导入 Tampermonkey。
+构建后的当前产物是 `dist/ykt-helper-1213.user.js`；发布前将它与根目录的 `../release/ykt-helper-1213.user.js` 保持完全一致，再导入 Tampermonkey。不要保留 1214–1216 的独立发布包，本轮所有改动归并到 1.21.3。
 
 ### 本地调试
 `debug/` 目录提供了本地调试环境，无需 Tampermonkey 即可运行 UI。
@@ -47,6 +47,11 @@ src/
 │   └── screenshoot.js         # 页面截图功能（支持Vision模式）
 ├── core/                      # 核心配置
 │   ├── env.js                 # 环境适配器
+│   ├── reminder-preferences.js # 课堂事件与提醒方式开关
+│   ├── realtime-dispatch.js    # 运行模式感知的实时事件分发
+│   ├── runtime-mode.js         # 桌面 / /m/v2 仅提醒模式判定
+│   ├── screen-wake-lock.js     # 可见课堂页的亮屏锁
+│   ├── settings-form.js        # Profile 原子保存与提醒表单同步
 │   ├── storage.js             # 存储管理
 │   ├── vuex-helper.js         # vuex辅助工具，用于获取雨课堂主界面状态
 │   └── types.js               # 类型定义与常量
@@ -69,8 +74,16 @@ src/
     ├── styles.js              # 样式注入
     ├── toast.js               # 提示组件
     ├── toolbar.js             # 工具栏
+    ├── mobile-reminder-panel.js # /m/v2 手机版提醒控制台
     └── ui-api.js              # UI 统一接口
 ```
+
+## 课堂提醒与运行模式
+
+- `reminder-preferences.js` 是唯一的提醒开关定义：总开关、9 个事件开关和系统通知/页面弹窗/声音三种方式开关都由它管理。
+- `ui.notifyClassroomEvent()` 是桌面与手机版共同使用的提醒接口；事件筛选和提醒方式筛选在这里统一生效。
+- `/m/v2` 使用“仅提醒”运行模式，只挂载右下角提醒控制台和可选亮屏，不启动自动作答、自动进入课堂、桌面工具栏或 XHR 自动答题链路。
+- 亮屏基于 Wake Lock，只在页面可见的课堂路径有效；锁屏、后台冻结和系统省电策略不在脚本可控制范围内。
 
 ## 核心功能特性
 

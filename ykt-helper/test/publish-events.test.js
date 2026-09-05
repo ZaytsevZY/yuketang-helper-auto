@@ -136,3 +136,51 @@ test('routes a group publication to the notification path rather than the answer
     },
   });
 });
+
+test('uses the protocol problemid to distinguish successive problem publications', async () => {
+  const { classifyPublishEvent } = await loadPublishEvents();
+
+  const first = classifyPublishEvent({ op: 'publishproblem', problemid: 'problem-101' });
+  const second = classifyPublishEvent({ op: 'publishproblem', problemid: 'problem-102' });
+
+  assert.equal(first.dedupeKey, 'assessment:problem-101');
+  assert.equal(second.dedupeKey, 'assessment:problem-102');
+  assert.notEqual(first.dedupeKey, second.dedupeKey);
+});
+
+test('uses a scalar presentation value as the courseware dedupe key', async () => {
+  const { classifyPublishEvent } = await loadPublishEvents();
+
+  const event = classifyPublishEvent({
+    op: 'publishpresentation',
+    data: { presentation: 'ppt-101' },
+  });
+
+  assert.equal(event.dedupeKey, 'courseware:ppt-101');
+});
+
+test('does not mistake non-publish problem operations for a new assessment', async () => {
+  const { classifyPublishEvent } = await loadPublishEvents();
+
+  for (const op of ['problemresult', 'closeproblem', 'showproblem', 'updateproblem']) {
+    assert.equal(classifyPublishEvent({ op, problem: { id: 'problem-101' } }), null, op);
+  }
+});
+
+test('keeps unlockproblem metadata when the protocol sends a scalar problem id', async () => {
+  const { getRealtimeEvent } = await loadPublishEvents();
+
+  const realtime = getRealtimeEvent({
+    op: 'unlockproblem',
+    problem: 'problem-101',
+    sid: 'slide-5',
+    pres: 'presentation-2',
+    dt: 100,
+    limit: 30,
+  });
+
+  assert.equal(realtime.kind, 'unlockproblem');
+  assert.equal(realtime.problem.prob, 'problem-101');
+  assert.equal(realtime.problem.sid, 'slide-5');
+  assert.equal(realtime.problem.pres, 'presentation-2');
+});

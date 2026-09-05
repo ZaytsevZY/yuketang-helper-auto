@@ -12,7 +12,7 @@ function defaultLocation() {
 }
 
 export function isClassroomPath(pathname = '') {
-  return /\/lesson\/fullscreen\/v3(?:\/|$)|\/v2\/web\/lesson(?:\/|$)/.test(pathname);
+  return /\/lesson\/fullscreen\/v3(?:\/|$)|\/v2\/web\/lesson(?:\/|$)|\/m\/v2(?:\/|$)/.test(pathname);
 }
 
 export function createScreenWakeLock({
@@ -23,6 +23,7 @@ export function createScreenWakeLock({
 } = {}) {
   let enabled = false;
   let sentinel = null;
+  let pendingRequest = null;
   let observedDocument = null;
 
   const report = (active, reason, error) => {
@@ -91,23 +92,37 @@ export function createScreenWakeLock({
 
     if (sentinel && sentinel.released !== true) return report(true, 'active');
     sentinel = null;
+    if (pendingRequest) return pendingRequest;
 
-    let requested;
-    try {
-      requested = await getNavigator().wakeLock.request('screen');
-    } catch (error) {
-      return report(false, 'request-failed', error);
-    }
+    const requestPromise = Promise.resolve().then(async () => {
+      try {
+        let requested;
+        try {
+          requested = await getNavigator().wakeLock.request('screen');
+        } catch (error) {
+          return report(false, 'request-failed', error);
+        }
 
-    const afterRequestReason = inactiveReason();
-    if (afterRequestReason !== 'released') {
-      try { await requested?.release?.(); } catch {}
-      return report(false, afterRequestReason);
-    }
+        // Settings, route, or visibility may change while the browser shows its
+        // permission prompt. Never retain a sentinel that is no longer eligible.
+        const afterRequestReason = inactiveReason();
+        if (afterRequestReason !== 'released') {
+          try { await requested?.release?.(); } catch {}
+          return report(false, afterRequestReason);
+        }
 
-    sentinel = requested;
-    attachSentinel(requested);
-    return report(true, 'active');
+        sentinel = requested;
+        attachSentinel(requested);
+        return report(true, 'active');
+      } finally {
+        // Clear before callers observe completion, so an immediately released
+        // sentinel can always be reacquired by the next sync().
+        if (pendingRequest === requestPromise) pendingRequest = null;
+      }
+    });
+
+    pendingRequest = requestPromise;
+    return requestPromise;
   }
 
   async function setEnabled(nextEnabled) {

@@ -5,8 +5,8 @@
   <a href="https://github.com/ZaytsevZY/yuketang-helper-auto/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="license"/>
   </a>
-  <a href="./release/ykt-helper-1216.user.js">
-    <img src="https://img.shields.io/badge/version-1.21.6-blue.svg" alt="版本">
+  <a href="./release/ykt-helper-1213.user.js">
+    <img src="https://img.shields.io/badge/version-1.21.3-blue.svg" alt="版本">
   </a>
   <a href="#">
     <img src="https://img.shields.io/badge/platform-Chrome%20%7C%20Edge-green.svg" alt="适配平台">
@@ -48,7 +48,7 @@
   - 使用edge，你需要打开**拓展-管理拓展-开发者模式**，再开启篡改猴插件中的**允许注入脚本**和**允许访问文件URL权限**
   - 使用chrome，你需要打开 **（右上角三点）-拓展程序-管理拓展程序-开发者模式**，再开启插件面板中的**允许运行用户脚本**和**允许访问文件网址**
 
-- 使用本 fork 的当前构建时，可直接[安装 1.21.6](https://raw.githubusercontent.com/Frank-678/yuketang-helper-auto/main/release/ykt-helper-1216.user.js)。
+- 可直接[安装上游正式的 1.21.3 发布脚本](https://raw.githubusercontent.com/ZaytsevZY/yuketang-helper-auto/main/release/ykt-helper-1213.user.js)。
 
 - 也可以[安装 GreasyFork 的稳定版本](https://update.greasyfork.org/scripts/531469/AI%E9%9B%A8%E8%AF%BE%E5%A0%82%E5%8A%A9%E6%89%8B.user.js)；它通常不是最新版本。
 
@@ -60,7 +60,7 @@
 
 - 或手动创建新脚本，将 `release/ykt-helper-<版本号>.user.js` 的内容复制到篡改猴的新建脚本中。
 
-- 当前构建版本为 `1.21.6`，支持：
+- 当前构建版本为 `1.21.3`，支持：
 
   - `148.0.7778.98-chrome`及以下的chrome
 
@@ -88,7 +88,13 @@
 
 - 继承原版脚本的上课/下课/习题提示，防止上课摸鱼错过习题。（需要打开浏览器）
 
-- 设置中可分别选择是否提醒考试/测试题组、课件和其他无法分类的课堂发布；打开或翻阅旧课件不会触发课件发布提醒，提醒只提示，不会自动作答或提交。
+- 设置中可分别选择是否提醒：新题/答题开始、考试/测试题组发布、课件发布、其他发布、下课，以及自动作答的排队、开始、成功、失败；系统通知、页面弹窗和提示声音也都可以单独关闭。工具栏铃铛仍是总开关。
+
+- 打开或翻阅旧课件不会触发课件发布提醒；发布类提醒只提示，不会自动作答或提交。
+
+- 手机进入 `/m/v2` 时会启用“仅提醒”模式：右下角铃铛可打开同一套细分提醒开关和亮屏设置，且不会启动自动作答或自动进入课堂。
+
+- 若启用“系统通知”，还需要在 Edge/浏览器的应用通知设置中允许通知；脚本不会自行申请或改变系统权限。
 
 - 可选开启“课堂保持亮屏”，仅在可见的课堂页防止自动熄屏；手动锁屏、切换后台后的冻结和系统省电限制无法绕过。
 
@@ -199,13 +205,7 @@
 
 ---
 
-- 1.21.6: 修复打开或翻阅旧课件时被误判为“课件发布”并重复提醒的问题
-
-- 1.21.5: 新增可分别开关的考试/测试题组、课件及其他发布提醒；新增课堂保持亮屏（仅防自动熄屏）
-
-- 1.21.4: 修复直接打开雨课堂入口网址后，脚本需手动刷新才生效的问题
-
-- 1.21.3: 每个 AI Profile 支持独立 Temperature；留空时使用模型默认值
+- 1.21.3: 汇总 Profile Temperature、入口页与 `/m/v2` 注入、细分课堂提醒、发布事件去重与误报修复、课堂保持亮屏；手机版为仅提醒模式
 
 - 1.21.2: 适配所有雨课堂服务器网页
 

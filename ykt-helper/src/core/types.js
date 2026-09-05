@@ -1,5 +1,5 @@
 // src/core/types.js
-import { PUBLISH_REMINDER_DEFAULTS } from './publish-events.js';
+import { REMINDER_DEFAULTS } from './reminder-preferences.js';
 
 export const PROBLEM_TYPE_MAP = {
   1: '单选题',
@@ -10,8 +10,7 @@ export const PROBLEM_TYPE_MAP = {
 };
 
 export const DEFAULT_CONFIG = {
-  notifyProblems: true,
-  ...PUBLISH_REMINDER_DEFAULTS,
+  ...REMINDER_DEFAULTS,
   autoAnswer: false,
   autoAnswerDelay: 3000,
   autoAnswerRandomDelay: 2000,
