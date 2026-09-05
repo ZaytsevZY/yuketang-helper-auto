@@ -51,6 +51,15 @@ interface AiConnectionDraft {
   apiKey: string;
 }
 
+type AiProviderId =
+  'moonshot' | 'deepseek' | 'openai' | 'openrouter' | 'custom';
+
+interface AiProviderPreset {
+  id: AiProviderId;
+  name: string;
+  baseUrl?: string;
+}
+
 interface AiProfileSelectionDraft {
   model: string;
   visionModel: string;
@@ -91,6 +100,31 @@ const selectedSlideId = ref('');
 const settings = ref<AppSettings>();
 const settingsDraft = ref<SettingsDraft>();
 const aiProfiles = ref<readonly AiProfileView[]>([]);
+const aiProviderPresets: readonly AiProviderPreset[] = [
+  {
+    id: 'moonshot',
+    name: 'Moonshot AI',
+    baseUrl: 'https://api.moonshot.cn/v1',
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com',
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+  },
+  { id: 'custom', name: 'Custom（自定义）' },
+];
+const aiProviderId = ref<AiProviderId>('moonshot');
+const customAiBaseUrl = ref('');
 const aiConnectionDraft = ref<AiConnectionDraft>({
   baseUrl: 'https://api.moonshot.cn/v1',
   apiKey: '',
@@ -657,6 +691,18 @@ function applyProfiles(value: readonly AiProfileView[]): void {
       },
     ]),
   );
+}
+
+function changeAiProvider(event: Event): void {
+  const nextProviderId = (event.target as HTMLSelectElement)
+    .value as AiProviderId;
+  if (aiProviderId.value === 'custom') {
+    customAiBaseUrl.value = aiConnectionDraft.value.baseUrl;
+  }
+  aiProviderId.value = nextProviderId;
+  aiConnectionDraft.value.baseUrl =
+    aiProviderPresets.find((provider) => provider.id === nextProviderId)
+      ?.baseUrl ?? customAiBaseUrl.value;
 }
 
 async function selectAiProfile(id: string): Promise<void> {
@@ -1610,10 +1656,25 @@ function clamp(value: number, min: number, max: number): number {
               <legend>连接模型服务</legend>
               <div class="provider-connect">
                 <label class="field-label">
-                  Base URL
+                  模型厂商
+                  <select :value="aiProviderId" @change="changeAiProvider">
+                    <option
+                      v-for="provider in aiProviderPresets"
+                      :key="provider.id"
+                      :value="provider.id"
+                    >
+                      {{ provider.name }}
+                    </option>
+                  </select>
+                </label>
+                <label class="field-label">
+                  {{
+                    aiProviderId === 'custom' ? 'Custom Base URL' : 'Base URL'
+                  }}
                   <input
                     v-model="aiConnectionDraft.baseUrl"
                     type="url"
+                    :readonly="aiProviderId !== 'custom'"
                     placeholder="https://api.example.com/v1"
                   />
                 </label>
@@ -2841,6 +2902,11 @@ button:focus-visible {
 
 .provider-connect .field-label {
   margin-top: 0;
+}
+
+.provider-connect input[readonly] {
+  color: var(--text-muted);
+  background: var(--surface-subtle);
 }
 
 .profile-pool-heading {

@@ -7,6 +7,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  net,
   Notification,
   shell,
   type WebContents,
@@ -24,7 +25,7 @@ import {
   type TranslateTextInput,
   type UpdateAiProfileSelectionInput,
 } from '@ykt/contracts';
-import { YuketangActiveClient } from '@ykt/routing';
+import { YuketangActiveClient, type LessonSocket } from '@ykt/routing';
 import {
   DiskResourceCache,
   FileSecretStore,
@@ -33,6 +34,7 @@ import {
 
 import { BrowserController } from './browser-controller.js';
 import { isAllowedYuketangUrl } from './browser-policy.js';
+import { ChromiumHttpTransport } from './chromium-http-transport.js';
 import { ElectronSessionCredentialSource } from './electron-session-credentials.js';
 import { ElectronSafeStorageCodec } from './electron-safe-storage-codec.js';
 import { NetworkLabController } from './network-lab-controller.js';
@@ -684,6 +686,10 @@ async function createWindow(): Promise<void> {
         browserController.webContents,
         secretStore,
       ),
+      transport: new ChromiumHttpTransport(
+        browserController.webContents.session,
+      ),
+      socketFactory: (url) => new net.WebSocket(url) as unknown as LessonSocket,
       recorder: networkLabController.recorder,
     }),
   });

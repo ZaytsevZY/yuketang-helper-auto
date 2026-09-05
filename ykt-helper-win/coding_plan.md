@@ -386,6 +386,7 @@ Skills 不直接访问数据库或 Routing 内部模块，只调用公开 CLI。
 - 实现统一 SessionManager。
 - 实现 standard、pro、changjiang host adapters。
 - 实现用户信息、on-lesson、checkin、presentation、answer 和 retry。
+- 桌面端主动 HTTP 复用嵌入网页的持久化 Electron Session，HTTP 与独立 WebSocket 均通过 Chromium 网络栈发送。
 - 实现独立课堂 WebSocket、断线重连、事件去重和优雅退出。
 - 对比网页真实请求与 Active Client 请求。
 - 统一 problemId 类型、时间戳单位和 Token 生命周期。
