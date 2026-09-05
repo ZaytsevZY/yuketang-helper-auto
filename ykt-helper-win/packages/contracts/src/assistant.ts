@@ -21,6 +21,7 @@ export interface AiProfileConfig {
   readonly [key: string]: AiProfileValue;
   readonly id: string;
   readonly name: string;
+  readonly providerId: string;
   readonly baseUrl: string;
   readonly model: string;
   readonly visionModel: string;
@@ -37,6 +38,7 @@ export interface AiProfileView extends AiProfileConfig {
 export interface ConnectAiProfileInput {
   readonly baseUrl: string;
   readonly apiKey: string;
+  readonly providerId?: string;
 }
 
 export interface UpdateAiProfileSelectionInput {
@@ -54,9 +56,14 @@ export interface GenerateAnswerProposalInput {
 }
 
 export interface AnswerProposal {
+  readonly id: string;
   readonly problemId: string;
+  readonly status: 'ready' | 'failed';
   readonly answer: AnswerValue | null;
   readonly explanation: string;
+  readonly confidence: number | null;
+  readonly failureReason: string | null;
+  readonly validationIssues: readonly string[];
   readonly rawText: string;
   readonly profileId: string;
   readonly model: string;

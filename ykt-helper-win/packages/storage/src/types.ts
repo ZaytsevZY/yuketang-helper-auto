@@ -9,7 +9,11 @@ import type {
 
 export interface CachedDocument {
   key: string;
-  kind: 'presentation' | 'courseware';
+  kind:
+    | 'presentation'
+    | 'courseware'
+    | 'answer-proposal'
+    | 'answer-proposal-outcome';
   value: JsonValue;
   updatedAt: string;
   expiresAt: string | null;

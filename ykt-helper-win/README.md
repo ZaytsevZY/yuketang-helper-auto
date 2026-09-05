@@ -1,6 +1,6 @@
 # 雨课堂助手桌面版
 
-当前已完成 `coding_plan.md` 的 M0 至 M5。程序可在独立的 `WebContentsView` 中登录和浏览雨课堂，观察、脱敏和导出网络记录；Backend 可复用受控浏览器会话，主动读取课堂和课件、连接课堂 WebSocket，并通过统一 Facade 验证和提交人工答案。设置、用户、日志和课件索引可在重启后恢复。
+当前已完成 `coding_plan.md` 的 M0 至 M6 与 M8，M7 暂时跳过。程序可在独立的 `WebContentsView` 中登录和浏览雨课堂，观察、脱敏和导出网络记录；Backend 可复用受控浏览器会话，主动读取课堂和课件、连接课堂 WebSocket，并通过统一 Facade 验证和提交人工答案。设置、用户、日志、课件索引及 AI 建议审计记录可在重启后恢复。
 
 ## 开发命令
 
@@ -96,3 +96,11 @@ npm start -- --portable
 ```
 
 `--debug-profile` 使用独立调试数据目录；`--portable` 将整个 Electron userData（包括 Cookie、网页缓存和应用数据库）放到可执行文件旁的 `ykt-helper-data`。
+
+## AI 工作流
+
+M8 将模型调用收敛到统一 `AiProviderPlugin` 接口，默认提供 OpenAI-compatible 实现。Provider 只负责模型发现和文本生成，无权调用答题提交服务；其他协议可以通过注入同一接口接入。
+
+题目分析会返回结构化 `AnswerProposal`，包含建议状态、答案、解释、上下文来源、置信度、校验问题和失败原因。每条建议会写入 SQLite；手动采用建议后仍需在题目页校验并确认，提交记录会保存建议答案与最终答案的差异及确认主体。
+
+软件默认启用 AI，不提供单独的 LLM 总开关。开启“自动确认提交”后，新题会由 Agent 调用模型、校验答案并直接提交，相关日志以 `confirmedBy: agent` 标记；未配置模型或调用失败不会阻断课堂和人工答题功能。

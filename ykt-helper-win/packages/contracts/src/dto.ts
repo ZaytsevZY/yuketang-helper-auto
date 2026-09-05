@@ -68,6 +68,17 @@ export interface AnswerInput {
   answer: string | AnswerValue;
   forceRetry?: boolean;
   idempotencyKey?: string;
+  proposalId?: string;
+  confirmedBy?: 'user' | 'agent';
+}
+
+export interface AnswerProposalOutcome {
+  proposalId: string;
+  confirmedBy: 'user' | 'agent';
+  proposedAnswer: AnswerValue | null;
+  submittedAnswer: AnswerValue;
+  changed: boolean;
+  submittedAt: string;
 }
 
 export interface ValidationResult {
@@ -80,4 +91,5 @@ export interface SubmissionResult {
   problemId: string;
   status: 'submitted' | 'rejected';
   submittedAt: string;
+  proposalOutcome?: AnswerProposalOutcome;
 }

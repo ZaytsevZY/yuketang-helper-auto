@@ -383,7 +383,12 @@ function assertAnswerInput(value: unknown): asserts value is AnswerInput {
   if (
     typeof input.problemId !== 'string' ||
     !validAnswer ||
-    (input.forceRetry !== undefined && typeof input.forceRetry !== 'boolean')
+    (input.forceRetry !== undefined && typeof input.forceRetry !== 'boolean') ||
+    (input.proposalId !== undefined && typeof input.proposalId !== 'string') ||
+    (input.confirmedBy !== undefined &&
+      input.confirmedBy !== 'user' &&
+      input.confirmedBy !== 'agent') ||
+    (input.confirmedBy !== undefined && input.proposalId === undefined)
   ) {
     throw new Error('Invalid answer input.');
   }
@@ -395,7 +400,8 @@ function assertConnectAiProfileInput(
   if (
     !isRecord(value) ||
     typeof value.baseUrl !== 'string' ||
-    typeof value.apiKey !== 'string'
+    typeof value.apiKey !== 'string' ||
+    (value.providerId !== undefined && typeof value.providerId !== 'string')
   ) {
     throw new Error('Invalid AI connection.');
   }

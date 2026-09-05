@@ -46,6 +46,8 @@ import {
 import { ActiveLessonService } from './services/active-lesson-service.js';
 import { AiService } from './services/ai-service.js';
 import { ProblemService } from './services/problem-service.js';
+import { OpenAiCompatibleProvider } from './llm/openai-compatible-provider.js';
+import type { AiProviderPlugin } from './llm/provider.js';
 
 const VERSION = '0.1.0';
 
@@ -145,12 +147,23 @@ class BaselineFacade implements YuketangFacade {
   async generateAnswerProposal(
     input: GenerateAnswerProposalInput,
   ): Promise<AnswerProposal> {
-    return this.withLog(
-      'ai',
-      'AI 答案建议已生成。',
-      () => this.ai.generateProposal(input),
-      { problemId: input.problemId },
-    );
+    const proposal = await this.ai.generateProposal(input);
+    await this.storage.appendLog({
+      level: proposal.status === 'ready' ? 'info' : 'warn',
+      scope: 'ai',
+      message:
+        proposal.status === 'ready'
+          ? 'AI 答案建议已生成。'
+          : 'AI 答案建议生成失败。',
+      details: {
+        problemId: input.problemId,
+        proposalId: proposal.id,
+        ...(proposal.failureReason
+          ? { failureReason: proposal.failureReason }
+          : {}),
+      },
+    });
+    return proposal;
   }
 
   async recognizeSlide(
@@ -240,7 +253,10 @@ class BaselineFacade implements YuketangFacade {
       'answer',
       '答案已校验。',
       async () => this.problems.validateAnswer(input),
-      { problemId: input.problemId },
+      {
+        problemId: input.problemId,
+        ...(input.confirmedBy ? { confirmedBy: input.confirmedBy } : {}),
+      },
     );
   }
 
@@ -248,9 +264,48 @@ class BaselineFacade implements YuketangFacade {
     if (this.activeLessons) {
       return this.withLog(
         'answer',
-        '答案已提交。',
-        () => this.activeLessons!.submitAnswer(input),
-        { problemId: input.problemId },
+        input.confirmedBy === 'agent' ? 'Agent 答案已提交。' : '答案已提交。',
+        async () => {
+          if (input.confirmedBy && !input.proposalId) {
+            throw new Error('确认主体只能用于关联的 AI 建议。');
+          }
+          const proposal = input.proposalId
+            ? await this.ai.getProposal(input.proposalId)
+            : null;
+          if (input.proposalId && !proposal) {
+            throw new Error('关联的 AI 建议不存在。');
+          }
+          if (proposal && proposal.problemId !== input.problemId) {
+            throw new Error('AI 建议与当前题目不匹配。');
+          }
+          if (proposal && proposal.status !== 'ready') {
+            throw new Error('失败的 AI 建议不能用于提交。');
+          }
+          if (proposal && !input.confirmedBy) {
+            throw new Error('采用 AI 建议提交时必须明确确认主体。');
+          }
+          const result = await this.activeLessons!.submitAnswer(input);
+          if (!proposal || result.status !== 'submitted') return result;
+          const submittedAnswer = this.problems.validateAnswer({
+            ...input,
+            forceRetry: true,
+          }).normalizedAnswer;
+          if (!submittedAnswer) return result;
+          return {
+            ...result,
+            proposalOutcome: await this.ai.recordOutcome(
+              proposal,
+              input,
+              submittedAnswer,
+              result.submittedAt,
+            ),
+          };
+        },
+        {
+          problemId: input.problemId,
+          ...(input.proposalId ? { proposalId: input.proposalId } : {}),
+          ...(input.confirmedBy ? { confirmedBy: input.confirmedBy } : {}),
+        },
       );
     }
     throw new YuketangError({
@@ -301,6 +356,7 @@ export interface BackendRuntimeOptions {
   resourceCache?: ResourceCache;
   secretStore?: SecretStore;
   fetcher?: typeof fetch;
+  aiProviders?: readonly AiProviderPlugin[];
 }
 
 export class BackendRuntime {
@@ -327,12 +383,10 @@ export class BackendRuntime {
         )
       : undefined;
     const problems = new ProblemService(this.lessons);
-    const ai = new AiService(
-      this.dataStore,
-      this.secretStore,
-      problems,
-      options.fetcher,
-    );
+    const ai = new AiService(this.dataStore, this.secretStore, problems, [
+      ...(options.aiProviders ?? []),
+      new OpenAiCompatibleProvider(options.fetcher),
+    ]);
     this.facade = new BaselineFacade(
       () => this.status(),
       options.routing ?? new EmptyRoutingService(),

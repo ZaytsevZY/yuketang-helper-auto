@@ -1,13 +1,18 @@
+import { randomUUID } from 'node:crypto';
+
 import {
   ProblemType,
   type AiModelInfo,
   type AiProfileConfig,
   type AiProfileView,
+  type AnswerInput,
   type AnswerProposal,
+  type AnswerProposalOutcome,
   type AnswerValue,
   type ConnectAiProfileInput,
   type GenerateAnswerProposalInput,
   type GeneratedTextResult,
+  type JsonValue,
   type ProblemContext,
   type RecognizeSlideInput,
   type TranslateTextInput,
@@ -15,16 +20,18 @@ import {
 } from '@ykt/contracts';
 import type { AppDataStore, SecretStore } from '@ykt/storage';
 
+import {
+  OPENAI_COMPATIBLE_PROVIDER_ID,
+  type AiProviderPlugin,
+} from '../llm/provider.js';
 import type { ProblemService } from './problem-service.js';
-
-type Fetcher = typeof fetch;
 
 export class AiService {
   constructor(
     private readonly storage: AppDataStore,
     private readonly secrets: SecretStore,
     private readonly problems: ProblemService,
-    private readonly fetcher: Fetcher = fetch,
+    private readonly providers: readonly AiProviderPlugin[],
   ) {}
 
   async listProfiles(): Promise<readonly AiProfileView[]> {
@@ -38,12 +45,23 @@ export class AiService {
     const baseUrl = normalizeBaseUrl(input.baseUrl);
     const apiKey = input.apiKey.trim();
     if (!apiKey) throw new Error('API Key 不能为空。');
-    const models = await this.discoverModels(baseUrl, apiKey);
+    const providerId = input.providerId ?? OPENAI_COMPATIBLE_PROVIDER_ID;
+    const provider = this.provider(providerId);
+    const models = await provider.discoverModels({ baseUrl, apiKey });
     const current = await this.profiles();
-    const existing = current.find((profile) => profile.baseUrl === baseUrl);
+    const existing = current.find(
+      (profile) =>
+        profile.baseUrl === baseUrl && profile.providerId === providerId,
+    );
     const id =
       existing?.id ?? uniqueProfileId(profileName(models, baseUrl), current);
-    const profile = profileFromDiscovery(id, baseUrl, models, existing);
+    const profile = profileFromDiscovery(
+      id,
+      providerId,
+      baseUrl,
+      models,
+      existing,
+    );
     const profiles = existing
       ? current.map((item) => (item.id === id ? profile : item))
       : [...current, profile];
@@ -59,9 +77,13 @@ export class AiService {
     const profiles = await this.profiles();
     const existing = requireProfile(profiles, id);
     const apiKey = await this.requireCredential(id);
-    const models = await this.discoverModels(existing.baseUrl, apiKey);
+    const models = await this.provider(existing.providerId).discoverModels({
+      baseUrl: existing.baseUrl,
+      apiKey,
+    });
     const profile = profileFromDiscovery(
       id,
+      existing.providerId,
       existing.baseUrl,
       models,
       existing,
@@ -142,32 +164,107 @@ export class AiService {
     input: GenerateAnswerProposalInput,
   ): Promise<AnswerProposal> {
     const problem = this.problems.getProblem(input.problemId);
-    const profile = await this.activeProfile();
-    const apiKey = await this.requireCredential(profile.id);
     const images = (input.imageUrls ?? []).filter(Boolean).slice(0, 6);
-    const model = images.length
-      ? profile.visionModel || profile.model
-      : profile.model;
-    const rawText = await this.complete({
-      url: chatCompletionsUrl(profile.baseUrl),
-      apiKey,
-      model,
-      messages: answerMessages(problem, images, input.customPrompt ?? ''),
-    });
-    const parsed = parseAnswer(problem, rawText);
-    return {
-      problemId: problem.id,
-      answer: parsed.answer,
-      explanation: parsed.explanation,
-      rawText,
-      profileId: profile.id,
-      model,
-      contextSources: [
-        `problem:${problem.id}`,
-        ...images.map((_url, index) => `slide-image:${index + 1}`),
-      ],
-      createdAt: new Date().toISOString(),
+    const contextSources = [
+      `problem:${problem.id}`,
+      ...images.map((_url, index) => `slide-image:${index + 1}`),
+    ];
+    let profile: AiProfileConfig | undefined;
+    let model = '';
+    try {
+      profile = await this.activeProfile();
+      model = images.length
+        ? profile.visionModel || profile.model
+        : profile.model;
+      const rawText = await this.provider(profile.providerId).complete({
+        baseUrl: profile.baseUrl,
+        apiKey: await this.requireCredential(profile.id),
+        model,
+        messages: answerMessages(problem, images, input.customPrompt ?? ''),
+        temperature: 1,
+      });
+      const parsed = parseProposal(problem, rawText);
+      const validation = parsed.answer
+        ? this.problems.validateAnswer({
+            problemId: problem.id,
+            answer: parsed.answer,
+          })
+        : undefined;
+      const validationIssues = validation?.issues ?? [];
+      const failureReason =
+        parsed.failureReason ||
+        (!parsed.answer
+          ? '模型没有返回可用答案。'
+          : validation && !validation.valid
+            ? '模型建议未通过答案校验。'
+            : null);
+      return this.saveProposal({
+        id: randomUUID(),
+        problemId: problem.id,
+        status: failureReason ? 'failed' : 'ready',
+        answer: validation?.normalizedAnswer ?? parsed.answer,
+        explanation: parsed.explanation,
+        confidence: parsed.confidence,
+        failureReason,
+        validationIssues,
+        rawText,
+        profileId: profile.id,
+        model,
+        contextSources,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      return this.saveProposal({
+        id: randomUUID(),
+        problemId: problem.id,
+        status: 'failed',
+        answer: null,
+        explanation: '',
+        confidence: null,
+        failureReason:
+          error instanceof Error ? error.message : 'AI 答案建议生成失败。',
+        validationIssues: [],
+        rawText: '',
+        profileId: profile?.id ?? '',
+        model,
+        contextSources,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  async getProposal(id: string): Promise<AnswerProposal | null> {
+    const document = await this.storage.getDocument(proposalKey(id));
+    return document?.kind === 'answer-proposal'
+      ? parseStoredProposal(document.value)
+      : null;
+  }
+
+  async recordOutcome(
+    proposal: AnswerProposal,
+    input: AnswerInput,
+    submittedAnswer: AnswerValue,
+    submittedAt: string,
+  ): Promise<AnswerProposalOutcome> {
+    if (!input.confirmedBy) {
+      throw new Error('采用 AI 建议提交时必须明确确认主体。');
+    }
+    const outcome: AnswerProposalOutcome = {
+      proposalId: proposal.id,
+      confirmedBy: input.confirmedBy,
+      proposedAnswer: proposal.answer,
+      submittedAnswer,
+      changed: !sameAnswer(proposal.answer, submittedAnswer),
+      submittedAt,
     };
+    await this.storage.putDocument({
+      key: outcomeKey(proposal.id),
+      kind: 'answer-proposal-outcome',
+      value: toJsonValue(outcome),
+      updatedAt: submittedAt,
+      expiresAt: null,
+    });
+    return outcome;
   }
 
   async recognizeSlide(
@@ -176,8 +273,8 @@ export class AiService {
     const profile = await this.activeProfile();
     const apiKey = await this.requireCredential(profile.id);
     const model = profile.ocrModel || profile.visionModel || profile.model;
-    const text = await this.complete({
-      url: chatCompletionsUrl(profile.baseUrl),
+    const text = await this.provider(profile.providerId).complete({
+      baseUrl: profile.baseUrl,
       apiKey,
       model,
       messages: [
@@ -209,8 +306,8 @@ export class AiService {
     const profile = await this.activeProfile();
     const apiKey = await this.requireCredential(profile.id);
     const model = profile.translationModel || profile.model;
-    const text = await this.complete({
-      url: chatCompletionsUrl(profile.baseUrl),
+    const text = await this.provider(profile.providerId).complete({
+      baseUrl: profile.baseUrl,
       apiKey,
       model,
       messages: [
@@ -273,57 +370,23 @@ export class AiService {
     return value;
   }
 
-  private async discoverModels(
-    baseUrl: string,
-    apiKey: string,
-  ): Promise<readonly AiModelInfo[]> {
-    const response = await this.fetcher(modelsUrl(baseUrl), {
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${apiKey}`,
-      },
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        throw new Error('API Key 无效或没有读取模型的权限。');
-      }
-      if (response.status === 404) {
-        throw new Error('Base URL 不正确，未找到 /models 接口。');
-      }
-      throw new Error(`模型发现失败：HTTP ${response.status}`);
-    }
-    const models = parseModelList(await response.json());
-    if (!models.length) throw new Error('/models 没有返回可用模型。');
-    return models;
+  private provider(id: string): AiProviderPlugin {
+    const provider = this.providers.find((item) => item.id === id);
+    if (!provider) throw new Error(`AI Provider 未注册：${id}`);
+    return provider;
   }
 
-  private async complete(input: {
-    url: string;
-    apiKey: string;
-    model: string;
-    messages: readonly unknown[];
-  }): Promise<string> {
-    const response = await this.fetcher(validateEndpoint(input.url), {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${input.apiKey}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: input.model,
-        messages: input.messages,
-        temperature: 1,
-      }),
-      signal: AbortSignal.timeout(60_000),
+  private async saveProposal(
+    proposal: AnswerProposal,
+  ): Promise<AnswerProposal> {
+    await this.storage.putDocument({
+      key: proposalKey(proposal.id),
+      kind: 'answer-proposal',
+      value: toJsonValue(proposal),
+      updatedAt: proposal.createdAt,
+      expiresAt: null,
     });
-    if (!response.ok) {
-      throw new Error(`AI 接口请求失败：HTTP ${response.status}`);
-    }
-    const value: unknown = await response.json();
-    const content = responseContent(value);
-    if (!content) throw new Error('AI 接口未返回文本内容。');
-    return content;
+    return proposal;
   }
 }
 
@@ -350,6 +413,8 @@ function validateStoredProfile(value: AiProfileConfig): AiProfileConfig {
   return {
     id,
     name: String(record.name ?? '').trim() || id,
+    providerId:
+      String(record.providerId ?? '').trim() || OPENAI_COMPATIBLE_PROVIDER_ID,
     baseUrl: normalizeBaseUrl(String(record.baseUrl ?? '')),
     model,
     visionModel,
@@ -362,6 +427,7 @@ function validateStoredProfile(value: AiProfileConfig): AiProfileConfig {
 
 function profileFromDiscovery(
   id: string,
+  providerId: string,
   baseUrl: string,
   models: readonly AiModelInfo[],
   existing?: AiProfileConfig,
@@ -385,6 +451,7 @@ function profileFromDiscovery(
   return {
     id,
     name: existing?.name || profileName(models, baseUrl),
+    providerId,
     baseUrl,
     model: textModel,
     visionModel,
@@ -402,15 +469,6 @@ function requireProfile(
   const profile = profiles.find((item) => item.id === id);
   if (!profile) throw new Error('AI Profile 不存在。');
   return profile;
-}
-
-function parseModelList(value: unknown): readonly AiModelInfo[] {
-  const data = asRecord(value)?.data;
-  if (!Array.isArray(data)) throw new Error('/models 返回格式不受支持。');
-  const models = data.map(parseModel).filter((item) => item !== null);
-  return [...new Map(models.map((model) => [model.id, model])).values()].sort(
-    (left, right) => left.id.localeCompare(right.id),
-  );
 }
 
 function parseModel(value: unknown): AiModelInfo | null {
@@ -534,22 +592,6 @@ function normalizeBaseUrl(value: string): string {
   return url.toString().replace(/\/$/, '');
 }
 
-function modelsUrl(baseUrl: string): string {
-  return `${normalizeBaseUrl(baseUrl)}/models`;
-}
-
-function chatCompletionsUrl(baseUrl: string): string {
-  return `${normalizeBaseUrl(baseUrl)}/chat/completions`;
-}
-
-function validateEndpoint(value: string): string {
-  const url = new URL(String(value ?? '').trim());
-  if (!['https:', 'http:'].includes(url.protocol)) {
-    throw new Error('AI 接口必须使用 HTTP 或 HTTPS。');
-  }
-  return url.toString();
-}
-
 function safeImageUrl(value: string): string {
   if (/^data:image\/(?:png|jpe?g|webp|gif);base64,/i.test(value)) return value;
   const url = new URL(value);
@@ -618,7 +660,7 @@ function answerMessages(
     {
       role: 'system',
       content:
-        '你是学习辅助工具。分析题目并严格输出“答案: ...”和“解释: ...”。不执行任何提交操作。',
+        '你是学习辅助工具。分析题目后只输出一个 JSON 对象，字段为 answer、explanation、confidence、failureReason。confidence 为 0 到 1；无法作答时 answer 为 null 并说明 failureReason。不要执行或声称执行任何提交操作。',
     },
     { role: 'user', content },
   ];
@@ -626,15 +668,98 @@ function answerMessages(
 
 function answerFormat(type: ProblemContext['type']): string {
   if (type === ProblemType.SingleChoice || type === ProblemType.Poll) {
-    return '输出格式：答案: 单个大写字母；解释: 简要理由。';
+    return 'answer 使用单个大写字母字符串。';
   }
   if (type === ProblemType.MultipleChoice) {
-    return '输出格式：答案: 多个大写字母，用顿号分隔；解释: 简要理由。';
+    return 'answer 使用大写字母字符串数组。';
   }
   if (type === ProblemType.FillBlank) {
-    return '输出格式：答案: 各空答案用逗号分隔；解释: 简要理由。';
+    return 'answer 使用字符串数组，每个元素对应一个空。';
   }
-  return '输出格式：答案: 完整回答；解释: 可选说明。';
+  return 'answer 使用完整回答字符串。';
+}
+
+interface ParsedProposal {
+  answer: AnswerValue | null;
+  explanation: string;
+  confidence: number | null;
+  failureReason: string | null;
+}
+
+function parseProposal(
+  problem: ProblemContext,
+  rawText: string,
+): ParsedProposal {
+  const jsonText = rawText
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '');
+  try {
+    const record = asRecord(JSON.parse(jsonText));
+    if (record) {
+      return {
+        answer: parseStructuredAnswer(problem, record.answer),
+        explanation: String(record.explanation ?? '').trim(),
+        confidence: normalizeConfidence(record.confidence),
+        failureReason:
+          record.failureReason === null || record.failureReason === undefined
+            ? null
+            : String(record.failureReason).trim() || null,
+      };
+    }
+  } catch {
+    // Older OpenAI-compatible endpoints may ignore the JSON instruction.
+  }
+  const legacy = parseAnswer(problem, rawText);
+  return {
+    ...legacy,
+    confidence: normalizeConfidence(
+      /置信度\s*[:：]\s*(\d+(?:\.\d+)?%?)/.exec(rawText)?.[1],
+    ),
+    failureReason: null,
+  };
+}
+
+function parseStructuredAnswer(
+  problem: ProblemContext,
+  value: unknown,
+): AnswerValue | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') {
+    return parseAnswer(problem, `答案: ${value}`).answer;
+  }
+  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
+    return parseAnswer(problem, `答案: ${value.join(',')}`).answer;
+  }
+  const record = asRecord(value);
+  if (
+    problem.type === ProblemType.Subjective &&
+    record &&
+    typeof record.content === 'string'
+  ) {
+    return {
+      content: record.content.trim(),
+      pics: Array.isArray(record.pics)
+        ? record.pics.filter((item): item is string => typeof item === 'string')
+        : [],
+    };
+  }
+  return null;
+}
+
+function normalizeConfidence(value: unknown): number | null {
+  const numeric =
+    typeof value === 'string'
+      ? Number(value.trim().replace(/%$/, ''))
+      : Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const normalized =
+    typeof value === 'string' && value.trim().endsWith('%')
+      ? numeric / 100
+      : numeric > 1 && numeric <= 100
+        ? numeric / 100
+        : numeric;
+  return Math.max(0, Math.min(1, normalized));
 }
 
 function parseAnswer(
@@ -676,14 +801,28 @@ function parseAnswer(
   return { answer: { content: text, pics: [] }, explanation };
 }
 
-function responseContent(value: unknown): string | null {
-  if (!value || typeof value !== 'object') return null;
-  const choices = (value as { choices?: unknown }).choices;
-  if (!Array.isArray(choices)) return null;
-  const first = choices[0];
-  if (!first || typeof first !== 'object') return null;
-  const message = (first as { message?: unknown }).message;
-  if (!message || typeof message !== 'object') return null;
-  const content = (message as { content?: unknown }).content;
-  return typeof content === 'string' ? content : null;
+function proposalKey(id: string): string {
+  return `ai:proposal:${id}`;
+}
+
+function outcomeKey(id: string): string {
+  return `ai:proposal-outcome:${id}`;
+}
+
+function parseStoredProposal(value: JsonValue): AnswerProposal | null {
+  const record = asRecord(value);
+  return record &&
+    typeof record.id === 'string' &&
+    typeof record.problemId === 'string' &&
+    (record.status === 'ready' || record.status === 'failed')
+    ? (record as unknown as AnswerProposal)
+    : null;
+}
+
+function toJsonValue(value: unknown): JsonValue {
+  return JSON.parse(JSON.stringify(value)) as JsonValue;
+}
+
+function sameAnswer(left: AnswerValue | null, right: AnswerValue): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }

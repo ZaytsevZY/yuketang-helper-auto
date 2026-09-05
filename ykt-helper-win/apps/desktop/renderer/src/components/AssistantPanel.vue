@@ -131,6 +131,7 @@ const aiConnectionDraft = ref<AiConnectionDraft>({
 });
 const aiProfileSelections = ref<Record<string, AiProfileSelectionDraft>>({});
 const aiProposal = ref<AnswerProposal>();
+const appliedProposalId = ref('');
 const aiCustomPrompt = ref('');
 const aiSlideSelection = ref<string[]>([]);
 const logs = ref<readonly LogRow[]>([]);
@@ -218,6 +219,13 @@ const selectedLetters = computed(() =>
 
 const canSubmit = computed(
   () => validation.value?.valid === true && confirmed.value && !busy.value,
+);
+
+const agentAutoSubmitEnabled = computed(
+  () =>
+    settings.value?.autoAnswer === true ||
+    (settings.value?.autoJoinEnabled === true &&
+      settings.value.autoAnswerOnAutoJoin === true),
 );
 
 const activeSlideIndex = computed(() =>
@@ -464,8 +472,19 @@ async function submitAnswer(): Promise<void> {
     const result = await window.yuketang.submitAnswer({
       problemId: problem.id,
       answer: answerDraft.value,
+      ...(appliedProposalId.value
+        ? {
+            proposalId: appliedProposalId.value,
+            confirmedBy: 'user' as const,
+          }
+        : {}),
     });
-    submissionMessage.value = `已于 ${formatTime(result.submittedAt)} 提交`;
+    submissionMessage.value = result.proposalOutcome
+      ? result.proposalOutcome.changed
+        ? `已于 ${formatTime(result.submittedAt)} 提交，并记录对 AI 建议的修改`
+        : `已于 ${formatTime(result.submittedAt)} 按 AI 建议提交`
+      : `已于 ${formatTime(result.submittedAt)} 提交`;
+    appliedProposalId.value = '';
     confirmed.value = false;
     await loadLessonData();
   });
@@ -479,6 +498,8 @@ function resetAnswer(): void {
       ? result.join('')
       : (result as { content: string }).content;
   validation.value = undefined;
+  aiProposal.value = undefined;
+  appliedProposalId.value = '';
   confirmed.value = false;
   submissionMessage.value = '';
 }
@@ -574,36 +595,70 @@ async function analyzeProblem(auto: boolean): Promise<void> {
       imageUrls: selectedAiImages.value,
       customPrompt: aiCustomPrompt.value,
     });
-    if (aiProposal.value.answer) {
-      answerDraft.value = answerValueToDraft(
-        aiProposal.value.answer,
-        problem.type,
-      );
-      validation.value = await window.yuketang.validateAnswer({
-        problemId: problem.id,
-        answer: answerDraft.value,
-      });
+    if (!auto) {
+      infoMessage.value =
+        aiProposal.value.status === 'ready'
+          ? 'AI 建议已生成，请核对后采用。'
+          : aiProposal.value.failureReason || '没有生成可用的 AI 建议。';
+      return;
     }
-    infoMessage.value = auto
-      ? '自动分析完成，建议已填入；提交前仍需手动确认。'
-      : 'AI 建议已生成。';
-    if (auto) {
+
+    if (aiProposal.value.status !== 'ready' || !aiProposal.value.answer) {
+      infoMessage.value =
+        aiProposal.value.failureReason || '没有生成可提交的 AI 答案。';
       await window.yuketang.showNotification(
-        'AI 建议已生成',
-        `${problemTypeLabel(problem.type)}已完成分析，请核对后确认提交。`,
+        'Agent 未提交答案',
+        infoMessage.value,
       );
+      return;
     }
+
+    answerDraft.value = answerValueToDraft(
+      aiProposal.value.answer,
+      problem.type,
+    );
+    appliedProposalId.value = aiProposal.value.id;
+    validation.value = await window.yuketang.validateAnswer({
+      problemId: problem.id,
+      answer: aiProposal.value.answer,
+      proposalId: aiProposal.value.id,
+      confirmedBy: 'agent',
+    });
+    if (!validation.value.valid) {
+      infoMessage.value = `Agent 未提交：${validation.value.issues.join('；')}`;
+      await window.yuketang.showNotification(
+        'Agent 未提交答案',
+        infoMessage.value,
+      );
+      return;
+    }
+
+    const result = await window.yuketang.submitAnswer({
+      problemId: problem.id,
+      answer: aiProposal.value.answer,
+      proposalId: aiProposal.value.id,
+      confirmedBy: 'agent',
+    });
+    appliedProposalId.value = '';
+    submissionMessage.value = `Agent 已于 ${formatTime(result.submittedAt)} 自动提交`;
+    infoMessage.value = 'Agent 已自动确认并提交答案';
+    await loadLessonData();
+    await window.yuketang.showNotification(
+      'Agent 已提交答案',
+      `${problemTypeLabel(problem.type)}已由模型完成并提交。`,
+    );
   });
 }
 
-function useProposal(): void {
+async function useProposal(): Promise<void> {
   const problem = selectedProblem.value;
   const answer = aiProposal.value?.answer;
   if (!problem || !answer) return;
   answerDraft.value = answerValueToDraft(answer, problem.type);
-  validation.value = undefined;
+  appliedProposalId.value = aiProposal.value?.id ?? '';
   confirmed.value = false;
   emit('selectPage', 'problems');
+  await validateAnswer();
 }
 
 function answerValueToDraft(
@@ -612,6 +667,16 @@ function answerValueToDraft(
 ): string {
   if (!Array.isArray(answer)) return (answer as { content: string }).content;
   return type === ProblemType.FillBlank ? answer.join('\n') : answer.join('');
+}
+
+function proposalAnswerText(proposal: AnswerProposal): string {
+  if (!proposal.answer) return '—';
+  if (Array.isArray(proposal.answer)) return proposal.answer.join(' / ');
+  return (proposal.answer as { content: string }).content;
+}
+
+function confidenceText(value: number | null): string {
+  return value === null ? '置信度未知' : `置信度 ${Math.round(value * 100)}%`;
 }
 
 async function saveSettings(): Promise<void> {
@@ -717,6 +782,7 @@ async function connectAiProfile(): Promise<void> {
   const draft = aiConnectionDraft.value;
   await run('profile-connect', async () => {
     const profiles = await window.yuketang.connectAiProfile({
+      providerId: 'openai-compatible',
       baseUrl: draft.baseUrl,
       apiKey: draft.apiKey,
     });
@@ -1423,34 +1489,60 @@ function clamp(value: number, min: number, max: number): number {
               :disabled="busy === 'ai'"
               @click="analyzeProblem(false)"
             >
-              {{ busy === 'ai' ? '正在融合分析' : '融合分析（文本 + 课件）' }}
+              {{ busy === 'ai' ? '正在融合分析' : '生成答案建议' }}
             </button>
 
-            <div v-if="aiProposal" class="proposal-result">
+            <div
+              v-if="aiProposal"
+              class="proposal-result"
+              :class="{ failed: aiProposal.status === 'failed' }"
+            >
               <div class="proposal-head">
-                <strong>AI 建议</strong>
-                <span>{{ aiProposal.model }}</span>
+                <strong>{{
+                  aiProposal.status === 'ready' ? '可采用的建议' : '未生成建议'
+                }}</strong>
+                <span>{{ confidenceText(aiProposal.confidence) }}</span>
               </div>
-              <pre>{{ aiProposal.rawText }}</pre>
+              <div v-if="aiProposal.answer" class="proposal-answer">
+                <span>建议答案</span>
+                <strong>{{ proposalAnswerText(aiProposal) }}</strong>
+              </div>
+              <p v-if="aiProposal.explanation" class="proposal-explanation">
+                {{ aiProposal.explanation }}
+              </p>
+              <div v-if="aiProposal.failureReason" class="proposal-failure">
+                <strong>{{ aiProposal.failureReason }}</strong>
+                <p v-if="aiProposal.validationIssues.length">
+                  {{ aiProposal.validationIssues.join('；') }}
+                </p>
+              </div>
               <div class="proposal-meta">
+                <span v-if="aiProposal.model">{{ aiProposal.model }}</span>
                 <span
                   v-for="source in aiProposal.contextSources"
                   :key="source"
                   >{{ source }}</span
                 >
               </div>
+              <details v-if="aiProposal.rawText" class="proposal-raw">
+                <summary>查看模型原始输出</summary>
+                <pre>{{ aiProposal.rawText }}</pre>
+              </details>
               <button
                 type="button"
                 class="secondary-button full-width"
-                :disabled="!aiProposal.answer"
+                :disabled="aiProposal.status !== 'ready' || !aiProposal.answer"
                 @click="useProposal"
               >
-                应用到答题区并继续核对
+                采用建议并前往核对
               </button>
             </div>
             <p class="honest-note">
-              AI
-              不拥有提交权限。自动分析也只会填写并校验建议，最终提交必须在“题目”页逐次确认。
+              {{
+                agentAutoSubmitEnabled
+                  ? '自动提交已启用。新题会由 Agent 分析、校验并直接提交。'
+                  : '手动生成的建议仍需在“题目”页校验并确认。'
+              }}
             </p>
           </template>
           <div v-else class="empty-state">
@@ -1907,26 +1999,38 @@ function clamp(value: number, min: number, max: number): number {
                   type="checkbox"
                 />
               </label>
-              <label class="switch-row">
+              <label
+                class="switch-row"
+                :class="{
+                  'agent-submit-row':
+                    settingsDraft.autoJoinEnabled &&
+                    settingsDraft.autoAnswerOnAutoJoin,
+                }"
+              >
                 <span>
-                  <strong>自动入课后分析题目</strong>
-                  <small>生成并校验建议，不会自动提交。</small>
+                  <strong>自动入课后提交答案</strong>
+                  <small>自动进入课堂后，由 Agent 分析并提交新题。</small>
                 </span>
                 <input
                   v-model="settingsDraft.autoAnswerOnAutoJoin"
                   type="checkbox"
                 />
               </label>
-              <label class="switch-row">
+              <label
+                class="switch-row"
+                :class="{ 'agent-submit-row': settingsDraft.autoAnswer }"
+              >
                 <span>
-                  <strong>启用自动分析</strong>
-                  <small>新题开放后按延迟生成建议，仍需手动确认提交。</small>
+                  <strong>自动确认提交</strong>
+                  <small
+                    >新题开放后由 Agent 直接作答，用于测试 LLM 能力。</small
+                  >
                 </span>
                 <input v-model="settingsDraft.autoAnswer" type="checkbox" />
               </label>
               <div class="paired-number-rows">
                 <label class="number-row">
-                  <span>分析延迟（秒）</span>
+                  <span>提交延迟（秒）</span>
                   <input
                     v-model.number="settingsDraft.autoAnswerDelaySeconds"
                     type="number"
@@ -2073,7 +2177,10 @@ function clamp(value: number, min: number, max: number): number {
               <legend>使用说明</legend>
               <ol class="help-list">
                 <li>在“课堂”页刷新并连接课堂，题目与课件会持续同步。</li>
-                <li>“AI”只生成建议；在“题目”页校验并勾选确认后才能提交。</li>
+                <li>
+                  手动建议需在“题目”页确认；开启自动确认提交后，Agent
+                  会直接提交并写入日志。
+                </li>
                 <li>课件页支持当前图片下载、整册 PDF、OCR 与翻译。</li>
                 <li>
                   在“模型”页连接 AI 服务，并分配 LLM、VLM、OCR 与翻译模型。
@@ -2661,6 +2768,52 @@ button:focus-visible {
   padding-top: 12px;
 }
 
+.proposal-result.failed .proposal-head strong {
+  color: #8d2d2d;
+}
+
+.proposal-answer {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+  margin: 10px 0 8px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  color: var(--green-strong);
+  background: var(--green-soft);
+}
+
+.proposal-answer span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.proposal-answer strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.proposal-explanation {
+  margin: 8px 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.proposal-failure {
+  margin: 9px 0;
+  border: 1px solid #e2b5af;
+  border-radius: 6px;
+  padding: 8px 9px;
+  color: #7d2929;
+  background: #fff8f7;
+  font-size: 12px;
+}
+
+.proposal-failure p {
+  margin: 4px 0 0;
+}
+
 .proposal-head span,
 .proposal-meta,
 .credential-note {
@@ -2678,7 +2831,7 @@ button:focus-visible {
   line-height: 1.55;
 }
 
-.proposal-result pre {
+.proposal-raw pre {
   max-height: 260px;
   overflow: auto;
   margin: 9px 0;
@@ -2690,6 +2843,17 @@ button:focus-visible {
   font-size: 12px;
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+.proposal-raw {
+  margin: 9px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.proposal-raw summary {
+  width: fit-content;
+  cursor: pointer;
 }
 
 .proposal-meta {
@@ -3140,6 +3304,12 @@ button:focus-visible {
   width: 16px;
   height: 16px;
   accent-color: var(--green);
+}
+
+.agent-submit-row {
+  border-radius: 6px;
+  color: #74531b;
+  background: #fff9e9;
 }
 
 .number-row input {

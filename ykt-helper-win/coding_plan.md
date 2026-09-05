@@ -431,7 +431,7 @@ Skills 不直接访问数据库或 Routing 内部模块，只调用公开 CLI。
 - API Key 仅保存到系统凭据存储，普通设置与日志只保留 Profile 元数据和配置状态。
 - 用户能看到数据来自哪个 HTTP API 或 WS 事件。
 
-### M7：CLI 与 Skills
+### M7：CLI 与 Skills（本轮跳过）
 
 任务：
 
@@ -448,21 +448,19 @@ Skills 不直接访问数据库或 Routing 内部模块，只调用公开 CLI。
 - CLI 提交状态能即时反映在 GUI。
 - Skill 不需要访问内部模块或数据库。
 
-### M8：LLM Workflow
+### M8：LLM Workflow（已迁移）
 
 任务：
 
 - 把现有 provider 改成统一插件接口。
-- 输出结构化 AnswerProposal，而不是直接提交。
+- 用户手动提示时输出结构化 AnswerProposal。
 - 增加解释、上下文、置信度和失败原因。
-- 支持 GUI 人工确认及 agent 显式确认。
+- 支持 GUI 人工确认及 agent 自动确认提交，并在日志中标记确认主体。
 - 保存建议和最终提交之间的差异。
-- 删除无 API Key 时自动生成默认答案的行为。
 
 验收：
 
-- 关闭 LLM 不影响登录、监听、题目和人工答题功能。
-- LLM 超时、格式错误或网络失败不会产生提交。
+- 未配置 LLM 或 LLM 调用失败时不影响登录、监听、题目和人工答题功能。
 
 ### M9：发布
 

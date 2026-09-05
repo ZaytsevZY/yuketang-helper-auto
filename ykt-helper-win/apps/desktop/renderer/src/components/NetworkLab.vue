@@ -240,7 +240,7 @@ function shortUrl(value: string): string {
       <div class="detail-pane">
         <section>
           <h3>原始记录（已脱敏）</h3>
-          <pre>{{
+          <pre tabindex="0" aria-label="原始记录内容">{{
             selectedEntry
               ? JSON.stringify(selectedEntry, null, 2)
               : '选择一条记录查看详情'
@@ -248,7 +248,7 @@ function shortUrl(value: string): string {
         </section>
         <section>
           <h3>解析结果</h3>
-          <pre>{{
+          <pre tabindex="0" aria-label="解析结果内容">{{
             relatedDomainEvents.length
               ? JSON.stringify(relatedDomainEvents, null, 2)
               : '尚未映射为领域事件'
@@ -270,11 +270,14 @@ function shortUrl(value: string): string {
 .network-lab {
   position: fixed;
   z-index: 3;
+  display: grid;
   right: 0;
   bottom: 0;
   left: 0;
   right: var(--assistant-width);
   height: 300px;
+  grid-template-rows: 43px minmax(0, 1fr);
+  overflow: hidden;
   border-top: 1px solid var(--line-strong);
   background: var(--surface-subtle);
   color: var(--text);
@@ -290,7 +293,8 @@ function shortUrl(value: string): string {
 
 .lab-toolbar {
   display: flex;
-  height: 43px;
+  min-width: 0;
+  min-height: 43px;
   align-items: center;
   gap: 8px;
   padding: 0 12px;
@@ -375,12 +379,20 @@ function shortUrl(value: string): string {
 
 .lab-body {
   display: grid;
-  height: 256px;
-  grid-template-columns: minmax(300px, 38%) 1fr;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(300px, 38%) minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .entry-list {
+  min-width: 0;
+  min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
   border-right: 1px solid var(--line);
   background: #fff;
 }
@@ -446,13 +458,16 @@ function shortUrl(value: string): string {
 .detail-pane {
   display: grid;
   min-width: 0;
-  grid-template-columns: 1fr 1fr;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .detail-pane section {
-  display: flex;
+  display: grid;
   min-width: 0;
-  flex-direction: column;
+  min-height: 0;
+  grid-template-rows: 30px minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -461,7 +476,6 @@ function shortUrl(value: string): string {
 }
 
 .detail-pane h3 {
-  height: 30px;
   margin: 0;
   padding: 8px 10px 0;
   font-size: 11px;
@@ -469,8 +483,13 @@ function shortUrl(value: string): string {
 }
 
 .detail-pane pre {
-  flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
   margin: 0;
   padding: 6px 10px 12px;
   color: #4b5851;
@@ -479,6 +498,30 @@ function shortUrl(value: string): string {
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.entry-list::-webkit-scrollbar,
+.detail-pane pre::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.entry-list::-webkit-scrollbar-thumb,
+.detail-pane pre::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: var(--line-strong);
+  background-clip: padding-box;
+}
+
+.entry-list::-webkit-scrollbar-track,
+.detail-pane pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.detail-pane pre:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
 }
 
 .empty {
