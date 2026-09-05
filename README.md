@@ -42,7 +42,9 @@
 
 ### Android 实验版
 
-`feat/dev3.0` 新增了独立的原生 Android 客户端：全屏雨课堂网页、底部助手抽屉、课堂题目同步、AI 答题建议和课件问答。Android 版不包含网络实验室、抓包、CDP 或流量导出功能，具体构建和安装方法见 [`ykt-helper-android/README.md`](./ykt-helper-android/README.md)。
+> **开发状态：待测试。** `feat/dev_android_main` 当前仅完成了一个基于 Android SDK 的客户端开发原型，不是经过真实课堂验证的发布版本。
+
+该原型包括全屏雨课堂网页、底部助手抽屉、课堂题目同步、AI 答题建议和课件问答。Android 版不包含网络实验室、抓包、CDP 或流量导出功能。构建和安装方法见 [`ykt-helper-android/README.md`](./ykt-helper-android/README.md)，真实环境测试清单见 [`ykt-helper-android/TESTING.md`](./ykt-helper-android/TESTING.md)。
 
 > Android 版默认自动分析新题，但提交前仍要求用户确认，避免模型误答被直接提交。
 
