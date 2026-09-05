@@ -13,22 +13,21 @@
   </a>
 </a>
 
+![](./static/logo.png)
 
 <html>
     <h1 align="center">
-       雨课堂助手(JS版)
+       雨课堂助手
     </h1>
     <h3 align="center">
-       Yuketang Helper Auto
-    </h3>
-    <h3 align="center">
-       适用于雨课堂/荷塘雨课堂
+       Yuketang Helper AI
     </h3>
 </html>
 
-> 最后更新时间：2026.03.12
 
 ## 项目说明
+
+> 最后更新时间：2026.03.12
 
 - 项目灵感来自于：[雨课堂助手](https://github.com/hotwords123/yuketang-helper.git)，本项目已兼容`ykt-helper v1.5.1`。
 

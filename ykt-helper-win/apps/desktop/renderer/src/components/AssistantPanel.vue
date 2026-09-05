@@ -1086,10 +1086,7 @@ function clamp(value: number, min: number, max: number): number {
       <div class="panel-scroll">
         <section v-if="page === 'classroom'" class="panel-page">
           <div class="section-heading">
-            <div>
-              <h2>当前课堂</h2>
-              <p>复用网页登录状态，独立同步课堂数据。</p>
-            </div>
+            <h2>当前课堂</h2>
             <button
               type="button"
               :disabled="busy === 'refresh'"
@@ -1175,10 +1172,7 @@ function clamp(value: number, min: number, max: number): number {
 
         <section v-else-if="page === 'problems'" class="panel-page">
           <div class="section-heading">
-            <div>
-              <h2>题目</h2>
-              <p>手工输入、先校验、再明确确认提交。</p>
-            </div>
+            <h2>题目</h2>
             <span class="count-badge">{{ problems.length }}</span>
           </div>
 
@@ -1320,10 +1314,7 @@ function clamp(value: number, min: number, max: number): number {
 
         <section v-else-if="page === 'ai'" class="panel-page">
           <div class="section-heading">
-            <div>
-              <h2>AI 分析</h2>
-              <p>融合题目文本与已选课件页，仅生成可核对的答案建议。</p>
-            </div>
+            <h2>AI 分析</h2>
             <span class="count-badge">{{ selectedAiImages.length }} 图</span>
           </div>
 
@@ -1424,10 +1415,7 @@ function clamp(value: number, min: number, max: number): number {
 
         <section v-else-if="page === 'courseware'" class="panel-page">
           <div class="section-heading">
-            <div>
-              <h2>课件</h2>
-              <p>浏览原图，导出 PDF，并保留 OCR / 翻译工作区。</p>
-            </div>
+            <h2>课件</h2>
             <button
               type="button"
               :disabled="!selectedPresentation || busy === 'pdf'"
@@ -1613,10 +1601,7 @@ function clamp(value: number, min: number, max: number): number {
           class="panel-page profile-page"
         >
           <div class="section-heading">
-            <div>
-              <h2>AI Profile</h2>
-              <p>连接模型服务，并为各项 AI 功能分配模型。</p>
-            </div>
+            <h2>AI Profile</h2>
             <span class="count-badge">{{ aiProfiles.length }} 个</span>
           </div>
 
@@ -1624,7 +1609,6 @@ function clamp(value: number, min: number, max: number): number {
             <fieldset class="profile-connect-panel">
               <legend>连接模型服务</legend>
               <div class="provider-connect">
-                <p>验证密钥后，应用会从 <code>/models</code> 自动发现模型。</p>
                 <label class="field-label">
                   Base URL
                   <input
@@ -1698,7 +1682,6 @@ function clamp(value: number, min: number, max: number): number {
                 >
                   <div class="capability-heading">
                     <strong>功能分工</strong>
-                    <span>可复用同一模型</span>
                   </div>
                   <label class="capability-row">
                     <span>
@@ -1836,10 +1819,7 @@ function clamp(value: number, min: number, max: number): number {
 
         <section v-else-if="page === 'settings'" class="panel-page">
           <div class="section-heading">
-            <div>
-              <h2>设置</h2>
-              <p>课堂体验、提醒和存储持久保存到本地 SQLite。</p>
-            </div>
+            <h2>设置</h2>
             <button
               type="button"
               :disabled="!settingsDraft || busy === 'settings'"
@@ -2037,6 +2017,7 @@ function clamp(value: number, min: number, max: number): number {
                 <li>
                   在“模型”页连接 AI 服务，并分配 LLM、VLM、OCR 与翻译模型。
                 </li>
+                <li>“诊断”页集中显示运行状态、数据流、源码模块和操作历史。</li>
               </ol>
               <p class="credential-note">
                 桌面版 {{ runtime?.version || '0.1.0' }} ·
@@ -2068,10 +2049,7 @@ function clamp(value: number, min: number, max: number): number {
 
         <section v-else class="panel-page diagnostics-page">
           <div class="section-heading">
-            <div>
-              <h2>诊断</h2>
-              <p>查看运行状态、数据流、源码模块和操作历史。</p>
-            </div>
+            <h2>诊断</h2>
             <button
               type="button"
               :disabled="busy === 'logs'"
@@ -2103,7 +2081,6 @@ function clamp(value: number, min: number, max: number): number {
 
           <div class="section-divider">
             <h3>数据流</h3>
-            <span>只读说明</span>
           </div>
           <ol class="data-flow">
             <li>
@@ -2280,24 +2257,16 @@ function clamp(value: number, min: number, max: number): number {
   align-items: start;
   justify-content: space-between;
   gap: 14px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
-.section-heading h2,
-.section-heading p {
+.section-heading h2 {
   margin: 0;
 }
 
 .section-heading h2 {
   font-size: 18px;
   line-height: 1.25;
-}
-
-.section-heading p {
-  margin-top: 5px;
-  color: var(--text-muted);
-  font-size: 11px;
-  line-height: 1.55;
 }
 
 button,
@@ -2870,13 +2839,6 @@ button:focus-visible {
   padding-top: 7px;
 }
 
-.provider-connect p {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
 .provider-connect .field-label {
   margin-top: 0;
 }
@@ -2971,19 +2933,11 @@ button:focus-visible {
 }
 
 .capability-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   padding: 10px 0 5px;
 }
 
-.capability-heading strong,
-.capability-heading span {
+.capability-heading strong {
   font-size: 12px;
-}
-
-.capability-heading span {
-  color: var(--text-muted);
 }
 
 .capability-row {
@@ -3249,7 +3203,6 @@ button:focus-visible {
 
 .panel-header span,
 .panel-message,
-.section-heading p,
 .fact-list div,
 .section-divider span,
 .count-badge,
