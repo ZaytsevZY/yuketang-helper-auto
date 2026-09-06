@@ -148,6 +148,17 @@ test('uses the protocol problemid to distinguish successive problem publications
   assert.notEqual(first.dedupeKey, second.dedupeKey);
 });
 
+test('uses a scalar problem value to distinguish successive problem publications', async () => {
+  const { classifyPublishEvent } = await loadPublishEvents();
+
+  const first = classifyPublishEvent({ op: 'sendproblem', problem: 'p1' });
+  const second = classifyPublishEvent({ op: 'sendproblem', problem: 'p2' });
+
+  assert.equal(first.dedupeKey, 'assessment:p1');
+  assert.equal(second.dedupeKey, 'assessment:p2');
+  assert.notEqual(first.dedupeKey, second.dedupeKey);
+});
+
 test('uses a scalar presentation value as the courseware dedupe key', async () => {
   const { classifyPublishEvent } = await loadPublishEvents();
 

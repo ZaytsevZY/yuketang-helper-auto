@@ -4568,7 +4568,7 @@
     }
     return "";
   }
-  const IDENTIFIER_KEYS = [ "id", "uuid", "quizId", "quiz_id", "examId", "exam_id", "testId", "test_id", "exerciseId", "exercise_id", "presentationId", "presentation_id", "problemId", "problem_id", "problemid", "presentation", "activityId", "activity_id" ];
+  const IDENTIFIER_KEYS = [ "id", "uuid", "quizId", "quiz_id", "examId", "exam_id", "testId", "test_id", "exerciseId", "exercise_id", "presentationId", "presentation_id", "problemId", "problem_id", "problemid", "problem", "presentation", "activityId", "activity_id" ];
   function findNestedText(source, keys) {
     const queue = [ source ];
     const visited = new Set;
