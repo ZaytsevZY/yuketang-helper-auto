@@ -15,7 +15,7 @@
   --green-strong: #066d46;
   --green-soft: #eaf6ef;
   --amber: #a66913;
-  --toolbar-height: 96px;
+  --toolbar-height: 128px;
   --assistant-width: 380px;
 
   /* Approved-comp measurements, rounded to the native window grid. */
@@ -74,6 +74,7 @@ input[type='radio'] {
   box-shadow: 0 3px 12px rgb(31 52 42 / 7%);
 }
 
+.tab-row,
 .browser-row,
 .task-row {
   display: flex;
@@ -81,8 +82,15 @@ input[type='radio'] {
   padding: 0 14px;
 }
 
+.tab-row {
+  height: 34px;
+  gap: 8px;
+  padding: 4px 10px 0 14px;
+  background: #f1f4f2;
+}
+
 .browser-row {
-  height: 54px;
+  height: 52px;
   gap: 10px;
   border-bottom: 1px solid var(--line);
 }
@@ -98,27 +106,147 @@ input[type='radio'] {
   align-items: center;
   gap: 8px;
   color: #16211b;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 800;
   white-space: nowrap;
 }
 
 .brand-mark {
   display: grid;
-  width: 27px;
-  height: 27px;
+  width: 22px;
+  height: 22px;
   place-items: center;
   color: var(--green);
 }
 
 .brand-mark svg {
-  width: 27px;
-  height: 27px;
+  width: 22px;
+  height: 22px;
   fill: none;
   stroke: currentcolor;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.8;
+}
+
+.tab-strip {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+  overflow-x: auto;
+  scrollbar-color: #b5c4bc transparent;
+  scrollbar-width: thin;
+}
+
+.tab-strip::-webkit-scrollbar {
+  height: 3px;
+}
+
+.tab-strip::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: #b5c4bc;
+}
+
+.browser-tab {
+  display: flex;
+  min-width: 118px;
+  max-width: 220px;
+  height: 28px;
+  flex: 1 0 150px;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 7px 7px 0 0;
+  color: #536159;
+}
+
+.browser-tab:hover {
+  background: #e7ece9;
+}
+
+.browser-tab.active {
+  border-color: var(--line);
+  border-bottom-color: #fff;
+  color: var(--text);
+  background: #fff;
+}
+
+.tab-activate {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  border: 0;
+  padding: 0 4px 0 9px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: start;
+}
+
+.tab-status {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #9ba8a1;
+}
+
+.browser-tab.loading .tab-status {
+  background: var(--green);
+  animation: tab-loading 1s ease-in-out infinite alternate;
+}
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-close,
+.new-tab-button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: #637169;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tab-close {
+  width: 24px;
+  height: 24px;
+}
+
+.tab-close:hover,
+.new-tab-button:hover {
+  color: var(--text);
+  background: #dce4df;
+}
+
+.tab-close svg,
+.new-tab-button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-width: 1.8;
+}
+
+@keyframes tab-loading {
+  to {
+    opacity: 0.35;
+  }
 }
 
 .navigation {
@@ -175,10 +303,19 @@ input[type='radio'] {
   font-size: 12px;
 }
 
-.address-bar span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.address-bar:focus-within {
+  border-color: var(--green);
+}
+
+.address-bar input {
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  color: #344139;
+  background: transparent;
+  font-size: 12px;
 }
 
 .lock-mark {
@@ -342,6 +479,15 @@ textarea:focus-visible {
 
   .browser-row {
     padding: 0 8px;
+  }
+
+  .tab-row {
+    padding-inline: 8px;
+  }
+
+  .browser-tab {
+    min-width: 96px;
+    flex-basis: 120px;
   }
 
   .environment-picker,

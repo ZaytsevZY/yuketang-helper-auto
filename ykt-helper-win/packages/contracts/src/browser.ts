@@ -31,7 +31,17 @@ export const BrowserTargets: readonly BrowserTarget[] = [
   },
 ];
 
+export interface BrowserTabState {
+  id: string;
+  environment: BrowserEnvironment;
+  url: string;
+  title: string;
+  loading: boolean;
+}
+
 export interface BrowserState {
+  tabs: readonly BrowserTabState[];
+  activeTabId: string;
   environment: BrowserEnvironment;
   url: string;
   title: string;

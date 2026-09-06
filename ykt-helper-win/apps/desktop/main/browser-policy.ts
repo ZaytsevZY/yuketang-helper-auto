@@ -36,3 +36,26 @@ export function environmentForUrl(
     return undefined;
   }
 }
+
+export function resolveYuketangNavigation(
+  value: string,
+  currentUrl: string,
+): string {
+  const input = value.trim();
+  if (!input) throw new Error('请输入雨课堂网址');
+
+  let url: URL;
+  try {
+    if (/^[\w-]+(?:\.[\w-]+)+(?:\/|$)/.test(input)) {
+      url = new URL(`https://${input}`);
+    } else {
+      url = new URL(input, currentUrl);
+    }
+  } catch {
+    throw new Error('网址格式不正确');
+  }
+  if (!isAllowedYuketangUrl(url.toString())) {
+    throw new Error('只能打开雨课堂 HTTPS 地址');
+  }
+  return url.toString();
+}

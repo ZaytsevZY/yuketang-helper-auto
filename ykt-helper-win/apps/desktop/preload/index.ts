@@ -137,6 +137,16 @@ const api: DesktopApi = Object.freeze({
     ipcRenderer.invoke(IpcChannel.BrowserForward) as Promise<void>,
   browserReload: () =>
     ipcRenderer.invoke(IpcChannel.BrowserReload) as Promise<void>,
+  browserHome: () =>
+    ipcRenderer.invoke(IpcChannel.BrowserHome) as Promise<void>,
+  browserNavigate: (url: string) =>
+    ipcRenderer.invoke(IpcChannel.BrowserNavigate, url) as Promise<void>,
+  browserNewTab: () =>
+    ipcRenderer.invoke(IpcChannel.BrowserNewTab) as Promise<void>,
+  browserActivateTab: (tabId: string) =>
+    ipcRenderer.invoke(IpcChannel.BrowserActivateTab, tabId) as Promise<void>,
+  browserCloseTab: (tabId: string) =>
+    ipcRenderer.invoke(IpcChannel.BrowserCloseTab, tabId) as Promise<void>,
   setNetworkLabCollapsed: (collapsed: boolean) =>
     ipcRenderer.invoke(
       IpcChannel.SetNetworkLabCollapsed,

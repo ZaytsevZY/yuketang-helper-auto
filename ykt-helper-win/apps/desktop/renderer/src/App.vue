@@ -35,6 +35,8 @@ const activePage = ref<WorkspacePage>('classroom');
 const initiallyCollapsed = window.matchMedia('(max-width: 680px)').matches;
 const assistantCollapsed = ref(initiallyCollapsed);
 const controlError = ref('');
+const addressDraft = ref('');
+const editingAddress = ref(false);
 let unsubscribe: (() => void) | undefined;
 
 const pageStatus = computed(() => {
@@ -50,6 +52,7 @@ const shellStyle = computed(() => ({
 onMounted(async () => {
   unsubscribe = window.yuketang.onBrowserStateChanged((state) => {
     browserState.value = state;
+    if (!editingAddress.value) addressDraft.value = state.url;
     controlError.value = '';
   });
 
@@ -61,6 +64,7 @@ onMounted(async () => {
       window.yuketang.getRuntimeStatus(),
       window.yuketang.getBrowserState(),
     ]);
+    addressDraft.value = browserState.value.url;
   } catch {
     controlError.value = '无法连接桌面主进程';
   }
@@ -108,6 +112,33 @@ async function runControl(action: () => Promise<void>): Promise<void> {
 const goBack = () => runControl(() => window.yuketang.browserBack());
 const goForward = () => runControl(() => window.yuketang.browserForward());
 const reload = () => runControl(() => window.yuketang.browserReload());
+const goHome = () => runControl(() => window.yuketang.browserHome());
+const newTab = () => runControl(() => window.yuketang.browserNewTab());
+const activateTab = (tabId: string) =>
+  runControl(() => window.yuketang.browserActivateTab(tabId));
+const closeTab = (tabId: string) =>
+  runControl(() => window.yuketang.browserCloseTab(tabId));
+
+function beginAddressEdit(event: FocusEvent): void {
+  editingAddress.value = true;
+  (event.target as HTMLInputElement).select();
+}
+
+function finishAddressEdit(): void {
+  editingAddress.value = false;
+  addressDraft.value = browserState.value?.url ?? addressDraft.value;
+}
+
+async function navigateAddress(): Promise<void> {
+  try {
+    controlError.value = '';
+    await window.yuketang.browserNavigate(addressDraft.value);
+    editingAddress.value = false;
+    addressDraft.value = browserState.value?.url ?? addressDraft.value;
+  } catch {
+    controlError.value = '网址无效，仅支持雨课堂 HTTPS 地址';
+  }
+}
 </script>
 
 <template>
@@ -117,7 +148,7 @@ const reload = () => runControl(() => window.yuketang.browserReload());
     :style="shellStyle"
   >
     <header class="browser-chrome">
-      <div class="browser-row">
+      <div class="tab-row">
         <div class="brand" aria-label="雨课堂助手">
           <span class="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 24 24" role="img">
@@ -129,6 +160,56 @@ const reload = () => runControl(() => window.yuketang.browserReload());
           <span>雨课堂助手</span>
         </div>
 
+        <div class="tab-strip" role="tablist" aria-label="雨课堂页面">
+          <div
+            v-for="tab in browserState?.tabs ?? []"
+            :key="tab.id"
+            class="browser-tab"
+            :class="{
+              active: tab.id === browserState?.activeTabId,
+              loading: tab.loading,
+            }"
+          >
+            <button
+              class="tab-activate"
+              type="button"
+              role="tab"
+              :aria-selected="tab.id === browserState?.activeTabId"
+              :title="tab.title"
+              @click="activateTab(tab.id)"
+            >
+              <span class="tab-status" aria-hidden="true" />
+              <span class="tab-title">{{ tab.title }}</span>
+            </button>
+            <button
+              v-if="(browserState?.tabs.length ?? 0) > 1"
+              class="tab-close"
+              type="button"
+              :aria-label="`关闭 ${tab.title}`"
+              title="关闭标签页"
+              @click="closeTab(tab.id)"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m7 7 10 10M17 7 7 17" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <button
+          class="new-tab-button"
+          type="button"
+          aria-label="新建标签页"
+          title="新建标签页"
+          @click="newTab"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="browser-row">
         <nav class="navigation" aria-label="浏览器导航">
           <button
             type="button"
@@ -157,16 +238,28 @@ const reload = () => runControl(() => window.yuketang.browserReload());
               <path d="M19 8a8 8 0 1 0 1 5M19 4v4h-4" />
             </svg>
           </button>
+          <button type="button" title="主页" aria-label="主页" @click="goHome">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m4 11 8-7 8 7M6.5 9.5V20h11V9.5M10 20v-6h4v6" />
+            </svg>
+          </button>
         </nav>
 
-        <div class="address-bar">
+        <form class="address-bar" @submit.prevent="navigateAddress">
           <svg class="lock-mark" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z" />
           </svg>
-          <span :title="browserState?.url">
-            {{ browserState?.url || '正在打开雨课堂…' }}
-          </span>
-        </div>
+          <input
+            v-model="addressDraft"
+            type="text"
+            aria-label="网址"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="输入雨课堂网址"
+            @focus="beginAddressEdit"
+            @blur="finishAddressEdit"
+          />
+        </form>
       </div>
 
       <div class="task-row">

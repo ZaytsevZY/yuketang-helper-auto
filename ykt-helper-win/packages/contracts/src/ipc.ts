@@ -55,6 +55,11 @@ export const IpcChannel = {
   BrowserBack: 'browser:back',
   BrowserForward: 'browser:forward',
   BrowserReload: 'browser:reload',
+  BrowserHome: 'browser:home',
+  BrowserNavigate: 'browser:navigate',
+  BrowserNewTab: 'browser:new-tab',
+  BrowserActivateTab: 'browser:activate-tab',
+  BrowserCloseTab: 'browser:close-tab',
   SetNetworkLabCollapsed: 'browser:set-network-lab-collapsed',
   SetAssistantPanelCollapsed: 'browser:set-assistant-panel-collapsed',
   BrowserStateChanged: 'browser:state-changed',
@@ -106,6 +111,11 @@ export interface DesktopApi {
   browserBack(): Promise<void>;
   browserForward(): Promise<void>;
   browserReload(): Promise<void>;
+  browserHome(): Promise<void>;
+  browserNavigate(url: string): Promise<void>;
+  browserNewTab(): Promise<void>;
+  browserActivateTab(tabId: string): Promise<void>;
+  browserCloseTab(tabId: string): Promise<void>;
   setNetworkLabCollapsed(collapsed: boolean): Promise<void>;
   setAssistantPanelCollapsed(collapsed: boolean): Promise<void>;
   onBrowserStateChanged(listener: (state: BrowserState) => void): () => void;

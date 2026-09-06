@@ -9,13 +9,14 @@ import type { SecretStore } from '@ykt/storage';
 
 export class ElectronSessionCredentialSource implements SessionCredentialSource {
   constructor(
-    private readonly contents: WebContents,
+    private readonly getContents: () => WebContents,
     private readonly secrets: SecretStore,
   ) {}
 
   async load(environment: BrowserEnvironment): Promise<BrowserCredentials> {
     const adapter = hostAdapterFor(environment);
-    const cookies = await this.contents.session.cookies.get({
+    const contents = this.getContents();
+    const cookies = await contents.session.cookies.get({
       url: adapter.origin,
     });
     const cookieHeader = cookies
@@ -24,7 +25,11 @@ export class ElectronSessionCredentialSource implements SessionCredentialSource 
     const userId = cookies.find((cookie) => cookie.name === 'user_id')?.value;
     return {
       cookieHeader,
-      bearerToken: await this.readBearerToken(environment, adapter.origin),
+      bearerToken: await this.readBearerToken(
+        contents,
+        environment,
+        adapter.origin,
+      ),
       userId: userId ?? null,
     };
   }
@@ -39,12 +44,13 @@ export class ElectronSessionCredentialSource implements SessionCredentialSource 
   }
 
   private async readBearerToken(
+    contents: WebContents,
     environment: BrowserEnvironment,
     origin: string,
   ): Promise<string | null> {
     try {
-      if (new URL(this.contents.getURL()).origin === origin) {
-        const value: unknown = await this.contents.executeJavaScript(
+      if (new URL(contents.getURL()).origin === origin) {
+        const value: unknown = await contents.executeJavaScript(
           "localStorage.getItem('Authorization')",
           true,
         );

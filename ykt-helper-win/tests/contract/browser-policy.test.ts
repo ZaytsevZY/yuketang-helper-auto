@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   environmentForUrl,
   isAllowedYuketangUrl,
+  resolveYuketangNavigation,
   targetForEnvironment,
 } from '../../apps/desktop/main/browser-policy.js';
 
@@ -34,5 +35,23 @@ describe('embedded browser policy', () => {
     expect(environmentForUrl('https://pro.yuketang.cn/v2/web/index')).toBe(
       BrowserEnvironment.Pro,
     );
+  });
+
+  it('resolves address bar input without leaving Yuketang', () => {
+    expect(
+      resolveYuketangNavigation(
+        'pro.yuketang.cn/web',
+        'https://pro.yuketang.cn/lesson/1',
+      ),
+    ).toBe('https://pro.yuketang.cn/web');
+    expect(
+      resolveYuketangNavigation('/web', 'https://pro.yuketang.cn/lesson/1'),
+    ).toBe('https://pro.yuketang.cn/web');
+    expect(() =>
+      resolveYuketangNavigation(
+        'https://example.com',
+        'https://pro.yuketang.cn/web',
+      ),
+    ).toThrow('只能打开雨课堂 HTTPS 地址');
   });
 });

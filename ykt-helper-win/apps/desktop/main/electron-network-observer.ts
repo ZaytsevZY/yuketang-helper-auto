@@ -56,6 +56,7 @@ export class ElectronNetworkObserver {
     private readonly recorder: NetworkRecorder,
     private readonly onDeepStateChanged: () => void,
     private readonly lessonCollector?: BrowserLessonCollector,
+    private readonly captureSessionRequests = true,
   ) {}
 
   get deepCapture(): boolean {
@@ -67,61 +68,64 @@ export class ElectronNetworkObserver {
   }
 
   async start(): Promise<void> {
-    const webRequest = this.contents.session.webRequest;
-    const filter = { urls: ['<all_urls>'] };
+    if (this.contents.isDestroyed()) return;
+    if (this.captureSessionRequests) {
+      const webRequest = this.contents.session.webRequest;
+      const filter = { urls: ['<all_urls>'] };
 
-    webRequest.onBeforeSendHeaders(filter, (details, callback) => {
-      this.#requests.set(details.id, {
-        method: details.method,
-        url: details.url,
-        resourceType: details.resourceType,
-        requestHeaders: flattenHeaders(details.requestHeaders),
-        startedAt: Date.now(),
+      webRequest.onBeforeSendHeaders(filter, (details, callback) => {
+        this.#requests.set(details.id, {
+          method: details.method,
+          url: details.url,
+          resourceType: details.resourceType,
+          requestHeaders: flattenHeaders(details.requestHeaders),
+          startedAt: Date.now(),
+        });
+        callback({});
       });
-      callback({});
-    });
 
-    webRequest.onCompleted(filter, (details) => {
-      const request = this.#requests.get(details.id);
-      this.#requests.delete(details.id);
-      this.recorder.addHttp({
-        source: 'browser',
-        phase: 'complete',
-        requestId: String(details.id),
-        method: request?.method ?? details.method,
-        url: request?.url ?? details.url,
-        resourceType: request?.resourceType ?? details.resourceType,
-        statusCode: details.statusCode,
-        durationMs: request
-          ? Math.max(0, Date.now() - request.startedAt)
-          : null,
-        requestHeaders: request?.requestHeaders ?? {},
-        responseHeaders: flattenHeaders(details.responseHeaders),
-        body: null,
-        error: null,
+      webRequest.onCompleted(filter, (details) => {
+        const request = this.#requests.get(details.id);
+        this.#requests.delete(details.id);
+        this.recorder.addHttp({
+          source: 'browser',
+          phase: 'complete',
+          requestId: String(details.id),
+          method: request?.method ?? details.method,
+          url: request?.url ?? details.url,
+          resourceType: request?.resourceType ?? details.resourceType,
+          statusCode: details.statusCode,
+          durationMs: request
+            ? Math.max(0, Date.now() - request.startedAt)
+            : null,
+          requestHeaders: request?.requestHeaders ?? {},
+          responseHeaders: flattenHeaders(details.responseHeaders),
+          body: null,
+          error: null,
+        });
       });
-    });
 
-    webRequest.onErrorOccurred(filter, (details) => {
-      const request = this.#requests.get(details.id);
-      this.#requests.delete(details.id);
-      this.recorder.addHttp({
-        source: 'browser',
-        phase: 'complete',
-        requestId: String(details.id),
-        method: request?.method ?? details.method,
-        url: request?.url ?? details.url,
-        resourceType: request?.resourceType ?? details.resourceType,
-        statusCode: null,
-        durationMs: request
-          ? Math.max(0, Date.now() - request.startedAt)
-          : null,
-        requestHeaders: request?.requestHeaders ?? {},
-        responseHeaders: {},
-        body: null,
-        error: details.error,
+      webRequest.onErrorOccurred(filter, (details) => {
+        const request = this.#requests.get(details.id);
+        this.#requests.delete(details.id);
+        this.recorder.addHttp({
+          source: 'browser',
+          phase: 'complete',
+          requestId: String(details.id),
+          method: request?.method ?? details.method,
+          url: request?.url ?? details.url,
+          resourceType: request?.resourceType ?? details.resourceType,
+          statusCode: null,
+          durationMs: request
+            ? Math.max(0, Date.now() - request.startedAt)
+            : null,
+          requestHeaders: request?.requestHeaders ?? {},
+          responseHeaders: {},
+          body: null,
+          error: details.error,
+        });
       });
-    });
+    }
 
     this.contents.debugger.on('message', (_event, method, params) => {
       void this.handleDebuggerMessage(method, params as CdpMessage);
@@ -138,6 +142,7 @@ export class ElectronNetworkObserver {
   }
 
   async setDeepCapture(enabled: boolean): Promise<void> {
+    if (this.contents.isDestroyed()) return;
     if (enabled === this.#deepCapture) return;
 
     if (!enabled) {
@@ -153,10 +158,13 @@ export class ElectronNetworkObserver {
   }
 
   destroy(): void {
-    const webRequest = this.contents.session.webRequest;
-    webRequest.onBeforeSendHeaders(null);
-    webRequest.onCompleted(null);
-    webRequest.onErrorOccurred(null);
+    if (this.captureSessionRequests && !this.contents.isDestroyed()) {
+      const webRequest = this.contents.session.webRequest;
+      webRequest.onBeforeSendHeaders(null);
+      webRequest.onCompleted(null);
+      webRequest.onErrorOccurred(null);
+    }
+    if (this.contents.isDestroyed()) return;
     if (this.contents.debugger.isAttached()) {
       this.#manualDetach = true;
       this.contents.debugger.detach();
@@ -322,6 +330,7 @@ export class ElectronNetworkObserver {
   }
 
   private async ensureDebuggerAttached(): Promise<boolean> {
+    if (this.contents.isDestroyed()) return false;
     if (this.contents.debugger.isAttached()) return true;
     try {
       this.contents.debugger.attach('1.3');

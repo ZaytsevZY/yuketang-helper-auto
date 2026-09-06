@@ -18,8 +18,12 @@ import { ElectronNetworkObserver } from './electron-network-observer.js';
 export class NetworkLabController {
   readonly recorder = new NetworkRecorder();
   readonly #normalizers = new NormalizerPipeline();
-  readonly #observer: ElectronNetworkObserver;
+  readonly #observers = new Map<number, ElectronNetworkObserver>();
+  readonly #lessonCollector: BrowserLessonCollector | undefined;
   #lastDroppedEntries = 0;
+  #started = false;
+  #deepCapture = false;
+  #sessionObserverId: number | null = null;
 
   constructor(
     contents: WebContents,
@@ -27,17 +31,44 @@ export class NetworkLabController {
     private readonly onStateChanged: (state: NetworkCaptureState) => void,
     lessonCollector?: BrowserLessonCollector,
   ) {
-    this.#observer = new ElectronNetworkObserver(
-      contents,
-      this.recorder,
-      () => this.emitState(),
-      lessonCollector,
-    );
+    this.#lessonCollector = lessonCollector;
+    this.attach(contents);
     this.recorder.subscribe((entry) => this.handleEntry(entry));
   }
 
   async start(): Promise<void> {
-    await this.#observer.start();
+    this.#started = true;
+    await Promise.all(
+      [...this.#observers.values()].map((observer) => observer.start()),
+    );
+  }
+
+  attach(contents: WebContents): void {
+    if (this.#observers.has(contents.id)) return;
+    const capturesSession = this.#sessionObserverId === null;
+    if (capturesSession) this.#sessionObserverId = contents.id;
+    const observer = new ElectronNetworkObserver(
+      contents,
+      this.recorder,
+      () => this.emitState(),
+      this.#lessonCollector,
+      capturesSession,
+    );
+    this.#observers.set(contents.id, observer);
+    contents.once('destroyed', () => {
+      if (contents.id !== this.#sessionObserverId) {
+        this.#observers.delete(contents.id);
+      }
+    });
+    if (this.#started) {
+      void observer
+        .start()
+        .then(async () => {
+          if (this.#deepCapture) await observer.setDeepCapture(true);
+          this.emitState();
+        })
+        .catch(() => this.emitState());
+    }
   }
 
   getSnapshot(): NetworkSnapshot {
@@ -54,7 +85,13 @@ export class NetworkLabController {
   }
 
   async setDeepCapture(enabled: boolean): Promise<void> {
-    await this.#observer.setDeepCapture(enabled);
+    this.#deepCapture = enabled;
+    await Promise.all(
+      [...this.#observers.values()].map((observer) =>
+        observer.setDeepCapture(enabled),
+      ),
+    );
+    this.emitState();
   }
 
   clear(): void {
@@ -64,15 +101,19 @@ export class NetworkLabController {
   }
 
   destroy(): void {
-    this.#observer.destroy();
+    for (const observer of this.#observers.values()) observer.destroy();
+    this.#observers.clear();
   }
 
   private getState(): NetworkCaptureState {
     return {
       paused: this.recorder.paused,
-      deepCapture: this.#observer.deepCapture,
+      deepCapture: this.#deepCapture,
       deepCaptureAvailable: true,
-      deepCaptureError: this.#observer.deepCaptureError,
+      deepCaptureError:
+        [...this.#observers.values()]
+          .map((observer) => observer.deepCaptureError)
+          .find((error) => error !== null) ?? null,
       entryCount: this.recorder.entries.length,
       droppedEntries: this.recorder.droppedEntries,
     };

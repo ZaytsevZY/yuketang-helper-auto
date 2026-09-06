@@ -250,6 +250,29 @@ function registerIpc(): void {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
     getBrowserController().reload();
   });
+  ipcMain.handle(IpcChannel.BrowserHome, async (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    await getBrowserController().home();
+  });
+  ipcMain.handle(IpcChannel.BrowserNavigate, async (event, url: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (typeof url !== 'string') throw new Error('Invalid browser URL.');
+    await getBrowserController().navigate(url);
+  });
+  ipcMain.handle(IpcChannel.BrowserNewTab, async (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    await getBrowserController().newTab();
+  });
+  ipcMain.handle(IpcChannel.BrowserActivateTab, (event, tabId: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (typeof tabId !== 'string') throw new Error('Invalid browser tab.');
+    getBrowserController().activateTab(tabId);
+  });
+  ipcMain.handle(IpcChannel.BrowserCloseTab, async (event, tabId: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (typeof tabId !== 'string') throw new Error('Invalid browser tab.');
+    await getBrowserController().closeTab(tabId);
+  });
   ipcMain.handle(
     IpcChannel.SetNetworkLabCollapsed,
     (event, collapsed: unknown) => {
@@ -676,6 +699,9 @@ async function createWindow(): Promise<void> {
     },
     browserLessonCollector,
   );
+  nextBrowserController.onWebContentsCreated((contents) => {
+    nextNetworkLabController.attach(contents);
+  });
   networkLabController = nextNetworkLabController;
   let disposed = false;
   window.on('close', () => {
@@ -724,7 +750,7 @@ async function createWindow(): Promise<void> {
     secretStore,
     activeClient: new YuketangActiveClient({
       credentials: new ElectronSessionCredentialSource(
-        nextBrowserController.webContents,
+        () => nextBrowserController.webContents,
         secretStore,
       ),
       transport: new ChromiumHttpTransport(
