@@ -6,8 +6,8 @@ import terser from '@rollup/plugin-terser';
 import { meta } from './userscript.meta.js';
 
 /** 产物文件名 */
-const OUT_FILE = 'dist/ykt-helper-1212.user.js';
-const DEBUG_OUT_FILE = 'dist/ykt-helper.debug.user.js';
+export const OUT_FILE = 'dist/ykt-helper-1213.user.js';
+export const DEBUG_OUT_FILE = 'dist/ykt-helper.debug.user.js';
 
 const makeOutput = (file) => ({
   file,
@@ -15,6 +15,15 @@ const makeOutput = (file) => ({
   sourcemap: false,
   banner: () => meta,
   inlineDynamicImports: true
+});
+
+const stripTrailingWhitespace = () => ({
+  name: 'strip-trailing-whitespace',
+  generateBundle(_options, bundle) {
+    for (const output of Object.values(bundle)) {
+      if (output.type === 'chunk') output.code = output.code.replace(/[ \t]+$/gm, '');
+    }
+  }
 });
 
 export default {
@@ -56,7 +65,10 @@ export default {
         indent_level: 2,
         comments: 'all'              // 保留全部注释（尤其是 Userscript 头）
       }
-    })
+    }),
+
+    // 新增的发布包会整体进入 Git；统一清理生成代码行尾空格，保证 diff 检查干净。
+    stripTrailingWhitespace()
   ],
   
   // 关键配置：禁用代码分割相关功能

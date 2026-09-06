@@ -11,7 +11,8 @@
     "test:debug": "npm run build && node scripts/verify-debug-harness.mjs",
     "test:debug:browser": "node scripts/verify-debug-browser.mjs",
     "test:model-params": "node scripts/verify-model-params.mjs",
-    "postbuild": "node -e \"console.log('\\n✅ Build done: dist/ykt-helper-1212.user.js + dist/ykt-helper.debug.user.js')\""
+    "test": "node --test test/*.test.js",
+    "postbuild": "node -e \"import('./rollup.config.mjs').then(({ OUT_FILE, DEBUG_OUT_FILE }) => console.log('\\n✅ Build done: ' + OUT_FILE + ' + ' + DEBUG_OUT_FILE))\""
   },
   "devDependencies": {
     "@bkuri/rollup-plugin-string": "^1.0.0",

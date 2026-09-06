@@ -10,12 +10,72 @@ import { formatProblemForVision, parseAIAnswer } from '../tsm/ai-format.js';
 import { captureSlideImage, captureProblemForVision } from '../capture/screenshoot.js';  
 import { getOnLesson, checkinClass } from '../net/xhr-interceptor.js';
 import { connectOrAttachLessonWS } from '../net/ws-interceptor.js';
+import { createEventReminder, createPublishReminder } from './publish-reminder.js';
+import { screenWakeLock } from '../core/screen-wake-lock.js';
+import { isReminderEnabled } from '../core/reminder-preferences.js';
 
 let _autoLoopStarted = false;
 let _autoJoinStarted = false;
 let _autoOnLessonClickStarted = false;
 let _autoOnLessonClickInProgress = false;
 let _routerHooked = false;
+const publishReminder = createPublishReminder({
+  notify: event => ui.notifyPublish(event),
+});
+const problemStartReminder = createEventReminder({
+  notify: event => ui.notifyClassroomEvent(event),
+  isEnabled: (_event, config) => isReminderEnabled('problem-start', config),
+});
+
+const AUTO_ANSWER_EVENT_META = {
+  'auto-answer-scheduled': ['自动作答已排队', '脚本已为这道题安排自动作答。'],
+  'auto-answer-started': ['自动作答开始', '脚本正在处理这道题。'],
+  'auto-answer-succeeded': ['自动作答成功', '这道题的答案已提交。'],
+  'auto-answer-failed': ['自动作答失败', '这道题未能完成自动作答。'],
+};
+
+function firstValue(...values) {
+  return values.find(value => value !== undefined && value !== null && String(value).trim() !== '');
+}
+
+function notifyProblemStart(data, problem, slide) {
+  const payload = data && typeof data === 'object' ? data : {};
+  const problemId = firstValue(
+    problem?.problemId,
+    problem?.id,
+    payload.prob,
+    payload.problemId,
+    payload.problemid,
+    payload.problem?.problemId,
+    payload.problem?.id,
+  );
+  const detail = problem?.body
+    || payload.body
+    || payload.title
+    || payload.name
+    || '老师已开启一道新题，请打开课堂查看。';
+
+  return problemStartReminder.handle({
+    kind: 'problem-start',
+    dedupeKey: `problem-start:${problemId || payload.sid || payload.dt || 'unknown'}`,
+    title: '习题已发布',
+    nativeTitle: '雨课堂习题提示',
+    detail,
+    problem,
+    slide,
+  }, ui.config);
+}
+
+function notifyAutoAnswer(kind, problem, detail) {
+  const [title, defaultDetail] = AUTO_ANSWER_EVENT_META[kind] || ['自动作答提示', '自动作答状态发生变化。'];
+  return ui.notifyClassroomEvent({
+    kind,
+    dedupeKey: `${kind}:${problem?.problemId || Date.now()}`,
+    title,
+    detail: detail || defaultDetail,
+    problem,
+  });
+}
 
 // 无AI默认答案生成
 function makeDefaultAnswer(problem) {
@@ -65,6 +125,7 @@ async function handleAutoAnswerInternal(problem) {
   }
 
   status.answering = true;
+  notifyAutoAnswer('auto-answer-started', problem);
 
   try {
     console.log('[雨课堂助手][INFO][AutoAnswer] =================================');
@@ -91,6 +152,7 @@ async function handleAutoAnswerInternal(problem) {
       actions.onAnswerProblem(problem.problemId, parsed);
       status.done = true;
       status.answering = false;
+      notifyAutoAnswer('auto-answer-succeeded', problem, '这道题已使用本地默认答案提交。');
 
       ui.toast('使用默认答案完成作答（未配置 API Key）', 3000);
       showAutoAnswerPopup(problem, '（本地默认答案：无 API Key）');
@@ -114,6 +176,7 @@ async function handleAutoAnswerInternal(problem) {
       if (!fallbackImage) {
         status.answering = false;
         console.error('[雨课堂助手][ERR][AutoAnswer] 所有截图方法都失败');
+        notifyAutoAnswer('auto-answer-failed', problem, '无法获取题目图像，已跳过自动作答。');
         return ui.toast('无法获取题目图像，跳过自动作答', 3000);
       }
       
@@ -139,6 +202,7 @@ async function handleAutoAnswerInternal(problem) {
     if (!parsed) {
       status.answering = false;
       console.error('[雨课堂助手][ERR][AutoAnswer] 解析失败，AI回答格式不正确');
+      notifyAutoAnswer('auto-answer-failed', problem, '无法解析 AI 返回的答案，已跳过自动作答。');
       return ui.toast('无法解析AI答案，请检查格式', 3000);
     }
 
@@ -158,6 +222,7 @@ async function handleAutoAnswerInternal(problem) {
     actions.onAnswerProblem(problem.problemId, parsed);
     status.done = true;
     status.answering = false;
+    notifyAutoAnswer('auto-answer-succeeded', problem);
     
     ui.toast(`自动作答完成`, 3000);
     showAutoAnswerPopup(problem, aiAnswer);
@@ -166,6 +231,7 @@ async function handleAutoAnswerInternal(problem) {
     console.error('[雨课堂助手][ERR][AutoAnswer] 失败:', e);
     console.error('[雨课堂助手][ERR][AutoAnswer] 错误堆栈:', e.stack);
     status.answering = false;
+    notifyAutoAnswer('auto-answer-failed', problem, `自动作答失败：${e?.message || '未知错误'}`);
     ui.toast(`自动作答失败: ${e.message}`, 4000);
   }
 }
@@ -189,8 +255,10 @@ export function startAutoAnswerLoop() {
 }
 
 export const actions = {
-  onFetchTimeline(timeline) {
-    for (const piece of timeline) if (piece.type === 'problem') this.onUnlockProblem(piece);
+  onFetchTimeline(timeline, options = {}) {
+    for (const piece of Array.isArray(timeline) ? timeline : []) {
+      if (piece?.type === 'problem') this.onUnlockProblem(piece, options);
+    }
   },
 
   onPresentationLoaded(id, data) {
@@ -206,38 +274,48 @@ export const actions = {
     ui.updatePresentationList();
   },
 
-  onUnlockProblem(data) {
-    const problem = repo.problems.get(data.prob);
-    const slide = repo.slides.get(data.sid);
+  onUnlockProblem(data, { notificationOnly = false } = {}) {
+    const payload = data && typeof data === 'object' ? data : {};
+    const problemId = firstValue(
+      payload.prob,
+      payload.problemId,
+      payload.problemid,
+      payload.problem?.problemId,
+      payload.problem?.id,
+      payload.id,
+    );
+    const slideId = firstValue(payload.sid, payload.slideId, payload.slide?.id);
+    const problem = repo.problems.get(problemId);
+    const slide = repo.slides.get(slideId);
     if (!problem || !slide) {
+      if (notificationOnly) return notifyProblemStart(payload, problem, slide);
       console.log('[雨课堂助手][ERR][onUnlockProblem] 题目或幻灯片不存在');
-      return;
+      return false;
     }
 
     console.log('[雨课堂助手][DBG][onUnlockProblem] 题目解锁');
-    console.log('[雨课堂助手][DBG][onUnlockProblem] 题目ID:', data.prob);
-    console.log('[雨课堂助手][DBG][onUnlockProblem] 幻灯片ID:', data.sid);
-    console.log('[雨课堂助手][DBG][onUnlockProblem] 课件ID:', data.pres);
+    console.log('[雨课堂助手][DBG][onUnlockProblem] 题目ID:', problemId);
+    console.log('[雨课堂助手][DBG][onUnlockProblem] 幻灯片ID:', slideId);
+    console.log('[雨课堂助手][DBG][onUnlockProblem] 课件ID:', payload.pres);
 
     const status = {
-      presentationId: data.pres,
-      slideId: data.sid,
-      startTime: data.dt,
-      endTime: data.dt + 1000 * data.limit,
+      presentationId: payload.pres,
+      slideId,
+      startTime: payload.dt,
+      endTime: payload.dt + 1000 * payload.limit,
       done: !!problem.result,
       autoAnswerTime: null,
       answering: false,
     };
-    repo.problemStatus.set(data.prob, status);
+    repo.problemStatus.set(problemId, status);
 
     if (Date.now() > status.endTime || problem.result) {
       console.log('[雨课堂助手][WARN][onUnlockProblem] 题目已过期或已作答，跳过');
       return;
     }
 
-    if (ui.config.notifyProblems) {
-      ui.notifyProblem(problem, slide);
-    }
+    const notified = notifyProblemStart(payload, problem, slide);
+    if (notificationOnly) return notified;
 
     if (ui.config.autoAnswer) {
       const delay = ui.config.autoAnswerDelay + randInt(0, ui.config.autoAnswerRandomDelay);
@@ -245,13 +323,28 @@ export const actions = {
       
       console.log(`[雨课堂助手][INFO][onUnlockProblem] 将在 ${Math.floor(delay / 1000)} 秒后自动作答`);
       ui.toast(`将在 ${Math.floor(delay / 1000)} 秒后使用融合模式自动作答`, 3000);
+      notifyAutoAnswer('auto-answer-scheduled', problem, `将在约 ${Math.floor(delay / 1000)} 秒后开始自动作答。`);
     }
     
     ui.updateActiveProblems();
+    return notified;
+  },
+
+  onPublishEvent(event) {
+    const notified = publishReminder.handle(event, ui.config);
+    if (notified) {
+      console.log('[雨课堂助手][INFO][Publish] 已提醒发布事件:', event.category, event.dedupeKey);
+    }
+    return notified;
   },
 
   onLessonFinished() {
-    ui.nativeNotify({ title: '下课提示', text: '当前课程已结束', timeout: 5000 });
+    return ui.notifyClassroomEvent({
+      kind: 'lesson-finished',
+      dedupeKey: `lesson-finished:${repo.currentLessonId || Date.now()}`,
+      title: '下课提示',
+      detail: '当前课程已结束。',
+    });
   },
 
   onAnswerProblem(problemId, result) {
@@ -324,6 +417,7 @@ export const actions = {
     repo.loadStoredPresentations();
     this.maybeStartAutoJoin();           
     this.installRouterRearm();            
+    void screenWakeLock.setEnabled(ui.config.keepScreenAwake);
   },
   
     startAutoAnswerLoop() {
@@ -408,6 +502,7 @@ export const actions = {
       _autoOnLessonClickInProgress = false;
       // 每次路由变更都尝试启动（内部有防重，所以安全）
       this.maybeStartAutoJoin();
+      void screenWakeLock.sync();
     };
     const wrap = (obj, key) => {
       const orig = obj[key];

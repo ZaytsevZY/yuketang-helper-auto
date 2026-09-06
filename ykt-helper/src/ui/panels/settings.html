@@ -48,6 +48,11 @@
           <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与文本模型相同">
         </div>
         <div class="setting-item">
+          <label for="ykt-ai-temperature">Temperature:</label>
+          <input type="number" id="ykt-ai-temperature" min="0" max="2" step="0.01" placeholder="留空则不传">
+          <small>当前 Profile 专用。留空时不发送该参数，由模型决定默认值；部分 Kimi 模型要求留空。</small>
+        </div>
+        <div class="setting-item">
           <label for="ykt-ai-ocr-api">OCR模型API:</label>
           <input type="text" id="ykt-ai-ocr-api" placeholder="留空则复用当前 AI Profile 的 URL">
           <small>仅用于课件“文字识别”功能；留空时走当前 AI Profile。</small>
@@ -138,7 +143,113 @@
       </div>
 
       <div class="setting-group">
-        <h4>习题提醒</h4>
+        <h4>课堂提醒</h4>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-all" />
+            <span class="checkmark"></span>
+            总提醒开关
+          </label>
+          <small>关闭后，下面每一种课堂事件都会静音；工具栏铃铛与此开关同步。</small>
+        </div>
+        <h5>提醒事件</h5>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-problem-start" />
+            <span class="checkmark"></span>
+            新题 / 答题开始
+          </label>
+          <small>老师开启一道可作答习题时提醒。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-assessment-publish" />
+            <span class="checkmark"></span>
+            考试/测试题组发布提醒
+          </label>
+          <small>老师发布测试、考试或题组时提醒。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-courseware-publish" />
+            <span class="checkmark"></span>
+            课件发布提醒
+          </label>
+          <small>只在发布新课件时提醒；翻阅旧课件和翻页不会提醒。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-other-publish" />
+            <span class="checkmark"></span>
+            其他无法分类的发布提醒
+          </label>
+          <small>用于不同学校服务器的未知发布事件；若提醒过多可单独关闭。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-lesson-finished" />
+            <span class="checkmark"></span>
+            课程结束提醒
+          </label>
+          <small>老师结束当前课程时提醒。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-auto-answer-scheduled" />
+            <span class="checkmark"></span>
+            自动作答已排队
+          </label>
+          <small>脚本为新题安排延迟作答时提醒。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-auto-answer-started" />
+            <span class="checkmark"></span>
+            自动作答开始
+          </label>
+          <small>脚本开始执行本地或 AI 作答流程时提醒。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-auto-answer-succeeded" />
+            <span class="checkmark"></span>
+            自动作答成功
+          </label>
+          <small>答案提交成功时提醒。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-auto-answer-failed" />
+            <span class="checkmark"></span>
+            自动作答失败
+          </label>
+          <small>截图、AI 分析或答案提交失败时提醒。</small>
+        </div>
+        <h5>提醒方式</h5>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-native" />
+            <span class="checkmark"></span>
+            系统通知
+          </label>
+          <small>调用浏览器或篡改猴的原生通知。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-popup" />
+            <span class="checkmark"></span>
+            页面弹窗
+          </label>
+          <small>在当前页面右下角显示提醒卡片。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-sound" />
+            <span class="checkmark"></span>
+            提示声音
+          </label>
+          <small>播放内置或自定义提示音。</small>
+        </div>
         <div class="setting-item">
           <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>
           <input type="number" id="ykt-input-notify-duration" min="2" max="60" />
@@ -163,6 +274,18 @@
           </div>
           <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>
           <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <h4>课堂运行</h4>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-keep-screen-awake" />
+            <span class="checkmark"></span>
+            课堂保持亮屏（仅防自动熄屏）
+          </label>
+          <small>仅在课堂页且页面可见时生效。无法阻止手动锁屏、切换到后台后的浏览器冻结；省电模式也可能拒绝该功能。</small>
         </div>
       </div>
     </div>

@@ -1,7 +1,21 @@
 // src/core/env.js
 export const gm = {
   notify(opt) {
-    if (typeof window.GM_notification === 'function') window.GM_notification(opt);
+    if (typeof window.GM_notification === 'function') {
+      window.GM_notification(opt);
+      return;
+    }
+    // On mobile userscript hosts that do not expose GM_notification, use an
+    // already-granted browser notification permission.  Never request it
+    // automatically: the user controls that permission in the browser.
+    try {
+      if (window.Notification?.permission !== 'granted') return;
+      const notice = new window.Notification(opt?.title || '雨课堂提醒', {
+        body: opt?.text || '',
+        icon: opt?.image || undefined,
+      });
+      if (opt?.timeout > 0) setTimeout(() => notice.close?.(), opt.timeout);
+    } catch {}
   },
   addStyle(css) {
     if (typeof window.GM_addStyle === 'function') window.GM_addStyle(css);

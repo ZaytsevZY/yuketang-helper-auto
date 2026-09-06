@@ -1,4 +1,6 @@
 // src/core/types.js
+import { REMINDER_DEFAULTS } from './reminder-preferences.js';
+
 export const PROBLEM_TYPE_MAP = {
   1: '单选题',
   2: '多选题',
@@ -8,10 +10,11 @@ export const PROBLEM_TYPE_MAP = {
 };
 
 export const DEFAULT_CONFIG = {
-  notifyProblems: true,
+  ...REMINDER_DEFAULTS,
   autoAnswer: false,
   autoAnswerDelay: 3000,
   autoAnswerRandomDelay: 2000,
+  keepScreenAwake: false,
   iftex: true,
   ai: {
     provider: 'kimi', 
@@ -25,7 +28,6 @@ export const DEFAULT_CONFIG = {
     translateApi: '',
     translateApiKey: '',
     translateModel: '',
-    temperature: 1,
     maxTokens: 1000,
   },
   profiles: [
@@ -36,6 +38,7 @@ export const DEFAULT_CONFIG = {
       apiKey: '',                     
       model: 'moonshot-v1-8k',
       visionModel: 'moonshot-v1-8k-vision-preview',
+      temperature: '',
     },
   ],
   activeProfileId: 'default',

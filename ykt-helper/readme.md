@@ -1,5 +1,7 @@
 # ykt-helper 开发文档
 
+> 当前发布版本为 1.21.3，正式用户脚本位于 [`../release/ykt-helper-1213.user.js`](../release/ykt-helper-1213.user.js)。`flat/` 是旧版扁平化实现，不参与当前发布。
+
 ## 项目构建
 
 ### 环境要求
@@ -8,13 +10,14 @@
 
 ### 构建步骤
 ```bash
-npm i                # 安装依赖
-npm run build        # 构建到 dist/ 目录
+npm ci               # 按 lockfile 安装依赖；首次开发也可使用 npm install
+npm test             # 运行自动化测试
+npm run build        # 构建到 rollup.config.mjs 指定的 dist/ 文件
 npm run dev          # 开发模式（监听文件变化）
 ```
 
 ### 使用方式
-直接使用 `release/ykt-helper.user.js`，导入 Tampermonkey 即可。
+构建后的当前产物是 `dist/ykt-helper-1213.user.js`；发布前将它与根目录的 `../release/ykt-helper-1213.user.js` 保持完全一致，再导入 Tampermonkey。不要保留 1214–1216 的独立发布包，本轮所有改动归并到 1.21.3。
 
 ### 本地调试
 `debug/` 目录提供了本地雨课堂测试宿主，可用于 userscript、浏览器扩展和 Electron/WebView 的基础功能测试。
@@ -35,17 +38,25 @@ npm run debug
 src/
 ├── index.js                    # 主入口
 ├── ai/                         # AI 服务
-│   ├── kimi.js                # Kimi API 调用（支持文本和Vision模式）
-│   ├── deepseek.js            # DeepSeek API（备用）
-│   └── gpt.ts                 # GPT API（未实现）
+│   ├── openai.js              # 当前主调用：OpenAI 兼容接口（文本、视觉、OCR、翻译）
+│   ├── kimi.js                # 旧版 Kimi 调用实现
+│   ├── deepseek.js            # 备用实现
+│   ├── gemini.js              # 备用实现
+│   └── openrouter.js          # 备用实现
 ├── capture/
 │   └── screenshoot.js         # 页面截图功能（支持Vision模式）
 ├── core/                      # 核心配置
 │   ├── env.js                 # 环境适配器
+│   ├── reminder-preferences.js # 课堂事件与提醒方式开关
+│   ├── realtime-dispatch.js    # 运行模式感知的实时事件分发
+│   ├── runtime-mode.js         # 桌面 / /m/v2 仅提醒模式判定
+│   ├── screen-wake-lock.js     # 可见课堂页的亮屏锁
+│   ├── settings-form.js        # Profile 原子保存与提醒表单同步
 │   ├── storage.js             # 存储管理
 │   ├── vuex-helper.js         # vuex辅助工具，用于获取雨课堂主界面状态
 │   └── types.js               # 类型定义与常量
 ├── net/                       # 网络拦截
+│   ├── fetch-interceptor.js   # Fetch 拦截
 │   ├── ws-interceptor.js      # WebSocket 拦截
 │   └── xhr-interceptor.js     # XHR 拦截
 ├── state/                     # 状态管理
@@ -63,8 +74,16 @@ src/
     ├── styles.js              # 样式注入
     ├── toast.js               # 提示组件
     ├── toolbar.js             # 工具栏
+    ├── mobile-reminder-panel.js # /m/v2 手机版提醒控制台
     └── ui-api.js              # UI 统一接口
 ```
+
+## 课堂提醒与运行模式
+
+- `reminder-preferences.js` 是唯一的提醒开关定义：总开关、9 个事件开关和系统通知/页面弹窗/声音三种方式开关都由它管理。
+- `ui.notifyClassroomEvent()` 是桌面与手机版共同使用的提醒接口；事件筛选和提醒方式筛选在这里统一生效。
+- `/m/v2` 使用“仅提醒”运行模式，只挂载右下角提醒控制台和可选亮屏，不启动自动作答、自动进入课堂、桌面工具栏或 XHR 自动答题链路。
+- 亮屏基于 Wake Lock，只在页面可见的课堂路径有效；锁屏、后台冻结和系统省电策略不在脚本可控制范围内。
 
 ## 核心功能特性
 
@@ -120,18 +139,15 @@ export const actions = {
 }
 ```
 
-### ai/kimi.js - AI 服务
+### ai/openai.js - 当前 AI 服务
 ```javascript
-// 文本模式API调用
-export function queryKimi(question, aiCfg)
-// 参数: question(题目), aiCfg(配置)
-// 返回: Promise<string> AI回答
+// 文本模式 API 调用
+export async function queryAI(question, aiCfg)
 
-// Vision模式API调用
-export function queryKimiVision(imageBase64, textPrompt, aiCfg)
-// 参数: imageBase64(图像), textPrompt(文本提示), aiCfg(配置)
-// 返回: Promise<string> AI回答
-// 支持图像+文本融合分析
+// Vision / 融合模式 API 调用
+export async function queryAIVision(imageBase64, textPrompt, aiCfg, options)
+
+// 两者都从 aiCfg.activeProfileId 选择当前 Profile，并使用其 baseUrl、apiKey、model、visionModel、temperature
 ```
 
 ### capture/screenshoot.js - 截图服务
@@ -196,12 +212,11 @@ export const ui = {
 
 ## AI 服务配置
 
-### Kimi API 配置
-1. 访问 Kimi开放平台 申请 API Key
-2. 在设置面板中配置 Kimi API Key
-3. 系统支持以下模型：
-   - **文本模型**: `moonshot-v1-8k` - 用于纯文本分析
-   - **Vision模型**: `moonshot-v1-8k-vision-preview` - 用于图像+文本融合分析
+### AI Profile 配置
+1. 在设置面板新建或选择一个 AI Profile。
+2. 每个 Profile 独立保存 `baseUrl`、`apiKey`、文本模型、视觉模型与 `temperature`。
+3. `temperature` 可填 0–2；留空时请求体不包含该字段，使用提供商默认值。对于不接受自定义 Temperature 的模型，保持留空。
+4. 当前 Profile 的 Temperature 会同时作用于文本、视觉/融合、OCR 和翻译等 OpenAI 兼容请求。
 
 ### Vision模式特性
 - **自动截图**: 智能识别题目区域并截图
@@ -229,24 +244,33 @@ export const ui = {
 ## 配置文件
 
 ### userscript.meta.js
-包含用户脚本元数据，版本更新需修改此文件。
+包含用户脚本元数据；发版时更新 `@version`。
 
 ### rollup.config.mjs  
-构建配置，控制打包输出格式。
+构建配置；`OUT_FILE` 是唯一的构建输出文件名来源。
+
+### debug/index.html
+本地调试页通过 `<script>` 直接引用 `dist/` 中的用户脚本，因此每次变更 `OUT_FILE` 时也要同步引用路径。
 
 ## 开发注意事项
 
-1. **版本管理**: 发版时需手动修改以下两处版本号
-   - `userscript.meta.js` 第7行 `@version` 字段（如 `1.21.1`）
-   - `rollup.config.mjs` 第9行 `OUT_FILE` 文件名中的版本编码（如 `ykt-helper-1211`）
-2. **发布产物**: 构建完成后（`npm run build`），将 `dist/` 下的产物复制一份到项目根目录的 `release/` 文件夹中
-3. **UI组件**: 采用 HTML + JS 模板形式，样式统一在 `styles.css` 中定义
-4. **网络处理**: 通过拦截器统一处理所有网络请求
-5. **状态管理**: 集中在 `repo` 和 `actions` 中，确保数据一致性
-6. **AI服务**: 优先使用融合模式，确保最佳识别效果
-7. **图像处理**: 注意图像大小限制，自动压缩优化
-8. **格式控制**: 严格控制AI输出格式，确保解析成功率
-9. **错误处理**: 提供详细的调试信息和用户反馈
+1. **发版检查清单**：下列位置必须在同一版本提交中同步，避免出现“源码已更新、成品或文档未更新”的情况。
+   - [ ] `userscript.meta.js` 的 `@version`
+   - [ ] `rollup.config.mjs` 的 `OUT_FILE`
+   - [ ] `debug/index.html` 的 `dist/` 脚本引用
+   - [ ] `src/ui/panels/tutorial.html` 中显示的版本号
+   - [ ] 运行 `npm test && npm run build`
+   - [ ] 将构建产物复制到 `../release/`，并运行 `cmp -s dist/ykt-helper-<编号>.user.js ../release/ykt-helper-<编号>.user.js`
+   - [ ] 根 `README.md` 的版本徽章、安装链接、更新记录
+   - [ ] 根 `changelog.md` 的版本条目
+2. **发布产物**：`dist/` 被 Git 忽略；版本化成品必须额外提交到项目根目录的 `release/` 文件夹中。
+3. **UI组件**：采用 HTML + JS 模板形式，样式统一在 `styles.css` 中定义。
+4. **网络处理**：通过拦截器统一处理所有网络请求。
+5. **状态管理**：集中在 `repo` 和 `actions` 中，确保数据一致性。
+6. **AI服务**：当前主流程使用 `openai.js` 的 OpenAI 兼容接口；设置变更要覆盖文本与视觉路径。
+7. **图像处理**：注意图像大小限制，自动压缩优化。
+8. **格式控制**：严格控制AI输出格式，确保解析成功率。
+9. **错误处理**：提供详细的调试信息和用户反馈。
 
 ## 使用建议
 
