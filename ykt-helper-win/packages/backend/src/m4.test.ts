@@ -7,7 +7,7 @@ import {
   type ActiveHttpTransport,
   type LessonSocket,
 } from '@ykt/routing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createBackendRuntime } from './runtime.js';
 
@@ -242,6 +242,80 @@ describe('M4 backend active client', () => {
     ]);
 
     await runtime.stop();
+  });
+
+  it('collects slides from an ended classroom report without live ids', async () => {
+    vi.useFakeTimers();
+    try {
+      const collector = new BrowserLessonCollector();
+      const activeClient = new YuketangActiveClient({
+        credentials: {
+          load: async () => ({
+            cookieHeader: 'session=abc',
+            bearerToken: null,
+            userId: '42',
+          }),
+        },
+        transport: new QueueTransport([]),
+        browserCollector: collector,
+        socketFactory: () => {
+          throw new Error(
+            'An ended lesson must not create a classroom socket.',
+          );
+        },
+      });
+      const runtime = createBackendRuntime({ activeClient });
+      await runtime.start();
+      const contextId = 'ended-lesson-tab';
+      const reportUrl =
+        'https://pro.yuketang.cn/api/v3/classroom-report/student/detail?lesson_id=1767008521140274560';
+
+      await collector.observeHttp({
+        url: reportUrl,
+        statusCode: 200,
+        body: JSON.stringify({ data: { lesson_name: 'Ended lesson' } }),
+        contextId,
+        resourceType: 'XHR',
+      });
+      for (const imageUrl of [
+        'https://thu-private-qn.yuketang.cn/slide/7272190/cover-1.jpg?token=first',
+        'https://thu-private-qn.yuketang.cn/slide/7272190/cover-2.jpg?token=second',
+      ]) {
+        await collector.observeHttp({
+          url: imageUrl,
+          statusCode: 200,
+          body: '',
+          contextId,
+          resourceType: 'Image',
+        });
+      }
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(await runtime.facade.listLessons()).toContainEqual({
+        id: '1767008521140274560',
+        title: 'Ended lesson',
+        status: 'ended',
+      });
+      const presentations = await runtime.facade.listPresentations(
+        '1767008521140274560',
+      );
+      expect(presentations).toMatchObject([
+        {
+          id: 'report-1767008521140274560',
+          slides: [{ index: 0 }, { index: 1 }],
+        },
+      ]);
+      await expect(
+        runtime.facade.connectLesson(
+          BrowserEnvironment.Pro,
+          '1767008521140274560',
+        ),
+      ).resolves.toBeUndefined();
+
+      await runtime.stop();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

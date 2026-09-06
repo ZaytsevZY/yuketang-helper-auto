@@ -8,6 +8,7 @@ import {
   BrowserEnvironment,
   type BrowserState,
   type BrowserTabState,
+  type Lesson,
 } from '@ykt/contracts';
 
 import {
@@ -94,12 +95,14 @@ export class BrowserController {
   async openLesson(
     environment: BrowserEnvironment,
     lessonId: string,
+    status: Lesson['status'] = 'active',
   ): Promise<void> {
     const target = targetForEnvironment(environment);
-    const url = new URL(
-      `/lesson/fullscreen/v3/${encodeURIComponent(lessonId)}`,
-      target.startUrl,
-    ).toString();
+    const pathname =
+      status === 'ended'
+        ? `/m/v2/lesson/student/${encodeURIComponent(lessonId)}/overview`
+        : `/lesson/fullscreen/v3/${encodeURIComponent(lessonId)}`;
+    const url = new URL(pathname, target.startUrl).toString();
     const existing = this.#tabs.find(
       (tab) => tab.view.webContents.getURL() === url,
     );

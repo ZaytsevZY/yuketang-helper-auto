@@ -2,6 +2,7 @@ import type { BrowserEnvironment, Presentation } from '@ykt/contracts';
 
 import type { NetworkRecorder } from '../recorder.js';
 import type {
+  BrowserArchivedPresentationObservation,
   BrowserLessonCollector,
   BrowserLessonObservation,
 } from './browser-lesson-collector.js';
@@ -186,6 +187,16 @@ export class YuketangActiveClient {
     this.#browserCollector?.clear();
     this.sockets.closeAll();
     this.sessions.clear();
+  }
+
+  onArchivedPresentation(
+    listener: (
+      observation: BrowserArchivedPresentationObservation,
+    ) => void | Promise<void>,
+  ): () => void {
+    return (
+      this.#browserCollector?.onArchivedPresentation(listener) ?? (() => {})
+    );
   }
 
   private async request(

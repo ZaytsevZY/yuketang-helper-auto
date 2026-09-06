@@ -97,6 +97,7 @@ const selectedProblemId = ref('');
 const presentations = ref<readonly Presentation[]>([]);
 const selectedPresentationId = ref('');
 const selectedSlideId = ref('');
+const slidePickerOpen = ref(false);
 const settings = ref<AppSettings>();
 const settingsDraft = ref<SettingsDraft>();
 const aiProfiles = ref<readonly AiProfileView[]>([]);
@@ -235,6 +236,14 @@ const activeSlideIndex = computed(() =>
   ),
 );
 
+const selectedPresentationSlideCount = computed(() => {
+  const selected = new Set(aiSlideSelection.value);
+  return (
+    selectedPresentation.value?.slides.filter((slide) => selected.has(slide.id))
+      .length ?? 0
+  );
+});
+
 const sourceModules: ReadonlyArray<{
   id: SourceModuleId;
   label: string;
@@ -318,6 +327,8 @@ watch(answerDraft, () => {
 
 watch(selectedPresentationId, () => {
   selectedSlideId.value = selectedPresentation.value?.slides[0]?.id ?? '';
+  aiSlideSelection.value = [];
+  slidePickerOpen.value = false;
   ocrText.value = '';
 });
 
@@ -438,6 +449,10 @@ async function loadLessonData(): Promise<void> {
 
 function setLesson(id: string): void {
   selectedLessonId.value = id;
+  selectedPresentationId.value = '';
+  selectedSlideId.value = '';
+  aiSlideSelection.value = [];
+  slidePickerOpen.value = false;
   void run('lesson-data', loadLessonData);
 }
 
@@ -554,21 +569,21 @@ async function downloadCurrentSlide(): Promise<void> {
   });
 }
 
-function toggleAiSlide(): void {
-  const id = selectedSlideId.value;
-  if (!id) return;
+function selectSlide(event: MouseEvent, id: string): void {
+  if (!event.ctrlKey) {
+    selectedSlideId.value = id;
+    aiSlideSelection.value = [id];
+    return;
+  }
   const next = new Set(aiSlideSelection.value);
   if (next.has(id)) next.delete(id);
   else next.add(id);
   aiSlideSelection.value = [...next];
 }
 
-function openAiForCurrentSlide(): void {
-  if (
-    selectedSlideId.value &&
-    !aiSlideSelection.value.includes(selectedSlideId.value)
-  ) {
-    aiSlideSelection.value = [...aiSlideSelection.value, selectedSlideId.value];
+function openAiForSelectedSlides(): void {
+  if (!aiSlideSelection.value.length && selectedSlideId.value) {
+    aiSlideSelection.value = [selectedSlideId.value];
   }
   emit('selectPage', 'ai');
 }
@@ -1608,17 +1623,32 @@ function clamp(value: number, min: number, max: number): number {
               >
                 上一页
               </button>
-              <select v-model="selectedSlideId">
-                <option
-                  v-for="(slide, index) in selectedPresentation.slides"
-                  :key="slide.id"
-                  :value="slide.id"
-                >
-                  第 {{ index + 1 }} 页{{
-                    slide.title ? ` · ${slide.title}` : ''
+              <button
+                type="button"
+                class="slide-picker-toggle"
+                :aria-expanded="slidePickerOpen"
+                aria-controls="courseware-slide-picker"
+                @click="slidePickerOpen = !slidePickerOpen"
+              >
+                <span>
+                  第 {{ (activeSlideIndex ?? 0) + 1 }} /
+                  {{ selectedPresentation.slides.length }} 页
+                </span>
+                <span class="slide-picker-summary">
+                  {{
+                    selectedPresentationSlideCount
+                      ? `已选 ${selectedPresentationSlideCount}`
+                      : '选择页面'
                   }}
-                </option>
-              </select>
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 12 12"
+                    :class="{ open: slidePickerOpen }"
+                  >
+                    <path d="m2.25 4.25 3.75 3.5 3.75-3.5" />
+                  </svg>
+                </span>
+              </button>
               <button
                 type="button"
                 :disabled="
@@ -1630,6 +1660,84 @@ function clamp(value: number, min: number, max: number): number {
                 下一页
               </button>
             </div>
+            <section
+              v-if="slidePickerOpen"
+              id="courseware-slide-picker"
+              class="slide-picker-panel"
+              aria-label="课件页面选择"
+              @keydown.esc="slidePickerOpen = false"
+            >
+              <header>
+                <strong>全部页面</strong>
+                <span>单击单选 · Ctrl + 单击多选</span>
+              </header>
+              <div
+                class="slide-thumbnail-list"
+                role="listbox"
+                aria-label="课件页面"
+                aria-multiselectable="true"
+              >
+                <button
+                  v-for="(slide, index) in selectedPresentation.slides"
+                  :key="slide.id"
+                  type="button"
+                  class="slide-thumbnail"
+                  :class="{
+                    'is-current':
+                      selectedLesson?.status !== 'ended' &&
+                      slide.id === selectedSlideId,
+                    'is-selected': aiSlideSelection.includes(slide.id),
+                  }"
+                  role="option"
+                  :aria-selected="aiSlideSelection.includes(slide.id)"
+                  :aria-current="
+                    selectedLesson?.status !== 'ended' &&
+                    slide.id === selectedSlideId
+                      ? 'page'
+                      : undefined
+                  "
+                  :title="slide.title || `第 ${index + 1} 页`"
+                  @click="selectSlide($event, slide.id)"
+                >
+                  <span
+                    class="slide-thumbnail-media"
+                    :style="
+                      selectedPresentation.width && selectedPresentation.height
+                        ? {
+                            aspectRatio: `${selectedPresentation.width} / ${selectedPresentation.height}`,
+                          }
+                        : undefined
+                    "
+                  >
+                    <img
+                      v-if="slide.imageUrl"
+                      :src="slide.imageUrl"
+                      :alt="slide.title || `课件第 ${index + 1} 页`"
+                      loading="lazy"
+                    />
+                    <span v-else>无预览</span>
+                  </span>
+                  <span class="slide-thumbnail-meta">
+                    <strong>第 {{ index + 1 }} 页</strong>
+                    <span class="slide-thumbnail-states">
+                      <span
+                        v-if="
+                          selectedLesson?.status !== 'ended' &&
+                          slide.id === selectedSlideId
+                        "
+                        class="current-state"
+                        >当前</span
+                      >
+                      <span
+                        v-if="aiSlideSelection.includes(slide.id)"
+                        class="selected-state"
+                        >已选</span
+                      >
+                    </span>
+                  </span>
+                </button>
+              </div>
+            </section>
             <button
               type="button"
               class="quiet-action"
@@ -1650,21 +1758,16 @@ function clamp(value: number, min: number, max: number): number {
               </button>
               <button
                 type="button"
-                :disabled="!selectedSlide?.imageUrl"
-                @click="toggleAiSlide"
+                :disabled="
+                  !selectedSlide?.imageUrl && !selectedPresentationSlideCount
+                "
+                @click="openAiForSelectedSlides"
               >
                 {{
-                  aiSlideSelection.includes(selectedSlideId)
-                    ? '移出 AI 选择'
-                    : '加入 AI 选择'
+                  selectedPresentationSlideCount > 1
+                    ? `提问已选 ${selectedPresentationSlideCount} 页`
+                    : '提问当前页'
                 }}
-              </button>
-              <button
-                type="button"
-                :disabled="!selectedSlide?.imageUrl"
-                @click="openAiForCurrentSlide"
-              >
-                提问当前页
               </button>
             </div>
 
@@ -2990,6 +3093,175 @@ button:focus-visible {
   margin-top: 8px;
 }
 
+.slide-picker-toggle {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px;
+  text-align: left;
+}
+
+.slide-picker-toggle > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slide-picker-summary {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.slide-picker-summary svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+  transition: transform 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.slide-picker-summary svg.open {
+  transform: rotate(180deg);
+}
+
+.slide-picker-panel {
+  margin-top: 7px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.slide-picker-panel > header {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--line);
+}
+
+.slide-picker-panel > header strong {
+  font-size: 12px;
+}
+
+.slide-picker-panel > header span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.slide-thumbnail-list {
+  display: grid;
+  overflow-y: auto;
+  max-height: 320px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding: 8px;
+  overscroll-behavior: contain;
+  scrollbar-color: #b8c4bd transparent;
+  scrollbar-width: thin;
+}
+
+.slide-thumbnail {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  grid-template-rows: auto 30px;
+  padding: 0;
+  border-color: var(--line);
+  background: var(--surface);
+  text-align: left;
+}
+
+.slide-thumbnail:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--surface);
+}
+
+.slide-thumbnail.is-current {
+  border-color: var(--text-muted);
+}
+
+.slide-thumbnail.is-selected {
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+
+.slide-thumbnail:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+
+.slide-thumbnail-media {
+  display: grid;
+  min-height: 78px;
+  place-items: center;
+  overflow: hidden;
+  color: var(--text-muted);
+  background: var(--surface-subtle);
+  font-size: 12px;
+}
+
+.slide-thumbnail-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.slide-thumbnail-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  padding: 0 7px;
+}
+
+.slide-thumbnail-meta > strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slide-thumbnail-states {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.current-state,
+.selected-state {
+  border-radius: 4px;
+  padding: 2px 4px;
+  line-height: 1.2;
+}
+
+.current-state {
+  color: var(--text-muted);
+  background: var(--surface-subtle);
+}
+
+.selected-state {
+  color: var(--green-strong);
+  background: var(--green-soft);
+  font-weight: 700;
+}
+
 .quiet-action {
   width: 100%;
   margin-top: 6px;
@@ -3000,7 +3272,7 @@ button:focus-visible {
 
 .courseware-actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 6px;
   margin-top: 6px;
 }

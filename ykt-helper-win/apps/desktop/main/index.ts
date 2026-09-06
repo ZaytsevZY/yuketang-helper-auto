@@ -193,8 +193,16 @@ function registerIpc(): void {
       if (!isBrowserEnvironment(environment) || typeof lessonId !== 'string') {
         throw new Error('Invalid lesson connection request.');
       }
-      await getRuntime().facade.connectLesson(environment, lessonId);
-      await getBrowserController().openLesson(environment, lessonId);
+      const facade = getRuntime().facade;
+      await facade.connectLesson(environment, lessonId);
+      const lesson = (await facade.listLessons()).find(
+        (item) => item.id === lessonId,
+      );
+      await getBrowserController().openLesson(
+        environment,
+        lessonId,
+        lesson?.status,
+      );
     },
   );
   ipcMain.handle(IpcChannel.ListProblems, async (event, lessonId: unknown) => {

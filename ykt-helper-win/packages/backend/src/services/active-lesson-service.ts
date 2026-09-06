@@ -11,6 +11,7 @@ import {
 import {
   normalizeTimestamp,
   type ActiveLesson,
+  type BrowserArchivedPresentationObservation,
   type YuketangActiveClient,
 } from '@ykt/routing';
 import type { AppDataStore } from '@ykt/storage';
@@ -29,6 +30,7 @@ export class ActiveLessonService {
   readonly #environments = new Map<string, BrowserEnvironment>();
   readonly #problems: ProblemService;
   readonly #answers = new AnswerService();
+  readonly #stopArchivedCollection: () => void;
 
   constructor(
     private readonly client: YuketangActiveClient,
@@ -37,6 +39,9 @@ export class ActiveLessonService {
     private readonly clock: Clock = systemClock,
   ) {
     this.#problems = new ProblemService(repository, clock, this.#answers);
+    this.#stopArchivedCollection = this.client.onArchivedPresentation(
+      (observation) => this.applyArchivedPresentation(observation),
+    );
   }
 
   async refreshUser(environment: BrowserEnvironment): Promise<UserProfile> {
@@ -71,14 +76,17 @@ export class ActiveLessonService {
     environment: BrowserEnvironment,
     lessonId: string,
   ): Promise<void> {
-    const remote = this.#remoteLessons.get(lessonId);
+    const remote =
+      this.#remoteLessons.get(lessonId) ??
+      this.archivedLessonForBrowserCollection(lessonId);
     if (!remote) {
       throw new YuketangError({
         code: ErrorCode.NotFound,
         message: `Lesson ${lessonId} was not found in the active list.`,
       });
     }
-    if (this.#environments.get(lessonId) !== environment) {
+    const knownEnvironment = this.#environments.get(lessonId);
+    if (knownEnvironment && knownEnvironment !== environment) {
       throw new YuketangError({
         code: ErrorCode.InvalidArgument,
         message: 'Lesson belongs to another environment.',
@@ -111,6 +119,15 @@ export class ActiveLessonService {
       (message) => this.handleMessage(lessonId, message),
       remote.presentationId,
     );
+  }
+
+  private archivedLessonForBrowserCollection(
+    lessonId: string,
+  ): ActiveLesson | null {
+    if (!this.client.usesBrowserCollection) return null;
+    const lesson = this.repository.getSession(lessonId)?.lesson;
+    if (lesson?.status !== 'ended') return null;
+    return { ...lesson, classroomId: null, presentationId: null };
   }
 
   async submitAnswer(input: AnswerInput): Promise<SubmissionResult> {
@@ -152,7 +169,24 @@ export class ActiveLessonService {
   }
 
   close(): void {
+    this.#stopArchivedCollection();
     this.client.close();
+  }
+
+  private async applyArchivedPresentation(
+    observation: BrowserArchivedPresentationObservation,
+  ): Promise<void> {
+    this.repository.upsertLesson({
+      id: observation.lessonId,
+      title: observation.lessonTitle || '已结束课堂',
+      status: 'ended',
+    });
+    this.#environments.set(observation.lessonId, observation.environment);
+    await this.applyPresentation(
+      observation.environment,
+      observation.lessonId,
+      observation.presentation,
+    );
   }
 
   private async handleMessage(lessonId: string, value: unknown): Promise<void> {

@@ -1,5 +1,9 @@
 import type { WebContents } from 'electron';
-import type { BrowserLessonCollector, NetworkRecorder } from '@ykt/routing';
+import {
+  isClassroomReportResponse,
+  type BrowserLessonCollector,
+  type NetworkRecorder,
+} from '@ykt/routing';
 
 interface RequestMetadata {
   method: string;
@@ -189,13 +193,29 @@ export class ElectronNetworkObserver {
     if (method === 'Network.responseReceived') {
       const response = params.response;
       if (!response) return;
-      this.#cdpResponses.set(requestId, {
+      const metadata = {
         url: response.url ?? this.#cdpRequests.get(requestId)?.url ?? '',
         status: response.status ?? 0,
         mimeType: response.mimeType ?? '',
         resourceType: params.type ?? 'Other',
         headers: flattenUnknownHeaders(response.headers),
-      });
+      };
+      this.#cdpResponses.set(requestId, metadata);
+      if (
+        this.lessonCollector &&
+        metadata.status >= 200 &&
+        metadata.status < 300 &&
+        (metadata.resourceType === 'Image' ||
+          isClassroomReportUrl(metadata.url))
+      ) {
+        await this.lessonCollector.observeHttp({
+          url: metadata.url,
+          statusCode: metadata.status,
+          body: '',
+          contextId: String(this.contents.id),
+          resourceType: metadata.resourceType,
+        });
+      }
       return;
     }
 
@@ -291,8 +311,8 @@ export class ElectronNetworkObserver {
     if (!response || !isTextResponse(response, encodedDataLength)) return;
     const neededByLessonCollector =
       this.lessonCollector !== undefined &&
-      response.url.includes('presentation') &&
-      response.url.includes('fetch');
+      (isPresentationResponseUrl(response.url) ||
+        isClassroomReportUrl(response.url));
     if (!this.#deepCapture && !neededByLessonCollector) return;
 
     try {
@@ -307,6 +327,8 @@ export class ElectronNetworkObserver {
         url: response.url,
         statusCode: response.status,
         body: result.body,
+        contextId: String(this.contents.id),
+        resourceType: response.resourceType,
       });
       if (this.#deepCapture && encodedDataLength <= LAB_BODY_LIMIT) {
         this.recorder.addHttp({
@@ -351,6 +373,18 @@ export class ElectronNetworkObserver {
         error instanceof Error ? error.message : '无法监听浏览器课堂数据';
       return false;
     }
+  }
+}
+
+function isPresentationResponseUrl(value: string): boolean {
+  return value.includes('presentation') && value.includes('fetch');
+}
+
+function isClassroomReportUrl(value: string): boolean {
+  try {
+    return isClassroomReportResponse(new URL(value).pathname);
+  } catch {
+    return false;
   }
 }
 

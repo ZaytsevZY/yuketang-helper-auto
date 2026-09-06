@@ -123,4 +123,29 @@ describe('embedded browser tabs', () => {
     await controller.closeTab(opened.activeTabId);
     expect(controller.getState().tabs).toHaveLength(1);
   });
+
+  it('opens ended lessons on the classroom overview page', async () => {
+    const { BrowserController } =
+      await import('../../apps/desktop/main/browser-controller.js');
+    const window = {
+      contentView: {
+        addChildView: vi.fn(),
+        removeChildView: vi.fn(),
+      },
+      getContentBounds: () => ({ width: 1180, height: 800 }),
+      on: vi.fn(),
+    };
+    const controller = new BrowserController(window as never, vi.fn());
+    await controller.start(BrowserEnvironment.Pro);
+
+    await controller.openLesson(
+      BrowserEnvironment.Pro,
+      '1764118559357124352',
+      'ended',
+    );
+
+    expect(controller.getState().url).toBe(
+      'https://pro.yuketang.cn/m/v2/lesson/student/1764118559357124352/overview',
+    );
+  });
 });
