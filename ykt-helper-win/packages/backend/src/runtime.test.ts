@@ -23,6 +23,7 @@ describe('BackendRuntime', () => {
         'ai-proposals',
         'ocr',
         'translation',
+        'classroom-notices',
       ],
     });
     expect(await runtime.facade.listLessons()).toEqual([]);

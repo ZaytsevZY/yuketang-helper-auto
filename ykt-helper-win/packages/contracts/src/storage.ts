@@ -12,6 +12,18 @@ export type JsonValue =
 export interface AppSettings {
   readonly browserEnvironment: BrowserEnvironment | null;
   readonly notifyProblems: boolean;
+  readonly notifyProblemStarts: boolean;
+  readonly notifyAssessmentPublishes: boolean;
+  readonly notifyCoursewarePublishes: boolean;
+  readonly notifyOtherPublishes: boolean;
+  readonly notifyLessonFinished: boolean;
+  readonly notifyAutoAnswerScheduled: boolean;
+  readonly notifyAutoAnswerStarted: boolean;
+  readonly notifyAutoAnswerSucceeded: boolean;
+  readonly notifyAutoAnswerFailed: boolean;
+  readonly notifyNative: boolean;
+  readonly notifyPopup: boolean;
+  readonly notifySound: boolean;
   readonly notifyPopupDuration: number;
   readonly notifyVolume: number;
   readonly customNotifyAudioSrc: string;
@@ -21,6 +33,7 @@ export interface AppSettings {
   readonly autoAnswer: boolean;
   readonly autoAnswerDelay: number;
   readonly autoAnswerRandomDelay: number;
+  readonly keepScreenAwake: boolean;
   readonly aiAutoAnalyze: boolean;
   readonly aiSlidePickPriority: boolean;
   readonly activeAiProfileId: string;
@@ -36,6 +49,18 @@ export interface AppSettings {
 export const DefaultAppSettings: AppSettings = Object.freeze({
   browserEnvironment: null,
   notifyProblems: true,
+  notifyProblemStarts: true,
+  notifyAssessmentPublishes: true,
+  notifyCoursewarePublishes: true,
+  notifyOtherPublishes: true,
+  notifyLessonFinished: true,
+  notifyAutoAnswerScheduled: true,
+  notifyAutoAnswerStarted: true,
+  notifyAutoAnswerSucceeded: true,
+  notifyAutoAnswerFailed: true,
+  notifyNative: true,
+  notifyPopup: true,
+  notifySound: true,
   notifyPopupDuration: 5000,
   notifyVolume: 0.6,
   customNotifyAudioSrc: '',
@@ -45,6 +70,7 @@ export const DefaultAppSettings: AppSettings = Object.freeze({
   autoAnswer: false,
   autoAnswerDelay: 3000,
   autoAnswerRandomDelay: 2000,
+  keepScreenAwake: false,
   aiAutoAnalyze: false,
   aiSlidePickPriority: true,
   activeAiProfileId: '',

@@ -110,6 +110,14 @@ export class AiService {
     if (input.translationModel && !ids.has(input.translationModel)) {
       throw new Error('翻译模型不在发现结果中。');
     }
+    if (
+      input.temperature !== null &&
+      (!Number.isFinite(input.temperature) ||
+        input.temperature < 0 ||
+        input.temperature > 2)
+    ) {
+      throw new Error('Temperature 必须是 0 到 2 之间的数字，或留空。');
+    }
     await this.storage.updateSettings({
       aiProfiles: profiles.map((item) =>
         item.id === input.id
@@ -119,6 +127,7 @@ export class AiService {
               visionModel: input.visionModel || input.model,
               ocrModel: input.ocrModel || input.visionModel || input.model,
               translationModel: input.translationModel || input.model,
+              temperature: input.temperature,
             }
           : item,
       ),
@@ -181,7 +190,9 @@ export class AiService {
         apiKey: await this.requireCredential(profile.id),
         model,
         messages: answerMessages(problem, images, input.customPrompt ?? ''),
-        temperature: 1,
+        ...(profile.temperature === null
+          ? {}
+          : { temperature: profile.temperature }),
       });
       const parsed = parseProposal(problem, rawText);
       const validation = parsed.answer
@@ -294,6 +305,9 @@ export class AiService {
           ],
         },
       ],
+      ...(profile.temperature === null
+        ? {}
+        : { temperature: profile.temperature }),
     });
     return { text: text.trim(), profileId: profile.id, model };
   }
@@ -317,6 +331,9 @@ export class AiService {
         },
         { role: 'user', content: source },
       ],
+      ...(profile.temperature === null
+        ? {}
+        : { temperature: profile.temperature }),
     });
     return { text: text.trim(), profileId: profile.id, model };
   }
@@ -420,6 +437,7 @@ function validateStoredProfile(value: AiProfileConfig): AiProfileConfig {
     visionModel,
     ocrModel: String(record.ocrModel ?? '').trim() || visionModel,
     translationModel: String(record.translationModel ?? '').trim() || model,
+    temperature: storedTemperature(record.temperature),
     models: discovered.length ? discovered : legacyModels,
     discoveredAt: String(record.discoveredAt ?? ''),
   };
@@ -457,9 +475,19 @@ function profileFromDiscovery(
     visionModel,
     ocrModel,
     translationModel,
+    temperature: existing?.temperature ?? null,
     models,
     discoveredAt: new Date().toISOString(),
   };
+}
+
+function storedTemperature(value: unknown): number | null {
+  if (value === '' || value === undefined || value === null) return null;
+  const temperature = Number(value);
+  if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
+    return null;
+  }
+  return temperature;
 }
 
 function requireProfile(

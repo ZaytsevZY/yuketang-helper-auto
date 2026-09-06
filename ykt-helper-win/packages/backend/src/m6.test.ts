@@ -186,6 +186,7 @@ describe('M6 facade support', () => {
       visionModel: 'vision-model',
       ocrModel: 'ocr-model',
       translationModel: 'translate-model',
+      temperature: 0.4,
     });
     const ocr = await runtime.facade.recognizeSlide({
       imageUrl: 'https://example.com/slide.png',
@@ -201,10 +202,16 @@ describe('M6 facade support', () => {
         visionModel: 'vision-model',
         ocrModel: 'ocr-model',
         translationModel: 'translate-model',
+        temperature: 0.4,
       }),
     );
     expect(ocr.model).toBe('ocr-model');
     expect(translation.model).toBe('translate-model');
+    expect(
+      fetcher.mock.calls
+        .slice(1)
+        .map((call) => JSON.parse(String(call[1]?.body)).temperature),
+    ).toEqual([0.4, 0.4]);
     await runtime.stop();
   });
 
@@ -294,9 +301,13 @@ describe('M6 facade support', () => {
     expect(proposal.answer).toEqual(['B']);
     expect(proposal.explanation).toBe('基础功能测试');
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toEqual(
-      expect.objectContaining({ model: 'kimi-k2.6', temperature: 1 }),
+    const requestBody = JSON.parse(
+      String(fetcher.mock.calls[1]?.[1]?.body),
+    ) as Record<string, unknown>;
+    expect(requestBody).toEqual(
+      expect.objectContaining({ model: 'kimi-k2.6' }),
     );
+    expect(requestBody).not.toHaveProperty('temperature');
     expect(JSON.stringify(exported)).not.toContain('test-secret');
     expect(await secretStore.get('ai-profile:moonshot:main')).toBe(
       'test-secret',

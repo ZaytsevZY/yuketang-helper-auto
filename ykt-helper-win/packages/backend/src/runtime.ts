@@ -8,6 +8,9 @@ import {
   type AppLogEntry,
   type AppSettings,
   type BrowserEnvironment,
+  type ClassroomNotice,
+  type ClassroomSimulationAction,
+  type ClassroomSimulationState,
   type ConnectAiProfileInput,
   type GenerateAnswerProposalInput,
   type GeneratedTextResult,
@@ -43,11 +46,15 @@ import {
   InMemoryLessonRepository,
   type LessonRepository,
 } from './repositories/lesson-repository.js';
-import { ActiveLessonService } from './services/active-lesson-service.js';
+import {
+  ActiveLessonService,
+  isClassroomSimulationLesson,
+} from './services/active-lesson-service.js';
 import { AiService } from './services/ai-service.js';
 import { ProblemService } from './services/problem-service.js';
 import { OpenAiCompatibleProvider } from './llm/openai-compatible-provider.js';
 import type { AiProviderPlugin } from './llm/provider.js';
+import { systemClock } from './workflows/lesson-state-machine.js';
 
 const VERSION = '0.1.0';
 
@@ -144,6 +151,21 @@ class BaselineFacade implements YuketangFacade {
     );
   }
 
+  async getClassroomSimulation(): Promise<ClassroomSimulationState> {
+    return this.requireActiveClient().getSimulation();
+  }
+
+  async runClassroomSimulation(
+    action: ClassroomSimulationAction,
+  ): Promise<ClassroomSimulationState> {
+    return this.withLog(
+      'classroom-simulator',
+      '课堂模拟事件已发送。',
+      () => this.requireActiveClient().runSimulation(action),
+      { action },
+    );
+  }
+
   async generateAnswerProposal(
     input: GenerateAnswerProposalInput,
   ): Promise<AnswerProposal> {
@@ -204,7 +226,9 @@ class BaselineFacade implements YuketangFacade {
   }
 
   async listLessons(): Promise<readonly Lesson[]> {
-    return this.lessons.listLessons();
+    return this.lessons
+      .listLessons()
+      .filter((lesson) => !isClassroomSimulationLesson(lesson.id));
   }
 
   async refreshLessons(
@@ -357,6 +381,7 @@ export interface BackendRuntimeOptions {
   secretStore?: SecretStore;
   fetcher?: typeof fetch;
   aiProviders?: readonly AiProviderPlugin[];
+  onClassroomNotice?: (notice: ClassroomNotice) => void;
 }
 
 export class BackendRuntime {
@@ -380,6 +405,8 @@ export class BackendRuntime {
           options.activeClient,
           this.lessons,
           this.dataStore,
+          systemClock,
+          options.onClassroomNotice,
         )
       : undefined;
     const problems = new ProblemService(this.lessons);
@@ -436,9 +463,15 @@ export class BackendRuntime {
         'ai-proposals',
         'ocr',
         'translation',
+        'classroom-notices',
         ...(this.resourceCache ? ['resource-cache'] : []),
         ...(this.activeLessons
-          ? ['active-client', 'lesson-websocket', 'answer-submission']
+          ? [
+              'active-client',
+              'lesson-websocket',
+              'answer-submission',
+              'classroom-simulator',
+            ]
           : []),
       ],
     };

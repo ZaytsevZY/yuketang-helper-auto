@@ -7,6 +7,8 @@ import {
   type AppLogEntry,
   type AppSettings,
   type BrowserEnvironment,
+  type ClassroomNotice,
+  type ClassroomNoticeKind,
   type Lesson,
   type NetworkEntry,
   type Presentation,
@@ -17,6 +19,8 @@ import {
   type ValidationResult,
 } from '@ykt/contracts';
 
+import ClassroomSimulator from './ClassroomSimulator.vue';
+
 type WorkspacePage =
   | 'classroom'
   | 'problems'
@@ -24,10 +28,23 @@ type WorkspacePage =
   | 'courseware'
   | 'profiles'
   | 'settings'
+  | 'simulator'
   | 'diagnostics';
 
 interface SettingsDraft {
   notifyProblems: boolean;
+  notifyProblemStarts: boolean;
+  notifyAssessmentPublishes: boolean;
+  notifyCoursewarePublishes: boolean;
+  notifyOtherPublishes: boolean;
+  notifyLessonFinished: boolean;
+  notifyAutoAnswerScheduled: boolean;
+  notifyAutoAnswerStarted: boolean;
+  notifyAutoAnswerSucceeded: boolean;
+  notifyAutoAnswerFailed: boolean;
+  notifyNative: boolean;
+  notifyPopup: boolean;
+  notifySound: boolean;
   notifyPopupDurationSeconds: number;
   notifyVolumePercent: number;
   customNotifyAudioSrc: string;
@@ -37,6 +54,7 @@ interface SettingsDraft {
   autoAnswer: boolean;
   autoAnswerDelaySeconds: number;
   autoAnswerRandomDelaySeconds: number;
+  keepScreenAwake: boolean;
   aiAutoAnalyze: boolean;
   aiSlidePickPriority: boolean;
   iftex: boolean;
@@ -65,6 +83,11 @@ interface AiProfileSelectionDraft {
   visionModel: string;
   ocrModel: string;
   translationModel: string;
+  temperature: string;
+}
+
+interface NoticeToast extends ClassroomNotice {
+  readonly id: number;
 }
 
 interface LogRow {
@@ -136,6 +159,7 @@ const appliedProposalId = ref('');
 const aiCustomPrompt = ref('');
 const aiSlideSelection = ref<string[]>([]);
 const logs = ref<readonly LogRow[]>([]);
+const noticeToasts = ref<readonly NoticeToast[]>([]);
 const entries = ref<NetworkEntry[]>([]);
 const collectingLessonId = ref('');
 const answerDraft = ref('');
@@ -160,6 +184,8 @@ const scheduledProblems = new Map<string, ReturnType<typeof setTimeout>>();
 let automationTimer: ReturnType<typeof setInterval> | undefined;
 let automationRunning = false;
 let lastAutoJoinAt = 0;
+let nextNoticeToastId = 1;
+const seenNotices = new Map<string, number>();
 
 const selectedLesson = computed(() =>
   lessons.value.find((lesson) => lesson.id === selectedLessonId.value),
@@ -287,6 +313,9 @@ onMounted(async () => {
     window.yuketang.onNetworkEntryAdded((entry) => {
       entries.value.push(entry);
       if (entries.value.length > 500) entries.value.shift();
+    }),
+    window.yuketang.onClassroomNotice((notice) => {
+      void handleClassroomNotice(notice);
     }),
   );
   await loadWorkspace();
@@ -614,6 +643,14 @@ async function translateOcrText(): Promise<void> {
 async function analyzeProblem(auto: boolean): Promise<void> {
   const problem = selectedProblem.value;
   if (!problem || busy.value) return;
+  if (auto) {
+    void emitLocalNotice(
+      'auto-answer-started',
+      problem,
+      'Agent 开始作答',
+      problem.prompt || '正在分析新题',
+    );
+  }
   await run('ai', async () => {
     aiProposal.value = await window.yuketang.generateAnswerProposal({
       problemId: problem.id,
@@ -631,7 +668,9 @@ async function analyzeProblem(auto: boolean): Promise<void> {
     if (aiProposal.value.status !== 'ready' || !aiProposal.value.answer) {
       infoMessage.value =
         aiProposal.value.failureReason || '没有生成可提交的 AI 答案。';
-      await window.yuketang.showNotification(
+      await emitLocalNotice(
+        'auto-answer-failed',
+        problem,
         'Agent 未提交答案',
         infoMessage.value,
       );
@@ -651,7 +690,9 @@ async function analyzeProblem(auto: boolean): Promise<void> {
     });
     if (!validation.value.valid) {
       infoMessage.value = `Agent 未提交：${validation.value.issues.join('；')}`;
-      await window.yuketang.showNotification(
+      await emitLocalNotice(
+        'auto-answer-failed',
+        problem,
         'Agent 未提交答案',
         infoMessage.value,
       );
@@ -668,7 +709,9 @@ async function analyzeProblem(auto: boolean): Promise<void> {
     submissionMessage.value = `Agent 已于 ${formatTime(result.submittedAt)} 自动提交`;
     infoMessage.value = 'Agent 已自动确认并提交答案';
     await loadLessonData();
-    await window.yuketang.showNotification(
+    await emitLocalNotice(
+      'auto-answer-succeeded',
+      problem,
       'Agent 已提交答案',
       `${problemTypeLabel(problem.type)}已由模型完成并提交。`,
     );
@@ -710,6 +753,18 @@ async function saveSettings(): Promise<void> {
   await run('settings', async () => {
     const next = await window.yuketang.updateSettings({
       notifyProblems: draft.notifyProblems,
+      notifyProblemStarts: draft.notifyProblemStarts,
+      notifyAssessmentPublishes: draft.notifyAssessmentPublishes,
+      notifyCoursewarePublishes: draft.notifyCoursewarePublishes,
+      notifyOtherPublishes: draft.notifyOtherPublishes,
+      notifyLessonFinished: draft.notifyLessonFinished,
+      notifyAutoAnswerScheduled: draft.notifyAutoAnswerScheduled,
+      notifyAutoAnswerStarted: draft.notifyAutoAnswerStarted,
+      notifyAutoAnswerSucceeded: draft.notifyAutoAnswerSucceeded,
+      notifyAutoAnswerFailed: draft.notifyAutoAnswerFailed,
+      notifyNative: draft.notifyNative,
+      notifyPopup: draft.notifyPopup,
+      notifySound: draft.notifySound,
       notifyPopupDuration:
         clamp(draft.notifyPopupDurationSeconds, 2, 60) * 1000,
       notifyVolume: clamp(draft.notifyVolumePercent, 0, 100) / 100,
@@ -721,6 +776,7 @@ async function saveSettings(): Promise<void> {
       autoAnswerDelay: clamp(draft.autoAnswerDelaySeconds, 1, 60) * 1000,
       autoAnswerRandomDelay:
         clamp(draft.autoAnswerRandomDelaySeconds, 0, 30) * 1000,
+      keepScreenAwake: draft.keepScreenAwake,
       aiAutoAnalyze: draft.aiAutoAnalyze,
       aiSlidePickPriority: draft.aiSlidePickPriority,
       iftex: draft.iftex,
@@ -738,6 +794,18 @@ function applySettings(value: AppSettings): void {
   settings.value = value;
   settingsDraft.value = {
     notifyProblems: value.notifyProblems,
+    notifyProblemStarts: value.notifyProblemStarts,
+    notifyAssessmentPublishes: value.notifyAssessmentPublishes,
+    notifyCoursewarePublishes: value.notifyCoursewarePublishes,
+    notifyOtherPublishes: value.notifyOtherPublishes,
+    notifyLessonFinished: value.notifyLessonFinished,
+    notifyAutoAnswerScheduled: value.notifyAutoAnswerScheduled,
+    notifyAutoAnswerStarted: value.notifyAutoAnswerStarted,
+    notifyAutoAnswerSucceeded: value.notifyAutoAnswerSucceeded,
+    notifyAutoAnswerFailed: value.notifyAutoAnswerFailed,
+    notifyNative: value.notifyNative,
+    notifyPopup: value.notifyPopup,
+    notifySound: value.notifySound,
     notifyPopupDurationSeconds: Math.round(value.notifyPopupDuration / 1000),
     notifyVolumePercent: Math.round(value.notifyVolume * 100),
     customNotifyAudioSrc: value.customNotifyAudioSrc,
@@ -749,6 +817,7 @@ function applySettings(value: AppSettings): void {
     autoAnswerRandomDelaySeconds: Math.round(
       value.autoAnswerRandomDelay / 1000,
     ),
+    keepScreenAwake: value.keepScreenAwake,
     aiAutoAnalyze: value.aiAutoAnalyze,
     aiSlidePickPriority: value.aiSlidePickPriority,
     iftex: value.iftex,
@@ -778,6 +847,8 @@ function applyProfiles(value: readonly AiProfileView[]): void {
         visionModel: profile.visionModel,
         ocrModel: profile.ocrModel,
         translationModel: profile.translationModel,
+        temperature:
+          profile.temperature === null ? '' : String(profile.temperature),
       },
     ]),
   );
@@ -829,8 +900,25 @@ async function saveAiProfileSelection(id: string): Promise<void> {
   const draft = aiProfileSelections.value[id];
   if (!draft) return;
   await run(`profile-model-${id}`, async () => {
+    const temperature = draft.temperature.trim();
+    const parsedTemperature = temperature === '' ? null : Number(temperature);
+    if (
+      parsedTemperature !== null &&
+      (!Number.isFinite(parsedTemperature) ||
+        parsedTemperature < 0 ||
+        parsedTemperature > 2)
+    ) {
+      throw new Error('Temperature 必须是 0 到 2 之间的数字，或留空。');
+    }
     applyProfiles(
-      await window.yuketang.updateAiProfileSelection({ id, ...draft }),
+      await window.yuketang.updateAiProfileSelection({
+        id,
+        model: draft.model,
+        visionModel: draft.visionModel,
+        ocrModel: draft.ocrModel,
+        translationModel: draft.translationModel,
+        temperature: parsedTemperature,
+      }),
     );
     infoMessage.value = 'Profile 功能分工已更新';
   });
@@ -884,11 +972,76 @@ function clearNotifyAudio(): void {
 }
 
 async function testNotification(): Promise<void> {
-  playNotifySound();
-  await window.yuketang.showNotification(
-    '雨课堂习题提示',
-    '提醒声音与桌面通知工作正常。',
-  );
+  await deliverNotice({
+    kind: 'problem-start',
+    lessonId: 'test',
+    dedupeKey: `test:${Date.now()}`,
+    title: '雨课堂提醒测试',
+    detail: '已按当前提醒方式发送测试消息。',
+    occurredAt: Date.now(),
+  });
+}
+
+async function handleClassroomNotice(notice: ClassroomNotice): Promise<void> {
+  const currentSettings = settings.value;
+  if (!currentSettings?.notifyProblems || !noticeEnabled(notice.kind)) return;
+  const previous = seenNotices.get(notice.dedupeKey);
+  if (previous !== undefined && notice.occurredAt - previous < 60_000) return;
+  seenNotices.set(notice.dedupeKey, notice.occurredAt);
+  await deliverNotice(notice);
+}
+
+async function emitLocalNotice(
+  kind: ClassroomNoticeKind,
+  problem: ProblemContext,
+  title: string,
+  detail: string,
+): Promise<void> {
+  await handleClassroomNotice({
+    kind,
+    lessonId: problem.lessonId,
+    dedupeKey: `${kind}:${problem.lessonId}:${problem.id}`,
+    title,
+    detail,
+    occurredAt: Date.now(),
+  });
+}
+
+async function deliverNotice(notice: ClassroomNotice): Promise<void> {
+  const currentSettings = settings.value;
+  if (!currentSettings) return;
+  if (currentSettings.notifySound) playNotifySound();
+  if (currentSettings.notifyNative) {
+    await window.yuketang.showNotification(notice.title, notice.detail);
+  }
+  if (currentSettings.notifyPopup) {
+    const toast: NoticeToast = { ...notice, id: nextNoticeToastId++ };
+    noticeToasts.value = [...noticeToasts.value, toast].slice(-3);
+    setTimeout(
+      () => removeNoticeToast(toast.id),
+      currentSettings.notifyPopupDuration,
+    );
+  }
+}
+
+function removeNoticeToast(id: number): void {
+  noticeToasts.value = noticeToasts.value.filter((item) => item.id !== id);
+}
+
+function noticeEnabled(kind: ClassroomNoticeKind): boolean {
+  const currentSettings = settings.value;
+  if (!currentSettings) return false;
+  return {
+    'problem-start': currentSettings.notifyProblemStarts,
+    'assessment-publish': currentSettings.notifyAssessmentPublishes,
+    'courseware-publish': currentSettings.notifyCoursewarePublishes,
+    'other-publish': currentSettings.notifyOtherPublishes,
+    'lesson-finished': currentSettings.notifyLessonFinished,
+    'auto-answer-scheduled': currentSettings.notifyAutoAnswerScheduled,
+    'auto-answer-started': currentSettings.notifyAutoAnswerStarted,
+    'auto-answer-succeeded': currentSettings.notifyAutoAnswerSucceeded,
+    'auto-answer-failed': currentSettings.notifyAutoAnswerFailed,
+  }[kind];
 }
 
 function playNotifySound(): void {
@@ -990,13 +1143,6 @@ async function automationTick(): Promise<void> {
 async function onAvailableProblem(problem: ProblemContext): Promise<void> {
   const currentSettings = settings.value;
   if (!currentSettings) return;
-  if (currentSettings.notifyProblems) {
-    playNotifySound();
-    await window.yuketang.showNotification(
-      '习题已发布',
-      problem.prompt || `${problemTypeLabel(problem.type)}，请打开助手查看。`,
-    );
-  }
   const shouldAnalyze =
     currentSettings.autoAnswer ||
     (autoJoinedLessonIds.has(problem.lessonId) &&
@@ -1009,6 +1155,12 @@ async function onAvailableProblem(problem: ProblemContext): Promise<void> {
     ? problem.deadlineAt - Date.now()
     : Infinity;
   if (remaining <= delay) return;
+  await emitLocalNotice(
+    'auto-answer-scheduled',
+    problem,
+    'Agent 作答已排队',
+    `${Math.ceil(delay / 1000)} 秒后开始分析。`,
+  );
   const timer = setTimeout(() => {
     scheduledProblems.delete(problem.id);
     selectedProblemId.value = problem.id;
@@ -2037,6 +2189,20 @@ function clamp(value: number, min: number, max: number): number {
                       )
                     }}</small>
                   </label>
+                  <label class="temperature-row">
+                    <span>
+                      <strong>Temperature</strong>
+                      <small>留空使用模型默认值</small>
+                    </span>
+                    <input
+                      v-model="aiProfileSelections[profile.id]!.temperature"
+                      type="number"
+                      min="0"
+                      max="2"
+                      step="0.1"
+                      placeholder="默认"
+                    />
+                  </label>
                 </div>
                 <div class="profile-card-actions">
                   <button
@@ -2079,6 +2245,10 @@ function clamp(value: number, min: number, max: number): number {
               API Key 仅进入系统加密凭据存储，不写入普通设置或日志。
             </p>
           </form>
+        </section>
+
+        <section v-else-if="page === 'simulator'" class="panel-page">
+          <ClassroomSimulator />
         </section>
 
         <section v-else-if="page === 'settings'" class="panel-page">
@@ -2139,6 +2309,16 @@ function clamp(value: number, min: number, max: number): number {
                 </span>
                 <input v-model="settingsDraft.autoAnswer" type="checkbox" />
               </label>
+              <label class="switch-row">
+                <span>
+                  <strong>课堂期间保持屏幕常亮</strong>
+                  <small>仅当前标签处于课堂页面时阻止屏幕休眠。</small>
+                </span>
+                <input
+                  v-model="settingsDraft.keepScreenAwake"
+                  type="checkbox"
+                />
+              </label>
               <div class="paired-number-rows">
                 <label class="number-row">
                   <span>提交延迟（秒）</span>
@@ -2168,8 +2348,8 @@ function clamp(value: number, min: number, max: number): number {
               </label>
               <label class="switch-row">
                 <span>
-                  <strong>题目提醒</strong>
-                  <small>检测到新题目时允许桌面提醒。</small>
+                  <strong>课堂提醒</strong>
+                  <small>关闭后暂停下面所有课堂与 Agent 提醒。</small>
                 </span>
                 <input v-model="settingsDraft.notifyProblems" type="checkbox" />
               </label>
@@ -2199,7 +2379,89 @@ function clamp(value: number, min: number, max: number): number {
               </label>
             </fieldset>
             <fieldset>
-              <legend>习题提醒</legend>
+              <legend>提醒事件</legend>
+              <div class="reminder-option-grid">
+                <label>
+                  <input
+                    v-model="settingsDraft.notifyProblemStarts"
+                    type="checkbox"
+                  />
+                  <span>新题开始</span>
+                </label>
+                <label>
+                  <input
+                    v-model="settingsDraft.notifyAssessmentPublishes"
+                    type="checkbox"
+                  />
+                  <span>考试与题组</span>
+                </label>
+                <label>
+                  <input
+                    v-model="settingsDraft.notifyCoursewarePublishes"
+                    type="checkbox"
+                  />
+                  <span>新课件</span>
+                </label>
+                <label>
+                  <input
+                    v-model="settingsDraft.notifyOtherPublishes"
+                    type="checkbox"
+                  />
+                  <span>其他发布</span>
+                </label>
+                <label>
+                  <input
+                    v-model="settingsDraft.notifyLessonFinished"
+                    type="checkbox"
+                  />
+                  <span>课堂结束</span>
+                </label>
+                <label>
+                  <input
+                    v-model="settingsDraft.notifyAutoAnswerScheduled"
+                    type="checkbox"
+                  />
+                  <span>Agent 已排队</span>
+                </label>
+                <label>
+                  <input
+                    v-model="settingsDraft.notifyAutoAnswerStarted"
+                    type="checkbox"
+                  />
+                  <span>Agent 已开始</span>
+                </label>
+                <label>
+                  <input
+                    v-model="settingsDraft.notifyAutoAnswerSucceeded"
+                    type="checkbox"
+                  />
+                  <span>Agent 已提交</span>
+                </label>
+                <label>
+                  <input
+                    v-model="settingsDraft.notifyAutoAnswerFailed"
+                    type="checkbox"
+                  />
+                  <span>Agent 失败</span>
+                </label>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>提醒方式</legend>
+              <div class="reminder-option-grid channels">
+                <label>
+                  <input v-model="settingsDraft.notifyNative" type="checkbox" />
+                  <span>系统通知</span>
+                </label>
+                <label>
+                  <input v-model="settingsDraft.notifyPopup" type="checkbox" />
+                  <span>页面弹窗</span>
+                </label>
+                <label>
+                  <input v-model="settingsDraft.notifySound" type="checkbox" />
+                  <span>提示声音</span>
+                </label>
+              </div>
               <label class="number-row">
                 <span>弹窗持续时间（秒）</span>
                 <input
@@ -2296,6 +2558,7 @@ function clamp(value: number, min: number, max: number): number {
                 <li>
                   在“模型”页连接 AI 服务，并分配 LLM、VLM、OCR 与翻译模型。
                 </li>
+                <li>“模拟”页可独立验证对象题目、标量题目和课堂提醒。</li>
                 <li>“诊断”页集中显示运行状态、数据流、源码模块和操作历史。</li>
               </ol>
               <p class="credential-note">
@@ -2417,6 +2680,21 @@ function clamp(value: number, min: number, max: number): number {
         </section>
       </div>
     </template>
+    <div v-if="noticeToasts.length" class="notice-stack" aria-live="polite">
+      <article v-for="notice in noticeToasts" :key="notice.id">
+        <div>
+          <strong>{{ notice.title }}</strong>
+          <span>{{ notice.detail }}</span>
+        </div>
+        <button
+          type="button"
+          aria-label="关闭提醒"
+          @click="removeNoticeToast(notice.id)"
+        >
+          关闭
+        </button>
+      </article>
+    </div>
   </aside>
 </template>
 
@@ -3491,6 +3769,31 @@ button:focus-visible {
   grid-column: 2;
 }
 
+.temperature-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 0 2px;
+}
+
+.temperature-row span,
+.temperature-row strong,
+.temperature-row small {
+  display: block;
+}
+
+.temperature-row strong,
+.temperature-row small,
+.temperature-row input {
+  font-size: 12px;
+}
+
+.temperature-row small {
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
 .profile-card-actions {
   flex-wrap: wrap;
   gap: 6px;
@@ -3594,6 +3897,79 @@ button:focus-visible {
 
 .number-row input {
   width: 104px;
+}
+
+.reminder-option-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px 12px;
+  padding: 5px 0 9px;
+}
+
+.reminder-option-grid.channels {
+  grid-template-columns: 1fr;
+  border-bottom: 1px solid var(--line);
+}
+
+.reminder-option-grid label {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.reminder-option-grid input {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.notice-stack {
+  position: fixed;
+  z-index: 8;
+  top: 140px;
+  right: calc(var(--assistant-width) + 12px);
+  width: min(340px, calc(100vw - var(--assistant-width) - 24px));
+  display: grid;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.notice-stack article {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 9px 10px;
+  background: #f8fcfa;
+  box-shadow: 0 3px 12px rgb(31 52 42 / 7%);
+  pointer-events: auto;
+}
+
+.notice-stack strong,
+.notice-stack span {
+  display: block;
+  font-size: 12px;
+}
+
+.notice-stack span {
+  margin-top: 3px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.notice-stack button {
+  flex: 0 0 auto;
+  border: 0;
+  padding: 2px 3px;
+  color: var(--green-strong);
+  background: transparent;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .data-flow {
@@ -3708,6 +4084,11 @@ button:focus-visible {
 @media (max-width: 680px) {
   .assistant-panel:not(.collapsed) {
     width: 100vw;
+  }
+
+  .notice-stack {
+    right: 12px;
+    width: calc(100vw - 24px);
   }
 }
 

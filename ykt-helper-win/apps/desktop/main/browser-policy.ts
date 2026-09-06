@@ -16,6 +16,16 @@ export function isAllowedYuketangUrl(value: string): boolean {
   }
 }
 
+export function isClassroomUrl(value: string): boolean {
+  try {
+    return /\/lesson\/fullscreen\/v3(?:\/|$)|\/v2\/web\/lesson(?:\/|$)|\/m\/v2(?:\/|$)/.test(
+      new URL(value).pathname,
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function targetForEnvironment(
   environment: BrowserEnvironment,
 ): BrowserTarget {

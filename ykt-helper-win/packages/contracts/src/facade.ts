@@ -20,6 +20,10 @@ import type {
   TranslateTextInput,
   UpdateAiProfileSelectionInput,
 } from './assistant.js';
+import type {
+  ClassroomSimulationAction,
+  ClassroomSimulationState,
+} from './events.js';
 
 export interface YuketangFacade {
   getStatus(): Promise<RuntimeStatus>;
@@ -36,6 +40,10 @@ export interface YuketangFacade {
   ): Promise<readonly AiProfileView[]>;
   deleteAiProfile(id: string): Promise<readonly AiProfileView[]>;
   selectAiProfile(id: string): Promise<readonly AiProfileView[]>;
+  getClassroomSimulation(): Promise<ClassroomSimulationState>;
+  runClassroomSimulation(
+    action: ClassroomSimulationAction,
+  ): Promise<ClassroomSimulationState>;
   generateAnswerProposal(
     input: GenerateAnswerProposalInput,
   ): Promise<AnswerProposal>;

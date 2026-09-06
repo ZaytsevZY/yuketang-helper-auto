@@ -20,6 +20,11 @@ import type {
   UpdateAiProfileSelectionInput,
 } from './assistant.js';
 import type {
+  ClassroomNotice,
+  ClassroomSimulationAction,
+  ClassroomSimulationState,
+} from './events.js';
+import type {
   FixtureExportResult,
   NetworkCaptureState,
   NetworkEntry,
@@ -37,6 +42,8 @@ export const IpcChannel = {
   UpdateAiProfileSelection: 'ai:update-profile-selection',
   DeleteAiProfile: 'ai:delete-profile',
   SelectAiProfile: 'ai:select-profile',
+  GetClassroomSimulation: 'debug:get-classroom-simulation',
+  RunClassroomSimulation: 'debug:run-classroom-simulation',
   GenerateAnswerProposal: 'ai:generate-answer-proposal',
   RecognizeSlide: 'ai:recognize-slide',
   TranslateText: 'ai:translate-text',
@@ -63,6 +70,7 @@ export const IpcChannel = {
   SetNetworkLabCollapsed: 'browser:set-network-lab-collapsed',
   SetAssistantPanelCollapsed: 'browser:set-assistant-panel-collapsed',
   BrowserStateChanged: 'browser:state-changed',
+  ClassroomNotice: 'classroom:notice',
   GetNetworkSnapshot: 'network:get-snapshot',
   SetNetworkPaused: 'network:set-paused',
   SetDeepCapture: 'network:set-deep-capture',
@@ -91,6 +99,10 @@ export interface DesktopApi {
   ): Promise<readonly AiProfileView[]>;
   deleteAiProfile(id: string): Promise<readonly AiProfileView[]>;
   selectAiProfile(id: string): Promise<readonly AiProfileView[]>;
+  getClassroomSimulation(): Promise<ClassroomSimulationState>;
+  runClassroomSimulation(
+    action: ClassroomSimulationAction,
+  ): Promise<ClassroomSimulationState>;
   generateAnswerProposal(
     input: GenerateAnswerProposalInput,
   ): Promise<AnswerProposal>;
@@ -119,6 +131,7 @@ export interface DesktopApi {
   setNetworkLabCollapsed(collapsed: boolean): Promise<void>;
   setAssistantPanelCollapsed(collapsed: boolean): Promise<void>;
   onBrowserStateChanged(listener: (state: BrowserState) => void): () => void;
+  onClassroomNotice(listener: (notice: ClassroomNotice) => void): () => void;
   getNetworkSnapshot(): Promise<NetworkSnapshot>;
   setNetworkPaused(paused: boolean): Promise<void>;
   setDeepCapture(enabled: boolean): Promise<void>;

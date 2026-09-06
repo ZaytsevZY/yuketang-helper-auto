@@ -8,6 +8,9 @@ import {
   type AppSettings,
   type BrowserEnvironment,
   type BrowserState,
+  type ClassroomNotice,
+  type ClassroomSimulationAction,
+  type ClassroomSimulationState,
   type ConnectAiProfileInput,
   type DesktopApi,
   type FixtureExportResult,
@@ -65,6 +68,15 @@ const api: DesktopApi = Object.freeze({
     ipcRenderer.invoke(IpcChannel.SelectAiProfile, id) as Promise<
       readonly AiProfileView[]
     >,
+  getClassroomSimulation: () =>
+    ipcRenderer.invoke(
+      IpcChannel.GetClassroomSimulation,
+    ) as Promise<ClassroomSimulationState>,
+  runClassroomSimulation: (action: ClassroomSimulationAction) =>
+    ipcRenderer.invoke(
+      IpcChannel.RunClassroomSimulation,
+      action,
+    ) as Promise<ClassroomSimulationState>,
   generateAnswerProposal: (input: GenerateAnswerProposalInput) =>
     ipcRenderer.invoke(
       IpcChannel.GenerateAnswerProposal,
@@ -167,6 +179,15 @@ const api: DesktopApi = Object.freeze({
     ipcRenderer.on(IpcChannel.BrowserStateChanged, handler);
     return () =>
       ipcRenderer.removeListener(IpcChannel.BrowserStateChanged, handler);
+  },
+  onClassroomNotice: (listener: (notice: ClassroomNotice) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      notice: ClassroomNotice,
+    ) => listener(notice);
+    ipcRenderer.on(IpcChannel.ClassroomNotice, handler);
+    return () =>
+      ipcRenderer.removeListener(IpcChannel.ClassroomNotice, handler);
   },
   getNetworkSnapshot: () =>
     ipcRenderer.invoke(

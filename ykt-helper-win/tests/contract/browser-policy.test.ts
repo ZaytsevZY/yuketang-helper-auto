@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   environmentForUrl,
   isAllowedYuketangUrl,
+  isClassroomUrl,
   resolveYuketangNavigation,
   targetForEnvironment,
 } from '../../apps/desktop/main/browser-policy.js';
@@ -35,6 +36,16 @@ describe('embedded browser policy', () => {
     expect(environmentForUrl('https://pro.yuketang.cn/v2/web/index')).toBe(
       BrowserEnvironment.Pro,
     );
+  });
+
+  it('recognizes only classroom routes for the screen wake lock', () => {
+    expect(
+      isClassroomUrl('https://pro.yuketang.cn/lesson/fullscreen/v3/123'),
+    ).toBe(true);
+    expect(
+      isClassroomUrl('https://www.yuketang.cn/m/v2/lesson/student/123'),
+    ).toBe(true);
+    expect(isClassroomUrl('https://pro.yuketang.cn/web')).toBe(false);
   });
 
   it('resolves address bar input without leaving Yuketang', () => {

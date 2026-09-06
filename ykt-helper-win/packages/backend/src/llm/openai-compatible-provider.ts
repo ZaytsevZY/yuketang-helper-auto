@@ -48,7 +48,9 @@ export class OpenAiCompatibleProvider implements AiProviderPlugin {
       body: JSON.stringify({
         model: request.model,
         messages: request.messages,
-        temperature: request.temperature ?? 1,
+        ...(request.temperature === undefined
+          ? {}
+          : { temperature: request.temperature }),
       }),
       signal: AbortSignal.timeout(60_000),
     });

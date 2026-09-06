@@ -27,6 +27,7 @@ export interface AiProfileConfig {
   readonly visionModel: string;
   readonly ocrModel: string;
   readonly translationModel: string;
+  readonly temperature: number | null;
   readonly models: readonly AiModelInfo[];
   readonly discoveredAt: string;
 }
@@ -47,6 +48,7 @@ export interface UpdateAiProfileSelectionInput {
   readonly visionModel: string;
   readonly ocrModel: string;
   readonly translationModel: string;
+  readonly temperature: number | null;
 }
 
 export interface GenerateAnswerProposalInput {

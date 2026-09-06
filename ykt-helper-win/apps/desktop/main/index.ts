@@ -8,6 +8,7 @@ import {
   ipcMain,
   Menu,
   Notification,
+  powerSaveBlocker,
   shell,
   type WebContents,
 } from 'electron';
@@ -18,6 +19,7 @@ import {
   isBrowserEnvironment,
   type AnswerInput,
   type ConnectAiProfileInput,
+  type ClassroomSimulationAction,
   type GenerateAnswerProposalInput,
   type RecognizeSlideInput,
   type Presentation,
@@ -33,7 +35,7 @@ import {
 } from '@ykt/storage';
 
 import { BrowserController } from './browser-controller.js';
-import { isAllowedYuketangUrl } from './browser-policy.js';
+import { isAllowedYuketangUrl, isClassroomUrl } from './browser-policy.js';
 import { ChromiumHttpTransport } from './chromium-http-transport.js';
 import { ElectronSessionCredentialSource } from './electron-session-credentials.js';
 import { ElectronSafeStorageCodec } from './electron-safe-storage-codec.js';
@@ -43,6 +45,8 @@ let runtime: BackendRuntime | undefined;
 let mainWindow: BrowserWindow | undefined;
 let browserController: BrowserController | undefined;
 let networkLabController: NetworkLabController | undefined;
+let keepScreenAwake = false;
+let wakeLockId: number | null = null;
 
 configureStorageProfile();
 
@@ -81,11 +85,17 @@ function registerIpc(): void {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
       throw new Error('Invalid settings.');
     }
-    return getRuntime().facade.updateSettings(patch);
+    const settings = await getRuntime().facade.updateSettings(patch);
+    keepScreenAwake = settings.keepScreenAwake;
+    syncScreenWakeLock();
+    return settings;
   });
   ipcMain.handle(IpcChannel.ResetSettings, async (event) => {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
-    return getRuntime().facade.resetSettings();
+    const settings = await getRuntime().facade.resetSettings();
+    keepScreenAwake = settings.keepScreenAwake;
+    syncScreenWakeLock();
+    return settings;
   });
   ipcMain.handle(IpcChannel.ListAiProfiles, async (event) => {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
@@ -119,6 +129,18 @@ function registerIpc(): void {
     if (typeof id !== 'string') throw new Error('Invalid AI Profile id.');
     return getRuntime().facade.selectAiProfile(id);
   });
+  ipcMain.handle(IpcChannel.GetClassroomSimulation, async (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    return getRuntime().facade.getClassroomSimulation();
+  });
+  ipcMain.handle(
+    IpcChannel.RunClassroomSimulation,
+    async (event, action: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      assertClassroomSimulationAction(action);
+      return getRuntime().facade.runClassroomSimulation(action);
+    },
+  );
   ipcMain.handle(
     IpcChannel.GenerateAnswerProposal,
     async (event, input: unknown) => {
@@ -451,9 +473,27 @@ function assertUpdateAiProfileSelectionInput(
     typeof value.model !== 'string' ||
     typeof value.visionModel !== 'string' ||
     typeof value.ocrModel !== 'string' ||
-    typeof value.translationModel !== 'string'
+    typeof value.translationModel !== 'string' ||
+    (value.temperature !== null && typeof value.temperature !== 'number')
   ) {
     throw new Error('Invalid AI model selection.');
+  }
+}
+
+function assertClassroomSimulationAction(
+  value: unknown,
+): asserts value is ClassroomSimulationAction {
+  if (
+    ![
+      'reset',
+      'show-slide',
+      'publish-courseware',
+      'publish-problem-object',
+      'publish-problem-scalar',
+      'finish-lesson',
+    ].includes(value as ClassroomSimulationAction)
+  ) {
+    throw new Error('Invalid classroom simulation action.');
   }
 }
 
@@ -535,6 +575,19 @@ function getRuntime(): BackendRuntime {
 function getNetworkLabController(): NetworkLabController {
   if (!networkLabController) throw new Error('Network lab is not ready.');
   return networkLabController;
+}
+
+function syncScreenWakeLock(): void {
+  const active = keepScreenAwake ? browserController?.getState() : undefined;
+  const shouldPreventSleep =
+    keepScreenAwake && Boolean(active && isClassroomUrl(active.url));
+  if (shouldPreventSleep && wakeLockId === null) {
+    wakeLockId = powerSaveBlocker.start('prevent-display-sleep');
+  } else if (!shouldPreventSleep && wakeLockId !== null) {
+    if (powerSaveBlocker.isStarted(wakeLockId))
+      powerSaveBlocker.stop(wakeLockId);
+    wakeLockId = null;
+  }
 }
 
 async function exportPresentationPdf(
@@ -690,6 +743,7 @@ async function createWindow(): Promise<void> {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
       window.webContents.send(IpcChannel.BrowserStateChanged, state);
     }
+    syncScreenWakeLock();
   });
   browserController = nextBrowserController;
   const browserLessonCollector = new BrowserLessonCollector();
@@ -717,6 +771,8 @@ async function createWindow(): Promise<void> {
     disposed = true;
     nextNetworkLabController.destroy();
     nextBrowserController.destroy();
+    keepScreenAwake = false;
+    syncScreenWakeLock();
     void runtime?.stop();
   });
   window.on('closed', () => {
@@ -735,6 +791,7 @@ async function createWindow(): Promise<void> {
     join(storageDirectory, 'yuketang.sqlite'),
   );
   const settings = await dataStore.getSettings();
+  keepScreenAwake = settings.keepScreenAwake;
   if (window.isDestroyed()) {
     dataStore.close();
     return;
@@ -767,6 +824,11 @@ async function createWindow(): Promise<void> {
       recorder: nextNetworkLabController.recorder,
       browserCollector: browserLessonCollector,
     }),
+    onClassroomNotice: (notice) => {
+      if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+        window.webContents.send(IpcChannel.ClassroomNotice, notice);
+      }
+    },
   });
   runtime = nextRuntime;
   await nextRuntime.start();

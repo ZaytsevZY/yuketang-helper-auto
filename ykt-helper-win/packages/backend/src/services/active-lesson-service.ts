@@ -3,6 +3,9 @@ import {
   YuketangError,
   type AnswerInput,
   type BrowserEnvironment,
+  type ClassroomNotice,
+  type ClassroomSimulationAction,
+  type ClassroomSimulationState,
   type Lesson,
   type Presentation,
   type SubmissionResult,
@@ -24,6 +27,14 @@ import {
 } from '../workflows/lesson-state-machine.js';
 import { AnswerService, planSubmission } from './answer-service.js';
 import { ProblemService } from './problem-service.js';
+import { getRealtimeEvent } from './classroom-events.js';
+
+const simulationLessonId = 'local-classroom-simulator';
+const noticeDedupeWindow = 60_000;
+
+export function isClassroomSimulationLesson(lessonId: string): boolean {
+  return lessonId === simulationLessonId;
+}
 
 export class ActiveLessonService {
   readonly #remoteLessons = new Map<string, ActiveLesson>();
@@ -31,12 +42,21 @@ export class ActiveLessonService {
   readonly #problems: ProblemService;
   readonly #answers = new AnswerService();
   readonly #stopArchivedCollection: () => void;
+  readonly #noticeTimes = new Map<string, number>();
+  #simulation: ClassroomSimulationState = {
+    lessonId: simulationLessonId,
+    status: 'upcoming',
+    currentSlide: 1,
+    publishedProblemIds: [],
+    lastEvent: '尚未启动',
+  };
 
   constructor(
     private readonly client: YuketangActiveClient,
     private readonly repository: LessonRepository,
     private readonly storage: AppDataStore,
     private readonly clock: Clock = systemClock,
+    private readonly onNotice: (notice: ClassroomNotice) => void = () => {},
   ) {
     this.#problems = new ProblemService(repository, clock, this.#answers);
     this.#stopArchivedCollection = this.client.onArchivedPresentation(
@@ -69,7 +89,9 @@ export class ActiveLessonService {
         status: lesson.status,
       });
     }
-    return this.repository.listLessons();
+    return this.repository
+      .listLessons()
+      .filter((lesson) => !isClassroomSimulationLesson(lesson.id));
   }
 
   async connectLesson(
@@ -168,6 +190,90 @@ export class ActiveLessonService {
     };
   }
 
+  getSimulation(): ClassroomSimulationState {
+    return { ...this.#simulation };
+  }
+
+  async runSimulation(
+    action: ClassroomSimulationAction,
+  ): Promise<ClassroomSimulationState> {
+    if (action === 'reset') {
+      await this.resetSimulation();
+      return this.getSimulation();
+    }
+    if (this.#simulation.status !== 'active') await this.resetSimulation();
+
+    if (action === 'show-slide') {
+      const nextSlide =
+        this.#simulation.currentSlide === 3
+          ? 1
+          : this.#simulation.currentSlide + 1;
+      await this.handleMessage(simulationLessonId, {
+        op: 'presentationdisplay',
+        presentation: 'simulation-presentation',
+        slide: nextSlide,
+      });
+      this.#simulation = {
+        ...this.#simulation,
+        currentSlide: nextSlide,
+        lastEvent: `教师展示第 ${nextSlide} 页（不触发发布提醒）`,
+      };
+    } else if (action === 'publish-courseware') {
+      await this.handleMessage(simulationLessonId, {
+        op: 'publishpresentation',
+        presentation: {
+          id: 'simulation-presentation',
+          title: '本地模拟课件',
+        },
+      });
+      this.#simulation = {
+        ...this.#simulation,
+        lastEvent: '教师发布课件',
+      };
+    } else if (
+      action === 'publish-problem-object' ||
+      action === 'publish-problem-scalar'
+    ) {
+      const scalar = action === 'publish-problem-scalar';
+      const problemId = scalar
+        ? 'simulation-problem-scalar'
+        : 'simulation-problem-object';
+      const slideId = scalar ? 'simulation-slide-3' : 'simulation-slide-2';
+      await this.handleMessage(simulationLessonId, {
+        op: 'unlockproblem',
+        problem: scalar
+          ? problemId
+          : {
+              problemId,
+              pres: 'simulation-presentation',
+              sid: slideId,
+              dt: this.clock.now(),
+              limit: 90,
+            },
+        pres: 'simulation-presentation',
+        sid: slideId,
+        dt: this.clock.now(),
+        limit: 90,
+      });
+      this.#simulation = {
+        ...this.#simulation,
+        currentSlide: scalar ? 3 : 2,
+        publishedProblemIds: [
+          ...new Set([...this.#simulation.publishedProblemIds, problemId]),
+        ],
+        lastEvent: scalar ? '教师发布标量 ID 题目' : '教师发布对象题目',
+      };
+    } else if (action === 'finish-lesson') {
+      await this.handleMessage(simulationLessonId, { op: 'lessonfinished' });
+      this.#simulation = {
+        ...this.#simulation,
+        status: 'ended',
+        lastEvent: '教师结束课堂',
+      };
+    }
+    return this.getSimulation();
+  }
+
   close(): void {
     this.#stopArchivedCollection();
     this.client.close();
@@ -214,16 +320,26 @@ export class ActiveLessonService {
       }
       return;
     }
-    if (message.op === 'lessonfinished') {
+    const event = getRealtimeEvent(message);
+    if (!event) return;
+    if (event.kind === 'lessonfinished') {
       machine.apply({
         type: 'lesson.ended',
         lessonId,
         occurredAt: this.clock.now(),
       });
+      this.emitNotice({
+        kind: 'lesson-finished',
+        lessonId,
+        dedupeKey: `lesson-finished:${lessonId}`,
+        title: '课堂已结束',
+        detail: session.lesson.title,
+        occurredAt: this.clock.now(),
+      });
       return;
     }
-    if (message.op === 'fetchtimeline') {
-      const timeline = Array.isArray(message.timeline) ? message.timeline : [];
+    if (event.kind === 'timeline') {
+      const timeline = Array.isArray(event.timeline) ? event.timeline : [];
       for (const item of timeline) {
         const piece = record(item);
         if (piece?.type === 'problem')
@@ -231,9 +347,16 @@ export class ActiveLessonService {
       }
       return;
     }
-    if (message.op === 'unlockproblem') {
-      const unlocked = record(message.problem);
-      if (unlocked) await this.applyUnlock(machine, lessonId, unlocked);
+    if (event.kind === 'unlockproblem') {
+      await this.applyUnlock(machine, lessonId, event.problem);
+      return;
+    }
+    if (event.kind === 'publish') {
+      this.emitNotice({
+        ...event.notice,
+        lessonId,
+        occurredAt: this.clock.now(),
+      });
     }
   }
 
@@ -308,7 +431,96 @@ export class ActiveLessonService {
         message: '已从官方课堂收集题目事件。',
         details: { lessonId, problemId },
       });
+      this.emitNotice({
+        kind: 'problem-start',
+        lessonId,
+        dedupeKey: `problem-start:${lessonId}:${problemId}`,
+        title: '习题已发布',
+        detail: problem.prompt || '教师开启了一道可作答的习题',
+        occurredAt: this.clock.now(),
+      });
     }
+  }
+
+  private async resetSimulation(): Promise<void> {
+    for (const key of this.#noticeTimes.keys()) {
+      if (key.includes(simulationLessonId)) this.#noticeTimes.delete(key);
+    }
+    this.repository.upsertLesson({
+      id: simulationLessonId,
+      title: '本地课堂模拟',
+      status: 'active',
+    });
+    this.#environments.set(simulationLessonId, 'standard');
+    await this.applyPresentation('standard', simulationLessonId, {
+      id: 'simulation-presentation',
+      lessonId: simulationLessonId,
+      title: '本地模拟课件',
+      width: 1600,
+      height: 900,
+      slides: [
+        {
+          id: 'simulation-slide-1',
+          index: 0,
+          title: '课堂开始',
+          imageUrl: null,
+          problem: null,
+        },
+        {
+          id: 'simulation-slide-2',
+          index: 1,
+          title: '对象题目',
+          imageUrl: null,
+          problem: {
+            id: 'simulation-problem-object',
+            lessonId: simulationLessonId,
+            presentationId: 'simulation-presentation',
+            slideId: 'simulation-slide-2',
+            type: 'single-choice',
+            prompt: '模拟题：Windows 发行版是否收到了对象题目事件？',
+            options: ['是', '否'],
+            blanks: [],
+            result: null,
+          },
+        },
+        {
+          id: 'simulation-slide-3',
+          index: 2,
+          title: '标量题目',
+          imageUrl: null,
+          problem: {
+            id: 'simulation-problem-scalar',
+            lessonId: simulationLessonId,
+            presentationId: 'simulation-presentation',
+            slideId: 'simulation-slide-3',
+            type: 'single-choice',
+            prompt: '模拟题：标量 problem ID 是否被正确正规化？',
+            options: ['是', '否'],
+            blanks: [],
+            result: null,
+          },
+        },
+      ],
+    });
+    this.#simulation = {
+      lessonId: simulationLessonId,
+      status: 'active',
+      currentSlide: 1,
+      publishedProblemIds: [],
+      lastEvent: '模拟课堂已重置',
+    };
+  }
+
+  private emitNotice(notice: ClassroomNotice): void {
+    const previous = this.#noticeTimes.get(notice.dedupeKey);
+    if (
+      previous !== undefined &&
+      notice.occurredAt - previous < noticeDedupeWindow
+    ) {
+      return;
+    }
+    this.#noticeTimes.set(notice.dedupeKey, notice.occurredAt);
+    this.onNotice(notice);
   }
 }
 

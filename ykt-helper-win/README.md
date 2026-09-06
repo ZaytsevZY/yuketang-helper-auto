@@ -78,6 +78,12 @@ npm run lesson:replay -- tests/fixtures/lesson-unlock.json
 
 M4 为 standard、pro 和 changjiang 分别固定了 host adapter，并实现用户信息、正在上课、答题和补交接口。Cookie 从 Electron 专用 session 读取，Bearer 与 `Set-Auth` 由 `SessionManager` 管理。
 
+## 课堂事件与本地模拟
+
+桌面端同时兼容对象和标量形式的 `unlockproblem` 消息，并可按事件类型与提醒方式分别控制课堂通知。设置中的“课堂期间保持屏幕常亮”只在当前标签处于课堂页面时生效。
+
+顶部“模拟”页提供独立的本地教师端与学生端，可发送课件发布、对象题目、标量题目和课堂结束事件。这些事件经过与真实课堂相同的 Backend 正规化与提醒链路，但不会连接雨课堂服务器，也不会写入网络实验室。
+
 连接课堂不再由助手调用 `/lesson/checkin` 或新建独立 WebSocket。桌面端先登记目标课堂，再打开官方 `/lesson/fullscreen/v3/:lessonId` 页面，收集页面自身的 presentation 响应、WebSocket hello、timeline、题目解锁与下课事件。这与旧浏览器插件的旁路收集方式一致，也避免维护另一套签到协议。
 
 答题和补交仍是明确的主动操作，经嵌入网页相同的 Chromium Session 发送，并沿用相同的凭据脱敏规则。

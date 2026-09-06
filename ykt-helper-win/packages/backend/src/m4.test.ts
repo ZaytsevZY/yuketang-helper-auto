@@ -1,4 +1,4 @@
-import { BrowserEnvironment } from '@ykt/contracts';
+import { BrowserEnvironment, type ClassroomNotice } from '@ykt/contracts';
 import {
   BrowserLessonCollector,
   YuketangActiveClient,
@@ -316,6 +316,53 @@ describe('M4 backend active client', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('runs the independent classroom simulator through the real event normalizer', async () => {
+    const notices: ClassroomNotice[] = [];
+    const activeClient = new YuketangActiveClient({
+      credentials: {
+        load: async () => ({
+          cookieHeader: '',
+          bearerToken: null,
+          userId: null,
+        }),
+      },
+      transport: new QueueTransport([]),
+      socketFactory: () => new FakeSocket(),
+    });
+    const runtime = createBackendRuntime({
+      activeClient,
+      onClassroomNotice: (notice) => notices.push(notice),
+    });
+    await runtime.start();
+
+    const reset = await runtime.facade.runClassroomSimulation('reset');
+    await runtime.facade.runClassroomSimulation('show-slide');
+    await runtime.facade.runClassroomSimulation('publish-courseware');
+    await runtime.facade.runClassroomSimulation('publish-courseware');
+    const published = await runtime.facade.runClassroomSimulation(
+      'publish-problem-scalar',
+    );
+    await runtime.facade.runClassroomSimulation('finish-lesson');
+
+    expect(reset).toMatchObject({ status: 'active', currentSlide: 1 });
+    expect(published.publishedProblemIds).toContain(
+      'simulation-problem-scalar',
+    );
+    expect(await runtime.facade.listProblems(reset.lessonId)).toContainEqual(
+      expect.objectContaining({
+        id: 'simulation-problem-scalar',
+        status: 'available',
+      }),
+    );
+    expect(notices.map((notice) => notice.kind)).toEqual([
+      'courseware-publish',
+      'problem-start',
+      'lesson-finished',
+    ]);
+
+    await runtime.stop();
   });
 });
 

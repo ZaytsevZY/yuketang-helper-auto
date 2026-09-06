@@ -17,6 +17,7 @@ type WorkspacePage =
   | 'courseware'
   | 'profiles'
   | 'settings'
+  | 'simulator'
   | 'diagnostics';
 
 const pages: ReadonlyArray<{ id: WorkspacePage; label: string }> = [
@@ -26,6 +27,7 @@ const pages: ReadonlyArray<{ id: WorkspacePage; label: string }> = [
   { id: 'courseware', label: '课件' },
   { id: 'profiles', label: '模型' },
   { id: 'settings', label: '设置' },
+  { id: 'simulator', label: '模拟' },
   { id: 'diagnostics', label: '诊断' },
 ];
 
