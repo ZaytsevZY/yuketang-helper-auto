@@ -129,3 +129,21 @@ M8 将模型调用收敛到统一 `AiProviderPlugin` 接口，默认提供 OpenA
 题目分析会返回结构化 `AnswerProposal`，包含建议状态、答案、解释、上下文来源、置信度、校验问题和失败原因。每条建议会写入 SQLite；手动采用建议后仍需在题目页校验并确认，提交记录会保存建议答案与最终答案的差异及确认主体。
 
 软件默认启用 AI，不提供单独的 LLM 总开关。开启“自动确认提交”后，新题会由 Agent 调用模型、校验答案并直接提交，相关日志以 `confirmedBy: agent` 标记；未配置模型或调用失败不会阻断课堂和人工答题功能。
+
+## Windows 发行包
+
+`desktop/` 是 Electron Forge 的完整应用目录。根目录脚本会先构建桌面端与单文件 CLI，再把运行文件同步到该目录并生成发行物：
+
+```powershell
+npm run make:win
+npm run make:portable
+```
+
+安装版使用 Squirrel.Windows，Portable 使用 ZIP。运行桌面端后，可通过应用根目录中的 `ykt.cmd` 执行 `status` 等 desktop-attached CLI 命令。Portable 会把 Cookie、缓存和应用数据写到可执行文件旁的 `ykt-helper-data`。
+
+若当前网络无法访问 GitHub 的 Electron 分发地址，可在构建终端临时指定镜像后重试：
+
+```powershell
+$env:ELECTRON_MIRROR = 'https://npmmirror.com/mirrors/electron/'
+npm run make:win
+```

@@ -1,6 +1,6 @@
 {
   "name": "@ykt/backend",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
@@ -15,8 +15,8 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@ykt/contracts": "0.1.0",
-    "@ykt/routing": "0.1.0",
-    "@ykt/storage": "0.1.0"
+    "@ykt/contracts": "2.0.0",
+    "@ykt/routing": "2.0.0",
+    "@ykt/storage": "2.0.0"
   }
 }

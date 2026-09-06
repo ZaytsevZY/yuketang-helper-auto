@@ -1,14 +1,18 @@
 {
   "name": "ykt-helper-win",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "workspaces": [
     "apps/*",
+    "desktop",
     "packages/*"
   ],
   "scripts": {
     "build": "npm run build -w @ykt/contracts && npm run build -w @ykt/routing && npm run build -w @ykt/storage && npm run build -w @ykt/backend && npm run build -w @ykt/cli && npm run build -w @ykt/desktop",
+    "prepare:desktop": "npm run build && node scripts/prepare-desktop-package.mjs",
+    "make:win": "npm run prepare:desktop && npm run make:installer -w yuketang-helper-desktop-package",
+    "make:portable": "npm run prepare:desktop && npm run make:portable -w yuketang-helper-desktop-package",
     "start": "npm run start -w @ykt/desktop",
     "cli": "npm run start -w @ykt/cli --",
     "test": "vitest run",

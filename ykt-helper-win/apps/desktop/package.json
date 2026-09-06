@@ -1,24 +1,26 @@
 {
   "name": "@ykt/desktop",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "main": "dist/main/index.cjs",
   "scripts": {
     "build": "vue-tsc --noEmit -p tsconfig.renderer.json && tsc --noEmit -p tsconfig.node.json && npm run build:main && npm run build:preload && vite build",
-    "build:main": "tsup main/index.ts --format cjs --platform node --external electron --out-dir dist/main --clean",
+    "build:main": "tsup --config tsup.main.config.ts",
     "build:preload": "tsup --config tsup.preload.config.ts",
     "start": "electron .",
     "dev": "vite"
   },
   "dependencies": {
-    "@ykt/backend": "0.1.0",
-    "@ykt/contracts": "0.1.0",
-    "@ykt/routing": "0.1.0",
-    "@ykt/storage": "0.1.0",
+    "@ykt/backend": "2.0.0",
+    "@ykt/contracts": "2.0.0",
+    "@ykt/routing": "2.0.0",
+    "@ykt/storage": "2.0.0",
+    "electron-squirrel-startup": "^1.0.1",
     "vue": "^3.5.20"
   },
   "devDependencies": {
+    "@types/electron-squirrel-startup": "^1.0.2",
     "electron": "^44.0.0",
     "tsup": "^8.5.0"
   }

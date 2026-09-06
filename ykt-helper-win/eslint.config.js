@@ -4,7 +4,18 @@ import tseslint from 'typescript-eslint';
 import pluginVue from 'eslint-plugin-vue';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**'] },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      'desktop/.electron-cache/**',
+      'desktop/cli/**',
+      'desktop/main/**',
+      'desktop/out/**',
+      'desktop/preload/**',
+      'desktop/renderer/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/recommended'],
@@ -59,6 +70,15 @@ export default tseslint.config(
           ],
         },
       ],
+    },
+  },
+  {
+    files: ['desktop/**/*.cjs'],
+    languageOptions: {
+      globals: globals.node,
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
     },
   },
 );

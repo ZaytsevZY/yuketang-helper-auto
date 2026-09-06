@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
@@ -33,6 +34,7 @@ import {
   FileSecretStore,
   SqliteAppDataStore,
 } from '@ykt/storage';
+import electronSquirrelStartup from 'electron-squirrel-startup';
 
 import { BrowserController } from './browser-controller.js';
 import { isAllowedYuketangUrl, isClassroomUrl } from './browser-policy.js';
@@ -51,10 +53,15 @@ let cliServer: DesktopCliServer | undefined;
 let keepScreenAwake = false;
 let wakeLockId: number | null = null;
 
+if (electronSquirrelStartup) {
+  app.quit();
+}
+
 configureStorageProfile();
 
 function configureStorageProfile(): void {
-  if (process.argv.includes('--portable')) {
+  const portableMarker = join(dirname(app.getPath('exe')), 'portable.flag');
+  if (process.argv.includes('--portable') || existsSync(portableMarker)) {
     app.setPath(
       'userData',
       join(dirname(app.getPath('exe')), 'ykt-helper-data'),
