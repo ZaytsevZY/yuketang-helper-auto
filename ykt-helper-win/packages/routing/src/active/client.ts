@@ -1,6 +1,10 @@
 import type { BrowserEnvironment, Presentation } from '@ykt/contracts';
 
 import type { NetworkRecorder } from '../recorder.js';
+import type {
+  BrowserLessonCollector,
+  BrowserLessonObservation,
+} from './browser-lesson-collector.js';
 import { hostAdapterFor } from './host-adapter.js';
 import { FetchHttpTransport } from './http-transport.js';
 import {
@@ -28,6 +32,7 @@ export interface ActiveClientOptions {
   transport?: ActiveHttpTransport;
   socketFactory?: LessonSocketFactory;
   recorder?: NetworkRecorder;
+  browserCollector?: BrowserLessonCollector;
   now?: () => number;
 }
 
@@ -35,6 +40,7 @@ export class YuketangActiveClient {
   readonly sessions: SessionManager;
   readonly sockets: LessonWebSocketManager;
   readonly #transport: ActiveHttpTransport;
+  readonly #browserCollector: BrowserLessonCollector | undefined;
   readonly #now: () => number;
 
   constructor(options: ActiveClientOptions) {
@@ -42,6 +48,7 @@ export class YuketangActiveClient {
     this.sessions = new SessionManager(options.credentials, this.#now);
     this.#transport =
       options.transport ?? new FetchHttpTransport(options.recorder);
+    this.#browserCollector = options.browserCollector;
     this.sockets = new LessonWebSocketManager(
       options.socketFactory,
       options.recorder,
@@ -133,8 +140,31 @@ export class YuketangActiveClient {
   connectLesson(
     environment: BrowserEnvironment,
     lessonId: string,
-    onMessage: (message: unknown) => void,
+    onMessage: (message: unknown) => void | Promise<void>,
+    presentationId: string | null = null,
   ): void {
+    if (this.#browserCollector) {
+      this.#browserCollector.watchLesson(
+        environment,
+        lessonId,
+        presentationId,
+        async (observation: BrowserLessonObservation) => {
+          if (observation.type === 'presentation') {
+            await onMessage({
+              op: 'presentationloaded',
+              presentation: observation.presentation,
+            });
+            return;
+          }
+          await onMessage(
+            observation.type === 'error'
+              ? { op: 'collectionerror', error: observation.message }
+              : observation.message,
+          );
+        },
+      );
+      return;
+    }
     const lessonToken = this.sessions.lessonToken(lessonId);
     if (!lessonToken) throw new Error('Lesson has not been checked in.');
     this.sockets.connect({
@@ -147,11 +177,13 @@ export class YuketangActiveClient {
   }
 
   closeLesson(lessonId: string): void {
+    this.#browserCollector?.unwatchLesson(lessonId);
     this.sockets.closeLesson(lessonId);
     this.sessions.clearLesson(lessonId);
   }
 
   close(): void {
+    this.#browserCollector?.clear();
     this.sockets.closeAll();
     this.sessions.clear();
   }
@@ -168,6 +200,10 @@ export class YuketangActiveClient {
     await this.sessions.captureResponse(environment, response);
     assertSuccess(response);
     return response;
+  }
+
+  get usesBrowserCollection(): boolean {
+    return this.#browserCollector !== undefined;
   }
 }
 

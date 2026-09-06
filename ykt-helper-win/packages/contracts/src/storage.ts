@@ -10,6 +10,7 @@ export type JsonValue =
   | { readonly [key: string]: JsonValue };
 
 export interface AppSettings {
+  readonly browserEnvironment: BrowserEnvironment | null;
   readonly notifyProblems: boolean;
   readonly notifyPopupDuration: number;
   readonly notifyVolume: number;
@@ -33,6 +34,7 @@ export interface AppSettings {
 }
 
 export const DefaultAppSettings: AppSettings = Object.freeze({
+  browserEnvironment: null,
   notifyProblems: true,
   notifyPopupDuration: 5000,
   notifyVolume: 0.6,

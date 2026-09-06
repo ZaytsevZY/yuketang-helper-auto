@@ -212,8 +212,7 @@ const reload = () => runControl(() => window.yuketang.browserReload());
 
     <main class="browser-placeholder" aria-hidden="true">
       <div>
-        <strong>正在初始化安全网页容器</strong>
-        <span>真实雨课堂页面将在这里显示</span>
+        <strong>正在打开雨课堂网页…</strong>
       </div>
     </main>
 

@@ -136,6 +136,7 @@ const aiCustomPrompt = ref('');
 const aiSlideSelection = ref<string[]>([]);
 const logs = ref<readonly LogRow[]>([]);
 const entries = ref<NetworkEntry[]>([]);
+const collectingLessonId = ref('');
 const answerDraft = ref('');
 const validation = ref<ValidationResult>();
 const submissionMessage = ref('');
@@ -262,7 +263,7 @@ const sourceModules: ReadonlyArray<{
     id: 'routing',
     label: 'HTTP / WS 路由',
     path: 'packages/routing/src',
-    description: '主动请求、会话、WebSocket 与事件归一化。',
+    description: '浏览器流量收集、主动提交、会话与事件归一化。',
   },
   {
     id: 'storage',
@@ -293,6 +294,7 @@ watch(
   () => props.environment,
   async () => {
     selectedLessonId.value = '';
+    collectingLessonId.value = '';
     problems.value = [];
     presentations.value = [];
     await loadWorkspace();
@@ -398,8 +400,9 @@ async function connectLesson(): Promise<void> {
       selectedLessonId.value,
     );
     connectedLessonIds.add(selectedLessonId.value);
+    collectingLessonId.value = selectedLessonId.value;
+    infoMessage.value = '已打开官方课堂，正在收集题目与课件';
     await loadLessonData();
-    infoMessage.value = '课堂已连接，题目与课件已同步';
   });
 }
 
@@ -423,6 +426,13 @@ async function loadLessonData(): Promise<void> {
     )
   ) {
     selectedPresentationId.value = nextPresentations[0]?.id ?? '';
+  }
+  if (
+    collectingLessonId.value === selectedLessonId.value &&
+    (nextProblems.length > 0 || nextPresentations.length > 0)
+  ) {
+    infoMessage.value = `已同步 ${nextPresentations.length} 份课件、${nextProblems.length} 道题目`;
+    collectingLessonId.value = '';
   }
 }
 
@@ -944,10 +954,8 @@ async function automationTick(): Promise<void> {
       !connectedLessonIds.has(selectedLessonId.value)
     )
       return;
-    const nextProblems = await window.yuketang.listProblems(
-      selectedLessonId.value,
-    );
-    problems.value = nextProblems;
+    await loadLessonData();
+    const nextProblems = problems.value;
     for (const problem of nextProblems) {
       if (
         problem.status !== 'available' ||

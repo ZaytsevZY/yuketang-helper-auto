@@ -1,6 +1,6 @@
 # 雨课堂助手桌面版
 
-当前已完成 `coding_plan.md` 的 M0 至 M6 与 M8，M7 暂时跳过。程序可在独立的 `WebContentsView` 中登录和浏览雨课堂，观察、脱敏和导出网络记录；Backend 可复用受控浏览器会话，主动读取课堂和课件、连接课堂 WebSocket，并通过统一 Facade 验证和提交人工答案。设置、用户、日志、课件索引及 AI 建议审计记录可在重启后恢复。
+当前已完成 `coding_plan.md` 的 M0 至 M6 与 M8，M7 暂时跳过。程序可在独立的 `WebContentsView` 中登录和浏览雨课堂，观察、脱敏和导出网络记录；连接课堂时由官方页面完成签到和 WebSocket 建链，Backend 旁路收集课件与题目事件，并通过统一 Facade 验证和提交答案。设置、用户、日志、课件索引及 AI 建议审计记录可在重启后恢复。
 
 ## 开发命令
 
@@ -49,7 +49,7 @@ CLI 的 stdout 只输出 JSON；诊断和用法信息写入 stderr。
 
 ## 网络实验室
 
-底部网络实验室默认通过 Electron `webRequest` 捕获 HTTP 元数据，不读取响应正文。开启“深度捕获”后通过 CDP 增加文本响应体和 WebSocket 帧；打开远程页面 DevTools 会占用或断开 CDP，界面会显示对应状态。
+底部网络实验室默认通过 Electron `webRequest` 捕获 HTTP 元数据。课堂收集器通过 CDP 旁路读取官方页面必要的课件响应和 WebSocket 帧，但不会把原始正文写入持久化存储；开启“深度捕获”后才会将受限、脱敏的正文和帧显示在实验室中。打开远程页面 DevTools 会占用或断开 CDP，界面会显示对应状态。
 
 记录进入界面前会脱敏 Cookie、Authorization、Token、API Key 等字段，并受到以下限制：
 
@@ -74,11 +74,13 @@ npm run build
 npm run lesson:replay -- tests/fixtures/lesson-unlock.json
 ```
 
-## 主动网络客户端
+## 浏览器课堂收集与主动操作
 
-M4 为 standard、pro 和 changjiang 分别固定了 host adapter，并实现用户信息、正在上课、签到、课件、答题和补交接口。Cookie 从 Electron 专用 session 读取，Bearer、`Set-Auth` 和 lessonToken 由 `SessionManager` 管理。
+M4 为 standard、pro 和 changjiang 分别固定了 host adapter，并实现用户信息、正在上课、答题和补交接口。Cookie 从 Electron 专用 session 读取，Bearer 与 `Set-Auth` 由 `SessionManager` 管理。
 
-独立课堂 WebSocket 支持 hello 握手、断线重连、跨重连事件去重和统一关闭。主动 HTTP/WS 记录使用 `active` 来源写入网络实验室，并沿用相同的凭据脱敏规则。
+连接课堂不再由助手调用 `/lesson/checkin` 或新建独立 WebSocket。桌面端先登记目标课堂，再打开官方 `/lesson/fullscreen/v3/:lessonId` 页面，收集页面自身的 presentation 响应、WebSocket hello、timeline、题目解锁与下课事件。这与旧浏览器插件的旁路收集方式一致，也避免维护另一套签到协议。
+
+答题和补交仍是明确的主动操作，经嵌入网页相同的 Chromium Session 发送，并沿用相同的凭据脱敏规则。
 
 当前 UI 不会自动签到或提交；相关能力只通过 Backend Facade 和受限 IPC 暴露，等待后续课堂与题目界面显式调用。
 

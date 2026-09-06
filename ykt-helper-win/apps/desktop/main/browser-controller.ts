@@ -67,13 +67,32 @@ export class BrowserController {
     return this.#view.webContents;
   }
 
-  async start(): Promise<void> {
-    await this.selectEnvironment(this.#environment);
+  async start(
+    environment: BrowserEnvironment = this.#environment,
+  ): Promise<void> {
+    await this.selectEnvironment(environment);
   }
 
   async selectEnvironment(environment: BrowserEnvironment): Promise<void> {
     this.#environment = environment;
     await this.loadUrl(targetForEnvironment(environment).startUrl);
+  }
+
+  async openLesson(
+    environment: BrowserEnvironment,
+    lessonId: string,
+  ): Promise<void> {
+    this.#environment = environment;
+    const target = targetForEnvironment(environment);
+    const url = new URL(
+      `/lesson/fullscreen/v3/${encodeURIComponent(lessonId)}`,
+      target.startUrl,
+    ).toString();
+    if (this.#view.webContents.getURL() === url) {
+      this.#view.webContents.reload();
+      return;
+    }
+    await this.loadUrl(url);
   }
 
   back(): void {
@@ -193,11 +212,22 @@ export class BrowserController {
     try {
       await this.#view.webContents.loadURL(url);
     } catch (error: unknown) {
+      if (isNavigationAborted(error)) {
+        this.#loading = this.#view.webContents.isLoading();
+        this.updateEnvironment();
+        this.emitState();
+        return;
+      }
       this.#loading = false;
       this.#errorMessage =
         error instanceof Error ? error.message : '页面加载失败';
       this.emitState();
     }
+  }
+
+  refreshLayout(): void {
+    this.resize();
+    this.emitState();
   }
 
   private updateEnvironment(): void {
@@ -220,4 +250,14 @@ export class BrowserController {
       this.onStateChanged(this.getState());
     }
   }
+}
+
+function isNavigationAborted(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as Error & { code?: string | number }).code;
+  return (
+    code === 'ERR_ABORTED' ||
+    code === -3 ||
+    /ERR_ABORTED|\(-3\)/i.test(error.message)
+  );
 }

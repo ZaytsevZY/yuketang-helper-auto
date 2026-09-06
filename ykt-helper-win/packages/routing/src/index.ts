@@ -1,6 +1,7 @@
 import type { LessonEvent } from '@ykt/contracts';
 
 export * from './active/client.js';
+export * from './active/browser-lesson-collector.js';
 export * from './active/host-adapter.js';
 export * from './active/http-transport.js';
 export * from './active/lesson-websocket.js';

@@ -388,6 +388,8 @@ Skills 不直接访问数据库或 Routing 内部模块，只调用公开 CLI。
 - 实现用户信息、on-lesson、checkin、presentation、answer 和 retry。
 - 桌面端主动 HTTP 复用嵌入网页的持久化 Electron Session，HTTP 与独立 WebSocket 均通过 Chromium 网络栈发送。
 - 实现独立课堂 WebSocket、断线重连、事件去重和优雅退出。
+
+桌面端后续调整：课堂连接改为打开官方课堂页面并旁路收集其 presentation 与 WebSocket 流量，不再主动调用 checkin 或建立第二条课堂 WebSocket；用户信息、课堂列表、答题和补交仍复用 Chromium Session 主动请求。
 - 对比网页真实请求与 Active Client 请求。
 - 统一 problemId 类型、时间戳单位和 Token 生命周期。
 

@@ -1,5 +1,6 @@
 import { BrowserEnvironment } from '@ykt/contracts';
 import {
+  BrowserLessonCollector,
   YuketangActiveClient,
   type ActiveHttpRequest,
   type ActiveHttpResponse,
@@ -142,6 +143,105 @@ describe('M4 backend active client', () => {
 
     await runtime.stop();
     expect(socket.closed).toBe(true);
+  });
+
+  it('collects the official lesson page without issuing a check-in request', async () => {
+    const transport = new QueueTransport([
+      response({
+        data: {
+          onLessonClassrooms: [
+            {
+              lessonId: 7,
+              presentationId: 9,
+              title: 'Browser lesson',
+              status: 1,
+            },
+          ],
+        },
+      }),
+    ]);
+    const collector = new BrowserLessonCollector();
+    const activeClient = new YuketangActiveClient({
+      credentials: {
+        load: async () => ({
+          cookieHeader: 'session=abc',
+          bearerToken: null,
+          userId: '42',
+        }),
+      },
+      transport,
+      browserCollector: collector,
+      socketFactory: () => {
+        throw new Error('The assistant must not create a classroom socket.');
+      },
+    });
+    const runtime = createBackendRuntime({ activeClient });
+    await runtime.start();
+
+    await runtime.facade.refreshLessons(BrowserEnvironment.Standard);
+    await runtime.facade.connectLesson(BrowserEnvironment.Standard, '7');
+    expect(transport.requests).toHaveLength(1);
+
+    await collector.observeHttp({
+      url: 'https://www.yuketang.cn/api/v3/lesson/presentation/fetch?presentation_id=9',
+      statusCode: 200,
+      body: JSON.stringify({
+        data: {
+          id: 9,
+          title: 'Presentation',
+          slides: [
+            {
+              id: 10,
+              problem: {
+                problemId: 11,
+                problemType: 1,
+                content: 'Question',
+                options: ['One', 'Two'],
+              },
+            },
+          ],
+        },
+      }),
+    });
+    await collector.observeWebSocket({
+      requestId: 'browser-ws-1',
+      direction: 'sent',
+      payload: JSON.stringify({
+        op: 'hello',
+        lessonid: 7,
+        auth: 'browser-owned-token',
+      }),
+    });
+    await collector.observeWebSocket({
+      requestId: 'browser-ws-1',
+      direction: 'received',
+      payload: JSON.stringify({
+        eventId: 'timeline-1',
+        op: 'fetchtimeline',
+        timeline: [
+          {
+            type: 'problem',
+            prob: 11,
+            pres: 9,
+            sid: 10,
+            dt: Date.now(),
+            limit: 60,
+          },
+        ],
+      }),
+    });
+
+    expect(await runtime.facade.listPresentations('7')).toHaveLength(1);
+    expect(await runtime.facade.listProblems('7')).toMatchObject([
+      {
+        id: '11',
+        presentationId: '9',
+        slideId: '10',
+        status: 'available',
+      },
+    ]);
+
+    await runtime.stop();
   });
 });
 

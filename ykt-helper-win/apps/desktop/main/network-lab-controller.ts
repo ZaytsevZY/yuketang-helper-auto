@@ -6,6 +6,7 @@ import type {
   NetworkSnapshot,
 } from '@ykt/contracts';
 import {
+  type BrowserLessonCollector,
   createNetworkFixture,
   isRawNetworkEntry,
   NetworkRecorder,
@@ -24,15 +25,19 @@ export class NetworkLabController {
     contents: WebContents,
     private readonly onEntry: (entry: NetworkEntry) => void,
     private readonly onStateChanged: (state: NetworkCaptureState) => void,
+    lessonCollector?: BrowserLessonCollector,
   ) {
-    this.#observer = new ElectronNetworkObserver(contents, this.recorder, () =>
-      this.emitState(),
+    this.#observer = new ElectronNetworkObserver(
+      contents,
+      this.recorder,
+      () => this.emitState(),
+      lessonCollector,
     );
     this.recorder.subscribe((entry) => this.handleEntry(entry));
   }
 
-  start(): void {
-    this.#observer.start();
+  async start(): Promise<void> {
+    await this.#observer.start();
   }
 
   getSnapshot(): NetworkSnapshot {

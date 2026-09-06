@@ -7,13 +7,13 @@ import {
   dialog,
   ipcMain,
   Menu,
-  net,
   Notification,
   shell,
   type WebContents,
 } from 'electron';
 import { createBackendRuntime, type BackendRuntime } from '@ykt/backend';
 import {
+  BrowserEnvironment,
   IpcChannel,
   isBrowserEnvironment,
   type AnswerInput,
@@ -25,7 +25,7 @@ import {
   type TranslateTextInput,
   type UpdateAiProfileSelectionInput,
 } from '@ykt/contracts';
-import { YuketangActiveClient, type LessonSocket } from '@ykt/routing';
+import { BrowserLessonCollector, YuketangActiveClient } from '@ykt/routing';
 import {
   DiskResourceCache,
   FileSecretStore,
@@ -194,6 +194,7 @@ function registerIpc(): void {
         throw new Error('Invalid lesson connection request.');
       }
       await getRuntime().facade.connectLesson(environment, lessonId);
+      await getBrowserController().openLesson(environment, lessonId);
     },
   );
   ipcMain.handle(IpcChannel.ListProblems, async (event, lessonId: unknown) => {
@@ -232,6 +233,9 @@ function registerIpc(): void {
         throw new Error('Invalid browser environment.');
       }
       await getBrowserController().selectEnvironment(environment);
+      await getRuntime().facade.updateSettings({
+        browserEnvironment: environment,
+      });
     },
   );
   ipcMain.handle(IpcChannel.BrowserBack, (event) => {
@@ -635,7 +639,8 @@ function sourceModulePath(id: SourceModuleId): string {
 }
 
 async function createWindow(): Promise<void> {
-  mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
+    show: false,
     width: 1180,
     height: 800,
     minWidth: 720,
@@ -648,86 +653,143 @@ async function createWindow(): Promise<void> {
       sandbox: true,
     },
   });
+  mainWindow = window;
 
-  browserController = new BrowserController(mainWindow, (state) => {
-    if (mainWindow && !mainWindow.webContents.isDestroyed()) {
-      mainWindow.webContents.send(IpcChannel.BrowserStateChanged, state);
+  const nextBrowserController = new BrowserController(window, (state) => {
+    if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+      window.webContents.send(IpcChannel.BrowserStateChanged, state);
     }
   });
-  networkLabController = new NetworkLabController(
-    browserController.webContents,
+  browserController = nextBrowserController;
+  const browserLessonCollector = new BrowserLessonCollector();
+  const nextNetworkLabController = new NetworkLabController(
+    nextBrowserController.webContents,
     (entry) => {
-      if (mainWindow && !mainWindow.webContents.isDestroyed()) {
-        mainWindow.webContents.send(IpcChannel.NetworkEntryAdded, entry);
+      if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+        window.webContents.send(IpcChannel.NetworkEntryAdded, entry);
       }
     },
     (state) => {
-      if (mainWindow && !mainWindow.webContents.isDestroyed()) {
-        mainWindow.webContents.send(
-          IpcChannel.NetworkCaptureStateChanged,
-          state,
-        );
+      if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+        window.webContents.send(IpcChannel.NetworkCaptureStateChanged, state);
       }
     },
+    browserLessonCollector,
   );
+  networkLabController = nextNetworkLabController;
+  let disposed = false;
+  window.on('close', () => {
+    if (disposed) return;
+    disposed = true;
+    nextNetworkLabController.destroy();
+    nextBrowserController.destroy();
+    void runtime?.stop();
+  });
+  window.on('closed', () => {
+    if (mainWindow === window) mainWindow = undefined;
+    if (browserController === nextBrowserController) {
+      browserController = undefined;
+    }
+    if (networkLabController === nextNetworkLabController) {
+      networkLabController = undefined;
+    }
+    runtime = undefined;
+  });
+
   const storageDirectory = join(app.getPath('userData'), 'storage');
   const dataStore = new SqliteAppDataStore(
     join(storageDirectory, 'yuketang.sqlite'),
   );
   const settings = await dataStore.getSettings();
+  if (window.isDestroyed()) {
+    dataStore.close();
+    return;
+  }
   const resourceCache = await DiskResourceCache.open({
     directory: join(storageDirectory, 'resource-cache'),
     maxBytes: settings.cacheMaxBytes,
   });
+  if (window.isDestroyed()) {
+    resourceCache.close();
+    dataStore.close();
+    return;
+  }
   const secretStore = new FileSecretStore(
     join(storageDirectory, 'credentials.json'),
     new ElectronSafeStorageCodec(),
   );
-  runtime = createBackendRuntime({
+  const nextRuntime = createBackendRuntime({
     dataStore,
     resourceCache,
     secretStore,
     activeClient: new YuketangActiveClient({
       credentials: new ElectronSessionCredentialSource(
-        browserController.webContents,
+        nextBrowserController.webContents,
         secretStore,
       ),
       transport: new ChromiumHttpTransport(
-        browserController.webContents.session,
+        nextBrowserController.webContents.session,
       ),
-      socketFactory: (url) => new net.WebSocket(url) as unknown as LessonSocket,
-      recorder: networkLabController.recorder,
+      recorder: nextNetworkLabController.recorder,
+      browserCollector: browserLessonCollector,
     }),
   });
-  await runtime.start();
-  networkLabController.start();
-  let disposed = false;
-  mainWindow.on('close', () => {
-    if (disposed) return;
-    disposed = true;
-    networkLabController?.destroy();
-    browserController?.destroy();
-    void runtime?.stop();
-  });
-  mainWindow.on('closed', () => {
-    networkLabController = undefined;
-    browserController = undefined;
-    mainWindow = undefined;
-    runtime = undefined;
-  });
-  await mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
-  await browserController.start();
+  runtime = nextRuntime;
+  await nextRuntime.start();
+  if (window.isDestroyed()) return;
+  let initialEnvironment = isBrowserEnvironment(settings.browserEnvironment)
+    ? settings.browserEnvironment
+    : undefined;
+  if (!initialEnvironment) {
+    const users = await Promise.all([
+      dataStore.getUser(BrowserEnvironment.Standard),
+      dataStore.getUser(BrowserEnvironment.Pro),
+    ]);
+    const recentUser = users
+      .filter((user) => user !== null)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    initialEnvironment = recentUser?.environment ?? BrowserEnvironment.Standard;
+    await dataStore.updateSettings({ browserEnvironment: initialEnvironment });
+  }
+  const browserStart = nextBrowserController.start(initialEnvironment);
+  try {
+    await window.loadFile(join(__dirname, '../renderer/index.html'));
+  } catch (error: unknown) {
+    if (window.isDestroyed()) return;
+    throw error;
+  }
+  if (window.isDestroyed()) return;
+  await nextNetworkLabController.start();
+  if (window.isDestroyed()) return;
+  window.show();
+  nextBrowserController.refreshLayout();
+  await browserStart;
 }
 
-app.whenReady().then(async () => {
-  Menu.setApplicationMenu(null);
-  registerIpc();
-  await createWindow();
+void app
+  .whenReady()
+  .then(async () => {
+    Menu.setApplicationMenu(null);
+    registerIpc();
+    await createWindow();
 
-  app.on('activate', async () => {
-    if (BrowserWindow.getAllWindows().length === 0) await createWindow();
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        void createWindow().catch(reportStartupError);
+      }
+    });
+  })
+  .catch((error: unknown) => {
+    reportStartupError(error);
+    app.quit();
   });
-});
+
+function reportStartupError(error: unknown): void {
+  console.error(
+    '[ykt-helper] Desktop startup failed:',
+    error instanceof Error ? (error.stack ?? error.message) : error,
+  );
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

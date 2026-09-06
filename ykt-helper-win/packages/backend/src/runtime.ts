@@ -224,7 +224,7 @@ class BaselineFacade implements YuketangFacade {
   ): Promise<void> {
     await this.withLog(
       'lesson',
-      '课堂已连接。',
+      '已开始收集官方课堂数据。',
       () => this.requireActiveClient().connectLesson(environment, id),
       { environment, lessonId: id },
     );
