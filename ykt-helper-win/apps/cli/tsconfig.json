@@ -5,9 +5,6 @@
     "outDir": "dist",
     "types": ["node"]
   },
-  "references": [
-    { "path": "../../packages/contracts" },
-    { "path": "../../packages/backend" }
-  ],
+  "references": [{ "path": "../../packages/contracts" }],
   "include": ["src/**/*.ts"]
 }

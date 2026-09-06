@@ -89,9 +89,13 @@ export class ActiveLessonService {
         status: lesson.status,
       });
     }
-    return this.repository
-      .listLessons()
-      .filter((lesson) => !isClassroomSimulationLesson(lesson.id));
+    return lessons.map(
+      ({
+        classroomId: _classroomId,
+        presentationId: _presentationId,
+        ...lesson
+      }) => lesson,
+    );
   }
 
   async connectLesson(

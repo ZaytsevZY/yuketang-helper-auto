@@ -36,6 +36,8 @@ import {
 
 import { BrowserController } from './browser-controller.js';
 import { isAllowedYuketangUrl, isClassroomUrl } from './browser-policy.js';
+import { createDesktopCliHandler } from './cli-handler.js';
+import { DesktopCliServer } from './cli-server.js';
 import { ChromiumHttpTransport } from './chromium-http-transport.js';
 import { ElectronSessionCredentialSource } from './electron-session-credentials.js';
 import { ElectronSafeStorageCodec } from './electron-safe-storage-codec.js';
@@ -45,6 +47,7 @@ let runtime: BackendRuntime | undefined;
 let mainWindow: BrowserWindow | undefined;
 let browserController: BrowserController | undefined;
 let networkLabController: NetworkLabController | undefined;
+let cliServer: DesktopCliServer | undefined;
 let keepScreenAwake = false;
 let wakeLockId: number | null = null;
 
@@ -765,12 +768,14 @@ async function createWindow(): Promise<void> {
     nextNetworkLabController.attach(contents);
   });
   networkLabController = nextNetworkLabController;
+  const windowResources: { cliServer?: DesktopCliServer } = {};
   let disposed = false;
   window.on('close', () => {
     if (disposed) return;
     disposed = true;
     nextNetworkLabController.destroy();
     nextBrowserController.destroy();
+    void windowResources.cliServer?.close();
     keepScreenAwake = false;
     syncScreenWakeLock();
     void runtime?.stop();
@@ -783,6 +788,7 @@ async function createWindow(): Promise<void> {
     if (networkLabController === nextNetworkLabController) {
       networkLabController = undefined;
     }
+    if (cliServer === windowResources.cliServer) cliServer = undefined;
     runtime = undefined;
   });
 
@@ -832,6 +838,16 @@ async function createWindow(): Promise<void> {
   });
   runtime = nextRuntime;
   await nextRuntime.start();
+  windowResources.cliServer = new DesktopCliServer(
+    createDesktopCliHandler({
+      facade: nextRuntime.facade,
+      openLesson: (environment, lessonId, status) =>
+        nextBrowserController.openLesson(environment, lessonId, status),
+      prepareImage: prepareAiImage,
+    }),
+  );
+  await windowResources.cliServer.start();
+  cliServer = windowResources.cliServer;
   if (window.isDestroyed()) return;
   let initialEnvironment = isBrowserEnvironment(settings.browserEnvironment)
     ? settings.browserEnvironment
@@ -892,5 +908,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  void cliServer?.close();
   void runtime?.stop();
 });

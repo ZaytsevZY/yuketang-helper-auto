@@ -18,13 +18,30 @@ npm run format:check
 npm start
 ```
 
-调用 CLI 的同一 Backend Facade：
+桌面程序运行后，可通过本机 Named Pipe 调用同一个 Backend Runtime：
 
 ```powershell
 npm run cli -- status
+npm run cli -- lesson list --environment all --refresh
+npm run cli -- presentation list --lesson <lesson-id>
+npm run cli -- slide get <slide-id> --lesson <lesson-id>
+npm run cli -- slide read <slide-id> --lesson <lesson-id>
+npm run cli -- problem list --lesson <lesson-id>
+npm run cli -- answer propose <problem-id>
 ```
 
-CLI 的 stdout 只输出 JSON；诊断和用法信息写入 stderr。
+CLI 的 stdout 只输出 JSON；诊断和用法信息写入 stderr。`slide read`
+会复用桌面 Chromium Session 读取课件图片，再交给当前 AI Profile 的 OCR 模型。
+答案校验和提交从 stdin 接收 JSON，提交必须显式提供 `--commit`：
+
+```powershell
+'["A"]' | npm run cli -- answer validate <problem-id> --from -
+'{"answer":["A"],"proposalId":"<proposal-id>"}' |
+  npm run cli -- answer submit <problem-id> --from - --confirmed-by agent --commit
+```
+
+初版 CLI 仅支持 desktop-attached 模式，不会直接读取 Cookie、凭据文件或
+SQLite，也不会自行启动 headless 登录会话。运行 `npm run cli -- help` 可查看完整命令。
 
 ## 当前边界
 
