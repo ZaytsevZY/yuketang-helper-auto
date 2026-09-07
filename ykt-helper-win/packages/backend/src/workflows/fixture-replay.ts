@@ -86,7 +86,7 @@ function isLessonEvent(value: unknown): value is LessonEvent {
         typeof value.presentationId === 'string' &&
         typeof value.slideId === 'string' &&
         typeof value.unlockedAt === 'number' &&
-        typeof value.deadlineAt === 'number'
+        (value.deadlineAt === null || typeof value.deadlineAt === 'number')
       );
     case 'problem.answered':
       return typeof value.problemId === 'string' && isAnswer(value.answer);

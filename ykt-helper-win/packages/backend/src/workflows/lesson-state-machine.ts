@@ -79,7 +79,7 @@ export class LessonStateMachine {
     ) {
       return rejected('unlock references do not match the problem');
     }
-    if (event.deadlineAt < event.unlockedAt) {
+    if (event.deadlineAt !== null && event.deadlineAt < event.unlockedAt) {
       return rejected('deadline precedes unlock time');
     }
 

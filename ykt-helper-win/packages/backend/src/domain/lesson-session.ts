@@ -62,7 +62,7 @@ export class LessonSession {
     presentationId: string,
     slideId: string,
     unlockedAt: number,
-    deadlineAt: number,
+    deadlineAt: number | null,
     now: number,
   ): void {
     const problem = this.problems.get(problemId);
@@ -72,7 +72,7 @@ export class LessonSession {
       slideId,
       status: problem?.result
         ? 'answered'
-        : now >= deadlineAt
+        : deadlineAt !== null && now >= deadlineAt
           ? 'expired'
           : 'available',
       unlockedAt,

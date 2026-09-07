@@ -56,7 +56,7 @@ import { OpenAiCompatibleProvider } from './llm/openai-compatible-provider.js';
 import type { AiProviderPlugin } from './llm/provider.js';
 import { systemClock } from './workflows/lesson-state-machine.js';
 
-const VERSION = '0.1.0';
+const VERSION = '2.0.0';
 
 class BaselineFacade implements YuketangFacade {
   constructor(

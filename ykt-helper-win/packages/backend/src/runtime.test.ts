@@ -11,7 +11,7 @@ describe('BackendRuntime', () => {
     await runtime.start();
     expect(await runtime.facade.getStatus()).toEqual({
       state: 'running',
-      version: '0.1.0',
+      version: '2.0.0',
       capabilities: [
         'status',
         'lessons',

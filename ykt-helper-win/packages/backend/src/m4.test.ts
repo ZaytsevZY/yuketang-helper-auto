@@ -93,7 +93,7 @@ describe('M4 backend active client', () => {
           pres: 9,
           slideId: 10,
           dt: unlockedAt,
-          limit: 60,
+          limit: 0,
         },
       }),
     );
@@ -116,6 +116,7 @@ describe('M4 backend active client', () => {
       presentationId: '9',
       slideId: '10',
       status: 'available',
+      deadlineAt: null,
     });
     expect(transport.requests[2]?.headers.authorization).toBe('Bearer new');
     expect(

@@ -1,6 +1,7 @@
 import tpl from './active-problems.html';
 import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
+import { remainingSeconds } from '../../state/problem-timing.js';
 
 let mounted = false;
 let root;
@@ -33,8 +34,8 @@ export function updateActiveProblems() {
     const p = repo.problems.get(pid);
     if (!p || p.result) return;
 
-    const remain = Math.max(0, Math.floor((status.endTime - now) / 1000));
-    if (remain <= 0) {
+    const remain = remainingSeconds(status.endTime, now);
+    if (remain !== null && remain <= 0) {
       console.log(`[雨课堂助手][INFO][ActiveProblems] 题目 ${pid} 倒计时已结束，移除卡片`);
       return;
     }
@@ -51,7 +52,7 @@ export function updateActiveProblems() {
 
     const info = document.createElement('div');
     info.className = 'ap-info';
-    info.textContent = `剩余 ${remain}s`;
+    info.textContent = remain === null ? '不限时' : `剩余 ${remain}s`;
     card.appendChild(info);
 
     const bar = document.createElement('div');

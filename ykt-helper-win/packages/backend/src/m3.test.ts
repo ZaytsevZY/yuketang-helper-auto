@@ -129,6 +129,24 @@ describe('M3 backend core', () => {
     expect(second.problems.size).toBe(0);
   });
 
+  it('keeps a problem without a deadline available', () => {
+    const session = new LessonSession(lesson);
+    session.upsertPresentation(presentation);
+    session.unlockProblem(
+      problem.id,
+      problem.presentationId,
+      problem.slideId,
+      1000,
+      null,
+      1000,
+    );
+
+    expect(session.getProblemContext(problem.id, 1_000_000)).toMatchObject({
+      status: 'available',
+      deadlineAt: null,
+    });
+  });
+
   it('normalizes manual answers and validates their format', () => {
     const service = new AnswerService();
     const context = {

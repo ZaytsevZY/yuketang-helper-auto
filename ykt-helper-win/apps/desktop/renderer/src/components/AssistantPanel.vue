@@ -2562,7 +2562,7 @@ function clamp(value: number, min: number, max: number): number {
                 <li>“诊断”页集中显示运行状态、数据流、源码模块和操作历史。</li>
               </ol>
               <p class="credential-note">
-                桌面版 {{ runtime?.version || '0.1.0' }} ·
+                桌面版 {{ runtime?.version || '2.0.0' }} ·
                 仅供学习辅助，请独立核对答案。
               </p>
             </fieldset>

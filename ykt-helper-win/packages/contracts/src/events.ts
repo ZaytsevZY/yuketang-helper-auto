@@ -23,7 +23,7 @@ export type LessonEvent =
       presentationId: string;
       slideId: string;
       unlockedAt: number;
-      deadlineAt: number;
+      deadlineAt: number | null;
     })
   | (LessonEventBase & {
       type: 'problem.answered';

@@ -413,7 +413,7 @@ export class ActiveLessonService {
     const unlockedAt =
       normalizeTimestamp(unlocked.dt ?? unlocked.unlockedAt) ??
       this.clock.now();
-    const limitSeconds = numberValue(unlocked.limit) ?? 0;
+    const limitSeconds = numberValue(unlocked.limit);
     const result = machine.apply({
       type: 'problem.unlocked',
       lessonId,
@@ -426,7 +426,10 @@ export class ActiveLessonService {
         stringId(unlocked.slideId ?? unlocked.slide_id ?? unlocked.sid) ??
         problem.slideId,
       unlockedAt,
-      deadlineAt: unlockedAt + limitSeconds * 1000,
+      deadlineAt:
+        limitSeconds !== null && limitSeconds > 0
+          ? unlockedAt + limitSeconds * 1000
+          : null,
     });
     if (result.applied) {
       await this.storage.appendLog({
