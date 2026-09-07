@@ -1,7 +1,24 @@
-const { copyFile, writeFile } = require('node:fs/promises');
+const { copyFile, readdir, rm, writeFile } = require('node:fs/promises');
 const path = require('node:path');
 
 const portable = process.env.YKT_PORTABLE === '1';
+
+async function cleanPackagedDirectory(outputPath) {
+  const localesPath = path.join(outputPath, 'locales');
+  const localeFiles = await readdir(localesPath, { withFileTypes: true });
+  await Promise.all(
+    localeFiles
+      .filter(
+        (entry) =>
+          entry.isFile() && !/^(?:en|zh)(?:-|\.)/i.test(entry.name),
+      )
+      .map((entry) => rm(path.join(localesPath, entry.name))),
+  );
+  await rm(path.join(outputPath, 'ykt-helper-data'), {
+    recursive: true,
+    force: true,
+  });
+}
 
 module.exports = {
   packagerConfig: {
@@ -24,6 +41,7 @@ module.exports = {
   hooks: {
     postPackage: async (_forgeConfig, result) => {
       for (const outputPath of result.outputPaths) {
+        await cleanPackagedDirectory(outputPath);
         await copyFile(
           path.join(__dirname, 'build', 'ykt.cmd'),
           path.join(outputPath, 'ykt.cmd'),
