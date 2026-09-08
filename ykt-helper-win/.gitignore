@@ -1,0 +1,8 @@
+*.tsbuildinfo
+.npm-cache/
+desktop/cli/
+desktop/.electron-cache/
+desktop/main/
+desktop/preload/
+desktop/renderer/
+desktop/out/

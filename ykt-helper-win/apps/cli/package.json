@@ -1,0 +1,19 @@
+{
+  "name": "@ykt/cli",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ykt": "dist/ykt-cli.cjs"
+  },
+  "scripts": {
+    "build": "tsc --noEmit -p tsconfig.json && tsup --config tsup.config.ts",
+    "start": "node dist/ykt-cli.cjs"
+  },
+  "dependencies": {
+    "@ykt/contracts": "2.0.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0"
+  }
+}

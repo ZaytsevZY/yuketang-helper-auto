@@ -12,6 +12,7 @@ import { getOnLesson, checkinClass } from '../net/xhr-interceptor.js';
 import { connectOrAttachLessonWS } from '../net/ws-interceptor.js';
 import { createEventReminder, createPublishReminder } from './publish-reminder.js';
 import { screenWakeLock } from '../core/screen-wake-lock.js';
+import { deadlineFromLimit, isDeadlineReached } from './problem-timing.js';
 import { isReminderEnabled } from '../core/reminder-preferences.js';
 
 let _autoLoopStarted = false;
@@ -119,7 +120,7 @@ async function handleAutoAnswerInternal(problem) {
     return;
   }
   
-  if (Date.now() >= status.endTime) {
+  if (isDeadlineReached(status.endTime)) {
     console.log('[雨课堂助手][WARN][AutoAnswer] 跳过：已超时');
     return;
   }
@@ -302,14 +303,14 @@ export const actions = {
       presentationId: payload.pres,
       slideId,
       startTime: payload.dt,
-      endTime: payload.dt + 1000 * payload.limit,
+      endTime: deadlineFromLimit(payload.dt, payload.limit),
       done: !!problem.result,
       autoAnswerTime: null,
       answering: false,
     };
     repo.problemStatus.set(problemId, status);
 
-    if (Date.now() > status.endTime || problem.result) {
+    if (isDeadlineReached(status.endTime) || problem.result) {
       console.log('[雨课堂助手][WARN][onUnlockProblem] 题目已过期或已作答，跳过');
       return;
     }

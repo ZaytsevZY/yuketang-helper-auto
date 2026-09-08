@@ -1,0 +1,22 @@
+{
+  "name": "@ykt/backend",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ykt/contracts": "2.0.0",
+    "@ykt/routing": "2.0.0",
+    "@ykt/storage": "2.0.0"
+  }
+}

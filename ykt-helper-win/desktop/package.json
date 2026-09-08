@@ -1,0 +1,21 @@
+{
+  "name": "yuketang-helper-desktop-package",
+  "productName": "雨课堂助手",
+  "version": "2.0.0",
+  "private": true,
+  "description": "雨课堂助手 Windows 桌面端",
+  "author": "Yuketang Helper contributors",
+  "main": "main/index.cjs",
+  "scripts": {
+    "package": "electron-forge package --platform win32 --arch x64",
+    "make:installer": "electron-forge make --platform win32 --arch x64 --targets @electron-forge/maker-squirrel",
+    "make:portable": "cross-env YKT_PORTABLE=1 electron-forge make --platform win32 --arch x64 --targets @electron-forge/maker-zip"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/maker-squirrel": "^7.11.2",
+    "@electron-forge/maker-zip": "^7.11.2",
+    "cross-env": "^10.1.0",
+    "electron": "^44.0.0"
+  }
+}

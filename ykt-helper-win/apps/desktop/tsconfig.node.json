@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "allowImportingTsExtensions": false
+  },
+  "references": [
+    { "path": "../../packages/contracts" },
+    { "path": "../../packages/backend" },
+    { "path": "../../packages/storage" }
+  ],
+  "include": [
+    "main/**/*.ts",
+    "preload/**/*.ts",
+    "tsup.preload.config.ts",
+    "vite.config.ts"
+  ]
+}

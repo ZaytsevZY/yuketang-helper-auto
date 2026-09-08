@@ -117,7 +117,7 @@ export async function retryAnswer(problem, result, dt, options = {}) {
  * @param {any} result
  * @param {Object} submitOptions
  * @param {number} [submitOptions.startTime] - unlock time (epoch ms). Required for retry path.
- * @param {number} [submitOptions.endTime]   - deadline (epoch ms). If now >= endTime -> retry path.
+ * @param {number|null} [submitOptions.endTime] - deadline (epoch ms); null means unlimited.
  * @param {boolean} [submitOptions.forceRetry=false] - when past deadline, directly use retry without prompting.
  * @param {number} [submitOptions.retryDtOffsetMs=2000] - dt = startTime + offset when retrying.
  * @param {Record<string,string>} [submitOptions.headers] - extra/override headers.
