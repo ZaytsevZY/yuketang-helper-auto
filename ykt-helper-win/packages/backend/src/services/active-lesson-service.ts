@@ -89,13 +89,13 @@ export class ActiveLessonService {
         status: lesson.status,
       });
     }
-    return lessons.map(
-      ({
-        classroomId: _classroomId,
-        presentationId: _presentationId,
-        ...lesson
-      }) => lesson,
-    );
+    return this.repository
+      .listLessons()
+      .filter(
+        (lesson) =>
+          !isClassroomSimulationLesson(lesson.id) &&
+          this.#environments.get(lesson.id) === environment,
+      );
   }
 
   async connectLesson(

@@ -255,7 +255,8 @@ export class BrowserController {
     });
 
     contents.setWindowOpenHandler((details) => {
-      if (!isAllowedYuketangUrl(details.url)) {
+      const opensBlankPage = details.url === 'about:blank';
+      if (!opensBlankPage && !isAllowedYuketangUrl(details.url)) {
         tab.errorMessage = '已阻止外部新窗口';
         this.emitState();
         return { action: 'deny' };

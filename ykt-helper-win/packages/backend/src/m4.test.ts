@@ -257,7 +257,19 @@ describe('M4 backend active client', () => {
             userId: '42',
           }),
         },
-        transport: new QueueTransport([]),
+        transport: new QueueTransport([
+          response({
+            data: {
+              onLessonClassrooms: [
+                {
+                  lessonId: 7,
+                  title: 'Active lesson',
+                  status: 1,
+                },
+              ],
+            },
+          }),
+        ]),
         browserCollector: collector,
         socketFactory: () => {
           throw new Error(
@@ -293,6 +305,19 @@ describe('M4 backend active client', () => {
       await vi.advanceTimersByTimeAsync(200);
 
       expect(await runtime.facade.listLessons()).toContainEqual({
+        id: '1767008521140274560',
+        title: 'Ended lesson',
+        status: 'ended',
+      });
+      const refreshed = await runtime.facade.refreshLessons(
+        BrowserEnvironment.Pro,
+      );
+      expect(refreshed).toContainEqual({
+        id: '7',
+        title: 'Active lesson',
+        status: 'active',
+      });
+      expect(refreshed).toContainEqual({
         id: '1767008521140274560',
         title: 'Ended lesson',
         status: 'ended',

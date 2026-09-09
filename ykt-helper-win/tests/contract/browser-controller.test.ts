@@ -124,6 +124,34 @@ describe('embedded browser tabs', () => {
     expect(controller.getState().tabs).toHaveLength(1);
   });
 
+  it('adopts a blank window before Yuketang assigns its destination', async () => {
+    const { BrowserController } =
+      await import('../../apps/desktop/main/browser-controller.js');
+    const window = {
+      contentView: {
+        addChildView: vi.fn(),
+        removeChildView: vi.fn(),
+      },
+      getContentBounds: () => ({ width: 1180, height: 800 }),
+      on: vi.fn(),
+    };
+    const controller = new BrowserController(window as never, vi.fn());
+    await controller.start(BrowserEnvironment.Pro);
+
+    const child = (controller.webContents as unknown as FakeContents).open(
+      'about:blank',
+    );
+    await child.loadURL('https://pro.yuketang.cn/lesson/fullscreen/v3/7');
+
+    expect(controller.getState()).toMatchObject({
+      url: 'https://pro.yuketang.cn/lesson/fullscreen/v3/7',
+      tabs: [{}, {}],
+    });
+    expect(() => child.open('https://example.com')).toThrow(
+      'Window was blocked',
+    );
+  });
+
   it('opens ended lessons on the classroom overview page', async () => {
     const { BrowserController } =
       await import('../../apps/desktop/main/browser-controller.js');
