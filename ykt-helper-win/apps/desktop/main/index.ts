@@ -50,6 +50,8 @@ let mainWindow: BrowserWindow | undefined;
 let browserController: BrowserController | undefined;
 let networkLabController: NetworkLabController | undefined;
 let cliServer: DesktopCliServer | undefined;
+let serviceCleanupPromise: Promise<void> | undefined;
+let quitAfterCleanup = false;
 let keepScreenAwake = false;
 let wakeLockId: number | null = null;
 
@@ -58,6 +60,22 @@ if (electronSquirrelStartup) {
 }
 
 configureStorageProfile();
+
+const hasSingleInstanceLock =
+  !electronSquirrelStartup && app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      if (app.isReady()) void createWindow().catch(reportStartupError);
+      return;
+    }
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
 
 function configureStorageProfile(): void {
   const portableMarker = join(dirname(app.getPath('exe')), 'portable.flag');
@@ -226,12 +244,15 @@ function registerIpc(): void {
         throw new Error('Invalid lesson connection request.');
       }
       const facade = getRuntime().facade;
-      await facade.connectLesson(environment, lessonId);
+      const connectedEnvironment = await facade.connectLesson(
+        environment,
+        lessonId,
+      );
       const lesson = (await facade.listLessons()).find(
         (item) => item.id === lessonId,
       );
       await getBrowserController().openLesson(
-        environment,
+        connectedEnvironment,
         lessonId,
         lesson?.status,
       );
@@ -733,6 +754,10 @@ function sourceModulePath(id: SourceModuleId): string {
 }
 
 async function createWindow(): Promise<void> {
+  if (serviceCleanupPromise) {
+    await serviceCleanupPromise;
+    serviceCleanupPromise = undefined;
+  }
   const window = new BrowserWindow({
     show: false,
     width: 1180,
@@ -782,10 +807,9 @@ async function createWindow(): Promise<void> {
     disposed = true;
     nextNetworkLabController.destroy();
     nextBrowserController.destroy();
-    void windowResources.cliServer?.close();
+    void cleanupServices();
     keepScreenAwake = false;
     syncScreenWakeLock();
-    void runtime?.stop();
   });
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = undefined;
@@ -853,8 +877,8 @@ async function createWindow(): Promise<void> {
       prepareImage: prepareAiImage,
     }),
   );
-  await windowResources.cliServer.start();
   cliServer = windowResources.cliServer;
+  await windowResources.cliServer.start();
   if (window.isDestroyed()) return;
   let initialEnvironment = isBrowserEnvironment(settings.browserEnvironment)
     ? settings.browserEnvironment
@@ -885,23 +909,25 @@ async function createWindow(): Promise<void> {
   await browserStart;
 }
 
-void app
-  .whenReady()
-  .then(async () => {
-    Menu.setApplicationMenu(null);
-    registerIpc();
-    await createWindow();
+if (hasSingleInstanceLock) {
+  void app
+    .whenReady()
+    .then(async () => {
+      Menu.setApplicationMenu(null);
+      registerIpc();
+      await createWindow();
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        void createWindow().catch(reportStartupError);
-      }
+      app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+          void createWindow().catch(reportStartupError);
+        }
+      });
+    })
+    .catch((error: unknown) => {
+      reportStartupError(error);
+      app.quit();
     });
-  })
-  .catch((error: unknown) => {
-    reportStartupError(error);
-    app.quit();
-  });
+}
 
 function reportStartupError(error: unknown): void {
   console.error(
@@ -910,11 +936,26 @@ function reportStartupError(error: unknown): void {
   );
 }
 
+function cleanupServices(): Promise<void> {
+  if (serviceCleanupPromise) return serviceCleanupPromise;
+  const activeCliServer = cliServer;
+  const activeRuntime = runtime;
+  serviceCleanupPromise = Promise.allSettled([
+    activeCliServer?.close() ?? Promise.resolve(),
+    activeRuntime?.stop() ?? Promise.resolve(),
+  ]).then(() => undefined);
+  return serviceCleanupPromise;
+}
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
-  void cliServer?.close();
-  void runtime?.stop();
+app.on('before-quit', (event) => {
+  if (quitAfterCleanup) return;
+  event.preventDefault();
+  void cleanupServices().finally(() => {
+    quitAfterCleanup = true;
+    app.quit();
+  });
 });

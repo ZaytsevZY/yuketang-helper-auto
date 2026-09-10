@@ -416,19 +416,30 @@ async function loadWorkspace(): Promise<void> {
 
 async function refreshClassroom(): Promise<void> {
   await run('refresh', async () => {
-    const [nextUser, nextLessons] = await Promise.all([
+    const [nextUser] = await Promise.all([
       window.yuketang.refreshUser(props.environment),
       window.yuketang.refreshLessons(props.environment),
     ]);
+    const nextLessons = await window.yuketang.listLessons();
     user.value = nextUser;
     lessons.value = nextLessons;
     selectedLessonId.value =
       nextLessons.find((lesson) => lesson.status === 'active')?.id ??
       nextLessons[0]?.id ??
       '';
-    infoMessage.value = nextLessons.length
-      ? `已找到 ${nextLessons.length} 个课堂`
-      : '当前没有进行中的课堂';
+    const activeCount = nextLessons.filter(
+      (lesson) => lesson.status === 'active',
+    ).length;
+    const endedCount = nextLessons.filter(
+      (lesson) => lesson.status === 'ended',
+    ).length;
+    infoMessage.value = activeCount
+      ? `已找到 ${activeCount} 个进行中课堂`
+      : endedCount
+        ? `当前没有进行中的课堂，已保留 ${endedCount} 个结课课堂`
+        : nextLessons.length
+          ? `当前没有进行中的课堂，已找到 ${nextLessons.length} 个待开始课堂`
+          : '尚未发现课堂';
   });
 }
 
@@ -1103,11 +1114,11 @@ async function automationTick(): Promise<void> {
     const now = Date.now();
     if (currentSettings.autoJoinEnabled && now - lastAutoJoinAt >= 5000) {
       lastAutoJoinAt = now;
-      const nextLessons = await window.yuketang.refreshLessons(
+      const refreshedLessons = await window.yuketang.refreshLessons(
         props.environment,
       );
-      lessons.value = nextLessons;
-      for (const lesson of nextLessons.filter(
+      lessons.value = await window.yuketang.listLessons();
+      for (const lesson of refreshedLessons.filter(
         (item) => item.status === 'active',
       )) {
         if (connectedLessonIds.has(lesson.id)) continue;

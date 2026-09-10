@@ -101,7 +101,7 @@ export class ActiveLessonService {
   async connectLesson(
     environment: BrowserEnvironment,
     lessonId: string,
-  ): Promise<void> {
+  ): Promise<BrowserEnvironment> {
     const remote =
       this.#remoteLessons.get(lessonId) ??
       this.archivedLessonForBrowserCollection(lessonId);
@@ -112,12 +112,7 @@ export class ActiveLessonService {
       });
     }
     const knownEnvironment = this.#environments.get(lessonId);
-    if (knownEnvironment && knownEnvironment !== environment) {
-      throw new YuketangError({
-        code: ErrorCode.InvalidArgument,
-        message: 'Lesson belongs to another environment.',
-      });
-    }
+    const connectedEnvironment = knownEnvironment ?? environment;
     this.repository.upsertLesson({
       id: remote.id,
       title: remote.title,
@@ -125,26 +120,31 @@ export class ActiveLessonService {
     });
     if (!this.client.usesBrowserCollection) {
       await this.client.checkin(
-        environment,
+        connectedEnvironment,
         lessonId,
         remote.classroomId ?? undefined,
       );
     }
     if (!this.client.usesBrowserCollection && remote.presentationId) {
       const presentation = await this.client.fetchPresentation(
-        environment,
+        connectedEnvironment,
         lessonId,
         remote.presentationId,
       );
-      await this.applyPresentation(environment, lessonId, presentation);
+      await this.applyPresentation(
+        connectedEnvironment,
+        lessonId,
+        presentation,
+      );
     }
-    this.#environments.set(lessonId, environment);
+    this.#environments.set(lessonId, connectedEnvironment);
     this.client.connectLesson(
-      environment,
+      connectedEnvironment,
       lessonId,
       (message) => this.handleMessage(lessonId, message),
       remote.presentationId,
     );
+    return connectedEnvironment;
   }
 
   private archivedLessonForBrowserCollection(

@@ -346,10 +346,10 @@ describe('M4 backend active client', () => {
       ]);
       await expect(
         runtime.facade.connectLesson(
-          BrowserEnvironment.Pro,
+          BrowserEnvironment.Standard,
           '1767008521140274560',
         ),
-      ).resolves.toBeUndefined();
+      ).resolves.toBe(BrowserEnvironment.Pro);
 
       await runtime.stop();
     } finally {

@@ -1,4 +1,5 @@
-import { createServer, type Server, type Socket } from 'node:net';
+import { lstat, rm } from 'node:fs/promises';
+import { connect, createServer, type Server, type Socket } from 'node:net';
 
 import {
   CliRpcMethod,
@@ -18,6 +19,7 @@ export type DesktopCliHandler = (
 export class DesktopCliServer {
   readonly #server: Server;
   #started = false;
+  #closePromise: Promise<void> | null = null;
 
   constructor(
     private readonly handler: DesktopCliHandler,
@@ -27,20 +29,43 @@ export class DesktopCliServer {
   }
 
   async start(): Promise<void> {
+    try {
+      await this.listen();
+    } catch (error: unknown) {
+      if (
+        process.platform === 'win32' ||
+        !isNodeError(error, 'EADDRINUSE') ||
+        (await isActiveSocket(this.pipePath)) ||
+        !(await isSocketFile(this.pipePath))
+      ) {
+        throw error;
+      }
+      await rm(this.pipePath, { force: true });
+      await this.listen();
+    }
+    this.#started = true;
+  }
+
+  async close(): Promise<void> {
+    if (this.#closePromise) return this.#closePromise;
+    if (!this.#started) return;
+    this.#started = false;
+    this.#closePromise = new Promise<void>((resolve) =>
+      this.#server.close(() => resolve()),
+    ).finally(() => {
+      this.#closePromise = null;
+    });
+    return this.#closePromise;
+  }
+
+  private async listen(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       this.#server.once('error', reject);
       this.#server.listen(this.pipePath, () => {
         this.#server.off('error', reject);
-        this.#started = true;
         resolve();
       });
     });
-  }
-
-  async close(): Promise<void> {
-    if (!this.#started) return;
-    this.#started = false;
-    await new Promise<void>((resolve) => this.#server.close(() => resolve()));
   }
 
   private handle(socket: Socket): void {
@@ -86,6 +111,39 @@ export class DesktopCliServer {
       });
     }
   }
+}
+
+async function isSocketFile(path: string): Promise<boolean> {
+  try {
+    return (await lstat(path)).isSocket();
+  } catch (error: unknown) {
+    if (isNodeError(error, 'ENOENT')) return false;
+    throw error;
+  }
+}
+
+async function isActiveSocket(path: string): Promise<boolean> {
+  return new Promise<boolean>((resolve, reject) => {
+    const socket = connect(path);
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once('error', (error: unknown) => {
+      socket.destroy();
+      if (isNodeError(error, 'ECONNREFUSED') || isNodeError(error, 'ENOENT')) {
+        resolve(false);
+        return;
+      }
+      reject(error);
+    });
+  });
+}
+
+function isNodeError(error: unknown, code: string): boolean {
+  return (
+    error instanceof Error && (error as NodeJS.ErrnoException).code === code
+  );
 }
 
 function parseRequest(line: string): CliRpcRequest {
