@@ -355,6 +355,24 @@ export class ActiveLessonService {
       await this.applyUnlock(machine, lessonId, event.problem);
       return;
     }
+    if (event.kind === 'answered') {
+      const result = machine.apply({
+        type: 'problem.answered',
+        lessonId,
+        occurredAt: this.clock.now(),
+        problemId: event.problemId,
+        answer: event.answer,
+      });
+      if (result.applied) {
+        await this.storage.appendLog({
+          level: 'info',
+          scope: 'lesson',
+          message: '已同步官方页面作答状态。',
+          details: { lessonId, problemId: event.problemId },
+        });
+      }
+      return;
+    }
     if (event.kind === 'publish') {
       this.emitNotice({
         ...event.notice,

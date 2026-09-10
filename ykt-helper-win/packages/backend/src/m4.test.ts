@@ -242,6 +242,19 @@ describe('M4 backend active client', () => {
       },
     ]);
 
+    await collector.observeHttp({
+      method: 'POST',
+      url: 'https://www.yuketang.cn/api/v3/lesson/problem/answer',
+      statusCode: 200,
+      requestBody: JSON.stringify({ problemId: 11, result: ['B'] }),
+      body: JSON.stringify({ code: 0 }),
+    });
+
+    expect(await runtime.facade.getProblem('11')).toMatchObject({
+      status: 'answered',
+      result: ['B'],
+    });
+
     await runtime.stop();
   });
 

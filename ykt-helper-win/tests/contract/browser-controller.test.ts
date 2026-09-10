@@ -124,32 +124,44 @@ describe('embedded browser tabs', () => {
     expect(controller.getState().tabs).toHaveLength(1);
   });
 
-  it('adopts a blank window before Yuketang assigns its destination', async () => {
+  it('opens a standard diagnostic home page and replaces the final deleted page', async () => {
     const { BrowserController } =
       await import('../../apps/desktop/main/browser-controller.js');
+    const children: FakeView[] = [];
     const window = {
       contentView: {
-        addChildView: vi.fn(),
-        removeChildView: vi.fn(),
+        addChildView: (view: FakeView) => children.push(view),
+        removeChildView: (view: FakeView) => {
+          const index = children.indexOf(view);
+          if (index >= 0) children.splice(index, 1);
+        },
       },
       getContentBounds: () => ({ width: 1180, height: 800 }),
       on: vi.fn(),
     };
     const controller = new BrowserController(window as never, vi.fn());
     await controller.start(BrowserEnvironment.Pro);
+    const firstTabId = controller.getState().activeTabId;
 
-    const child = (controller.webContents as unknown as FakeContents).open(
-      'about:blank',
-    );
-    await child.loadURL('https://pro.yuketang.cn/lesson/fullscreen/v3/7');
+    await controller.newTab();
 
-    expect(controller.getState()).toMatchObject({
-      url: 'https://pro.yuketang.cn/lesson/fullscreen/v3/7',
-      tabs: [{}, {}],
-    });
-    expect(() => child.open('https://example.com')).toThrow(
-      'Window was blocked',
-    );
+    const created = controller.getState();
+    expect(created.tabs).toHaveLength(2);
+    expect(created.environment).toBe(BrowserEnvironment.Standard);
+    expect(created.url).toBe('https://www.yuketang.cn/v2/web/index');
+    const createdTabId = created.activeTabId;
+
+    await controller.closeTab(firstTabId);
+    expect(controller.getState().tabs).toHaveLength(1);
+    expect(controller.getState().activeTabId).toBe(createdTabId);
+
+    await controller.closeTab(createdTabId);
+    const replacement = controller.getState();
+    expect(replacement.tabs).toHaveLength(1);
+    expect(replacement.activeTabId).not.toBe(createdTabId);
+    expect(replacement.environment).toBe(BrowserEnvironment.Standard);
+    expect(replacement.url).toBe('https://www.yuketang.cn/v2/web/index');
+    expect(children).toHaveLength(1);
   });
 
   it('opens ended lessons on the classroom overview page', async () => {

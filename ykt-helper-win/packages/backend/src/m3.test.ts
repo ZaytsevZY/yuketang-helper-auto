@@ -129,7 +129,7 @@ describe('M3 backend core', () => {
     expect(second.problems.size).toBe(0);
   });
 
-  it('keeps a problem without a deadline available', () => {
+  it('does not downgrade an answered problem when stale classroom data is replayed', () => {
     const session = new LessonSession(lesson);
     session.upsertPresentation(presentation);
     session.unlockProblem(
@@ -137,13 +137,24 @@ describe('M3 backend core', () => {
       problem.presentationId,
       problem.slideId,
       1000,
-      null,
+      2000,
+      1000,
+    );
+    session.answerProblem(problem.id, ['A']);
+
+    session.upsertPresentation(presentation);
+    session.unlockProblem(
+      problem.id,
+      problem.presentationId,
+      problem.slideId,
+      1000,
+      2000,
       1000,
     );
 
-    expect(session.getProblemContext(problem.id, 1_000_000)).toMatchObject({
-      status: 'available',
-      deadlineAt: null,
+    expect(session.getProblemContext(problem.id, 1000)).toMatchObject({
+      status: 'answered',
+      result: ['A'],
     });
   });
 

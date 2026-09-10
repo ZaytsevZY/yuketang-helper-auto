@@ -1,5 +1,6 @@
 import {
   BrowserEnvironment,
+  type AnswerValue,
   type Presentation,
   type Slide,
 } from '@ykt/contracts';
@@ -12,9 +13,11 @@ export type BrowserLessonObservation =
   | { type: 'error'; message: string };
 
 export interface ObservedBrowserHttpResponse {
+  method?: string;
   url: string;
   statusCode: number;
   body: string;
+  requestBody?: string | null;
   contextId?: string;
   resourceType?: string;
 }
@@ -36,6 +39,7 @@ interface LessonWatch {
   environment: BrowserEnvironment;
   presentationId: string | null;
   listener: (observation: BrowserLessonObservation) => void | Promise<void>;
+  problemIds: Set<string>;
   seenMessages: Set<string>;
 }
 
@@ -80,6 +84,7 @@ export class BrowserLessonCollector {
       environment,
       presentationId,
       listener,
+      problemIds: new Set(),
       seenMessages: new Set(),
     });
   }
@@ -105,6 +110,10 @@ export class BrowserLessonCollector {
     const url = safeUrl(input.url);
     if (!url) return;
 
+    if (isProblemSubmissionResponse(url.pathname)) {
+      await this.observeProblemSubmission(input, url);
+      return;
+    }
     if (isClassroomReportResponse(url.pathname)) {
       await this.observeClassroomReport(input, url);
       return;
@@ -136,6 +145,9 @@ export class BrowserLessonCollector {
         lessonId,
         presentationId,
       );
+      for (const slide of presentation.slides) {
+        if (slide.problem) watch.problemIds.add(slide.problem.id);
+      }
       await watch.listener({ type: 'presentation', presentation });
     } catch (error: unknown) {
       await watch.listener({
@@ -143,6 +155,37 @@ export class BrowserLessonCollector {
         message: error instanceof Error ? error.message : '课件响应解析失败。',
       });
     }
+  }
+
+  private async observeProblemSubmission(
+    input: ObservedBrowserHttpResponse,
+    url: URL,
+  ): Promise<void> {
+    if (input.method?.toUpperCase() !== 'POST') return;
+    const environment = environmentForHostname(url.hostname);
+    if (!environment || !isSuccessfulResponse(input.body)) return;
+    const submission = parseProblemSubmission(
+      url.pathname,
+      input.requestBody ?? '',
+    );
+    if (!submission) return;
+
+    const candidates = [...this.#lessons.entries()].filter(
+      ([, watch]) =>
+        watch.environment === environment &&
+        watch.problemIds.has(submission.problemId),
+    );
+    const match = candidates.length === 1 ? candidates[0] : null;
+    if (!match) return;
+    const [, watch] = match;
+    await watch.listener({
+      type: 'message',
+      message: {
+        op: 'problemanswered',
+        problemId: submission.problemId,
+        answer: submission.answer,
+      },
+    });
   }
 
   async observeWebSocket(input: ObservedBrowserWebSocketFrame): Promise<void> {
@@ -282,6 +325,15 @@ export function isClassroomReportResponse(pathname: string): boolean {
   return pathname.includes('/classroom-report/student/detail');
 }
 
+export function isProblemSubmissionResponse(pathname: string): boolean {
+  return (
+    pathname === '/api/v3/lesson/problem/answer' ||
+    pathname === '/api/v3/lesson/problem/retry' ||
+    (pathname.includes('problem') &&
+      (pathname.includes('answer') || pathname.includes('retry')))
+  );
+}
+
 function isSlideImageResponse(url: URL): boolean {
   return (
     url.hostname.endsWith('.yuketang.cn') &&
@@ -313,6 +365,42 @@ function parseJson(value: string): unknown | null {
   } catch {
     return null;
   }
+}
+
+function isSuccessfulResponse(value: string): boolean {
+  const response = record(parseJson(value));
+  return response?.code === 0 || Boolean(response?.success);
+}
+
+function parseProblemSubmission(
+  pathname: string,
+  body: string,
+): { problemId: string; answer: AnswerValue } | null {
+  const payload = record(parseJson(body));
+  if (!payload) return null;
+  const candidate = pathname.includes('retry')
+    ? record(Array.isArray(payload.problems) ? payload.problems[0] : null)
+    : payload;
+  if (!candidate) return null;
+  const problemId = stringId(
+    candidate.problemId ?? candidate.problem_id ?? candidate.id,
+  );
+  const answer = parseAnswerValue(candidate.result ?? candidate.answer);
+  return problemId && answer ? { problemId, answer } : null;
+}
+
+function parseAnswerValue(value: unknown): AnswerValue | null {
+  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
+    return [...value];
+  }
+  const answer = record(value);
+  if (!answer || typeof answer.content !== 'string') return null;
+  return {
+    content: answer.content,
+    pics: Array.isArray(answer.pics)
+      ? answer.pics.filter((item): item is string => typeof item === 'string')
+      : [],
+  };
 }
 
 function helloLessonId(value: unknown): string | null {

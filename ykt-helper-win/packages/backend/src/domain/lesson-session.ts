@@ -44,16 +44,24 @@ export class LessonSession {
   }
 
   upsertProblem(problem: Problem): void {
-    this.problems.set(problem.id, problem);
-    if (!this.problemStates.has(problem.id)) {
+    const existing = this.problems.get(problem.id);
+    const merged =
+      existing && existing.result !== null && problem.result === null
+        ? { ...problem, result: existing.result }
+        : problem;
+    this.problems.set(problem.id, merged);
+    const state = this.problemStates.get(problem.id);
+    if (!state) {
       this.problemStates.set(problem.id, {
         problemId: problem.id,
         presentationId: problem.presentationId,
         slideId: problem.slideId,
-        status: problem.result ? 'answered' : 'locked',
+        status: merged.result !== null ? 'answered' : 'locked',
         unlockedAt: null,
         deadlineAt: null,
       });
+    } else if (merged.result !== null && state.status !== 'answered') {
+      this.problemStates.set(problem.id, { ...state, status: 'answered' });
     }
   }
 
@@ -66,15 +74,18 @@ export class LessonSession {
     now: number,
   ): void {
     const problem = this.problems.get(problemId);
+    const previous = this.problemStates.get(problemId);
     this.problemStates.set(problemId, {
       problemId,
       presentationId,
       slideId,
-      status: problem?.result
-        ? 'answered'
-        : deadlineAt !== null && now >= deadlineAt
-          ? 'expired'
-          : 'available',
+      status:
+        previous?.status === 'answered' ||
+        (problem !== undefined && problem.result !== null)
+          ? 'answered'
+          : deadlineAt !== null && now >= deadlineAt
+            ? 'expired'
+            : 'available',
       unlockedAt,
       deadlineAt,
     });
@@ -105,13 +116,14 @@ export class LessonSession {
     const problem = this.problems.get(problemId);
     if (!problem) return undefined;
     const storedState = this.problemStates.get(problemId);
-    const status = problem.result
-      ? 'answered'
-      : storedState?.deadlineAt !== null &&
-          storedState?.deadlineAt !== undefined &&
-          now >= storedState.deadlineAt
-        ? 'expired'
-        : (storedState?.status ?? 'locked');
+    const status =
+      problem.result !== null || storedState?.status === 'answered'
+        ? 'answered'
+        : storedState?.deadlineAt !== null &&
+            storedState?.deadlineAt !== undefined &&
+            now >= storedState.deadlineAt
+          ? 'expired'
+          : (storedState?.status ?? 'locked');
 
     return {
       ...problem,
