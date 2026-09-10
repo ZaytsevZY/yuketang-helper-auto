@@ -196,7 +196,7 @@ export class AiService {
       });
       const parsed = parseProposal(problem, rawText);
       const validation = parsed.answer
-        ? this.problems.validateAnswer({
+        ? this.problems.validateAnswerFormat({
             problemId: problem.id,
             answer: parsed.answer,
           })

@@ -183,27 +183,6 @@ describe('M4 backend active client', () => {
     await runtime.facade.connectLesson(BrowserEnvironment.Standard, '7');
     expect(transport.requests).toHaveLength(1);
 
-    await collector.observeHttp({
-      url: 'https://www.yuketang.cn/api/v3/lesson/presentation/fetch?presentation_id=9',
-      statusCode: 200,
-      body: JSON.stringify({
-        data: {
-          id: 9,
-          title: 'Presentation',
-          slides: [
-            {
-              id: 10,
-              problem: {
-                problemId: 11,
-                problemType: 1,
-                content: 'Question',
-                options: ['One', 'Two'],
-              },
-            },
-          ],
-        },
-      }),
-    });
     await collector.observeWebSocket({
       requestId: 'browser-ws-1',
       direction: 'sent',
@@ -231,6 +210,27 @@ describe('M4 backend active client', () => {
         ],
       }),
     });
+    await collector.observeHttp({
+      url: 'https://www.yuketang.cn/api/v3/lesson/presentation/fetch?presentation_id=9',
+      statusCode: 200,
+      body: JSON.stringify({
+        data: {
+          id: 9,
+          title: 'Presentation',
+          slides: [
+            {
+              id: 10,
+              problem: {
+                problemId: 11,
+                problemType: 1,
+                content: 'Question',
+                options: ['One', 'Two'],
+              },
+            },
+          ],
+        },
+      }),
+    });
 
     expect(await runtime.facade.listPresentations('7')).toHaveLength(1);
     expect(await runtime.facade.listProblems('7')).toMatchObject([
@@ -241,6 +241,57 @@ describe('M4 backend active client', () => {
         status: 'available',
       },
     ]);
+    expect(await runtime.facade.listLogs()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: 'info',
+          scope: 'lesson',
+          message: '题目事件等待课件绑定。',
+          details: expect.objectContaining({
+            lessonId: '7',
+            problemId: '11',
+            reason: 'problem is not loaded',
+          }),
+        }),
+      ]),
+    );
+
+    await collector.observeWebSocket({
+      requestId: 'browser-ws-1',
+      direction: 'received',
+      payload: JSON.stringify({
+        eventId: 'unlock-with-stale-references',
+        op: 'unlockproblem',
+        problem: {
+          problemId: 11,
+          pres: 999,
+          slideId: 999,
+          dt: Date.now(),
+          limit: 0,
+        },
+      }),
+    });
+    expect(await runtime.facade.getProblem('11')).toMatchObject({
+      status: 'available',
+      deadlineAt: null,
+    });
+    expect(await runtime.facade.listLogs()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: 'warn',
+          scope: 'lesson',
+          message: '题目事件关联已按题目 ID 修正。',
+          details: expect.objectContaining({
+            lessonId: '7',
+            problemId: '11',
+            receivedPresentationId: '999',
+            receivedSlideId: '999',
+            presentationId: '9',
+            slideId: '10',
+          }),
+        }),
+      ]),
+    );
 
     await collector.observeHttp({
       method: 'POST',

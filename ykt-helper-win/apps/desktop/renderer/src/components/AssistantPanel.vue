@@ -20,6 +20,7 @@ import {
 } from '@ykt/contracts';
 
 import ClassroomSimulator from './ClassroomSimulator.vue';
+import ProblemPicker from './ProblemPicker.vue';
 
 type WorkspacePage =
   | 'classroom'
@@ -1474,20 +1475,14 @@ function clamp(value: number, min: number, max: number): number {
             <span class="count-badge">{{ problems.length }}</span>
           </div>
 
-          <label class="field-label">
-            当前题目
-            <select v-model="selectedProblemId" :disabled="!problems.length">
-              <option value="">选择题目</option>
-              <option
-                v-for="problem in problems"
-                :key="problem.id"
-                :value="problem.id"
-              >
-                {{ problemTypeLabel(problem.type) }} ·
-                {{ problemStatus(problem.status) }}
-              </option>
-            </select>
-          </label>
+          <div class="field-label">
+            <span>当前题目</span>
+            <ProblemPicker
+              v-model="selectedProblemId"
+              :problems="problems"
+              :presentations="presentations"
+            />
+          </div>
 
           <template v-if="selectedProblem">
             <div class="problem-context">
@@ -1616,20 +1611,14 @@ function clamp(value: number, min: number, max: number): number {
             <span class="count-badge">{{ selectedAiImages.length }} 图</span>
           </div>
 
-          <label class="field-label">
-            当前题目
-            <select v-model="selectedProblemId" :disabled="!problems.length">
-              <option value="">选择题目</option>
-              <option
-                v-for="problem in problems"
-                :key="problem.id"
-                :value="problem.id"
-              >
-                {{ problemTypeLabel(problem.type) }} ·
-                {{ problemStatus(problem.status) }}
-              </option>
-            </select>
-          </label>
+          <div class="field-label">
+            <span>当前题目</span>
+            <ProblemPicker
+              v-model="selectedProblemId"
+              :problems="problems"
+              :presentations="presentations"
+            />
+          </div>
 
           <template v-if="selectedProblem">
             <div class="problem-context compact-context">

@@ -43,6 +43,10 @@ export class ActiveLessonService {
   readonly #answers = new AnswerService();
   readonly #stopArchivedCollection: () => void;
   readonly #noticeTimes = new Map<string, number>();
+  readonly #pendingUnlocks = new Map<
+    string,
+    Map<string, Record<string, unknown>>
+  >();
   #simulation: ClassroomSimulationState = {
     lessonId: simulationLessonId,
     status: 'upcoming',
@@ -280,6 +284,7 @@ export class ActiveLessonService {
 
   close(): void {
     this.#stopArchivedCollection();
+    this.#pendingUnlocks.clear();
     this.client.close();
   }
 
@@ -327,6 +332,7 @@ export class ActiveLessonService {
     const event = getRealtimeEvent(message);
     if (!event) return;
     if (event.kind === 'lessonfinished') {
+      this.#pendingUnlocks.delete(lessonId);
       machine.apply({
         type: 'lesson.ended',
         lessonId,
@@ -414,6 +420,7 @@ export class ActiveLessonService {
         slideCount: presentation.slides.length,
       },
     });
+    await this.replayPendingUnlocks(lessonId);
   }
 
   private async applyUnlock(
@@ -424,47 +431,146 @@ export class ActiveLessonService {
     const problemId = stringId(
       unlocked.problemId ?? unlocked.problem_id ?? unlocked.prob ?? unlocked.id,
     );
-    const problem = problemId
-      ? machine.session.problems.get(problemId)
-      : undefined;
-    if (!problemId || !problem) return;
+    if (!problemId) {
+      await this.logUnlockBindingIssue(lessonId, null, 'problem id is missing');
+      return;
+    }
+    const problem = machine.session.problems.get(problemId);
+    if (!problem) {
+      if (this.deferUnlock(lessonId, problemId, unlocked)) {
+        await this.storage.appendLog({
+          level: 'info',
+          scope: 'lesson',
+          message: '题目事件等待课件绑定。',
+          details: {
+            lessonId,
+            problemId,
+            reason: 'problem is not loaded',
+          },
+        });
+      }
+      return;
+    }
     const unlockedAt =
       normalizeTimestamp(unlocked.dt ?? unlocked.unlockedAt) ??
       this.clock.now();
     const limitSeconds = numberValue(unlocked.limit);
+    const receivedPresentationId = stringId(
+      unlocked.pres ?? unlocked.presentationId,
+    );
+    const receivedSlideId = stringId(
+      unlocked.slideId ?? unlocked.slide_id ?? unlocked.sid,
+    );
+    if (
+      (receivedPresentationId !== null &&
+        receivedPresentationId !== problem.presentationId) ||
+      (receivedSlideId !== null && receivedSlideId !== problem.slideId)
+    ) {
+      await this.storage.appendLog({
+        level: 'warn',
+        scope: 'lesson',
+        message: '题目事件关联已按题目 ID 修正。',
+        details: {
+          lessonId,
+          problemId,
+          receivedPresentationId,
+          receivedSlideId,
+          presentationId: problem.presentationId,
+          slideId: problem.slideId,
+        },
+      });
+    }
     const result = machine.apply({
       type: 'problem.unlocked',
       lessonId,
       occurredAt: this.clock.now(),
       problemId,
-      presentationId:
-        stringId(unlocked.pres ?? unlocked.presentationId) ??
-        problem.presentationId,
-      slideId:
-        stringId(unlocked.slideId ?? unlocked.slide_id ?? unlocked.sid) ??
-        problem.slideId,
+      presentationId: problem.presentationId,
+      slideId: problem.slideId,
       unlockedAt,
       deadlineAt:
         limitSeconds !== null && limitSeconds > 0
           ? unlockedAt + limitSeconds * 1000
           : null,
     });
-    if (result.applied) {
-      await this.storage.appendLog({
-        level: 'info',
-        scope: 'lesson',
-        message: '已从官方课堂收集题目事件。',
-        details: { lessonId, problemId },
-      });
-      this.emitNotice({
-        kind: 'problem-start',
-        lessonId,
-        dedupeKey: `problem-start:${lessonId}:${problemId}`,
-        title: '习题已发布',
-        detail: problem.prompt || '教师开启了一道可作答的习题',
-        occurredAt: this.clock.now(),
-      });
+    if (!result.applied) {
+      if (
+        result.reason === 'presentation is not loaded' ||
+        result.reason === 'slide is not loaded'
+      ) {
+        if (this.deferUnlock(lessonId, problemId, unlocked)) {
+          await this.storage.appendLog({
+            level: 'info',
+            scope: 'lesson',
+            message: '题目事件等待课件绑定。',
+            details: { lessonId, problemId, reason: result.reason },
+          });
+        }
+        return;
+      }
+      await this.logUnlockBindingIssue(lessonId, problemId, result.reason);
+      return;
     }
+    this.removePendingUnlock(lessonId, problemId);
+    await this.storage.appendLog({
+      level: 'info',
+      scope: 'lesson',
+      message: '已从官方课堂收集题目事件。',
+      details: { lessonId, problemId },
+    });
+    this.emitNotice({
+      kind: 'problem-start',
+      lessonId,
+      dedupeKey: `problem-start:${lessonId}:${problemId}`,
+      title: '习题已发布',
+      detail: problem.prompt || '教师开启了一道可作答的习题',
+      occurredAt: this.clock.now(),
+    });
+  }
+
+  private async replayPendingUnlocks(lessonId: string): Promise<void> {
+    const pending = this.#pendingUnlocks.get(lessonId);
+    const session = this.repository.getSession(lessonId);
+    if (!pending || !session) return;
+    const machine = new LessonStateMachine(session, this.clock);
+    for (const unlocked of [...pending.values()]) {
+      await this.applyUnlock(machine, lessonId, unlocked);
+    }
+  }
+
+  private deferUnlock(
+    lessonId: string,
+    problemId: string,
+    unlocked: Record<string, unknown>,
+  ): boolean {
+    let pending = this.#pendingUnlocks.get(lessonId);
+    if (!pending) {
+      pending = new Map();
+      this.#pendingUnlocks.set(lessonId, pending);
+    }
+    const firstObservation = !pending.has(problemId);
+    pending.set(problemId, { ...unlocked });
+    return firstObservation;
+  }
+
+  private removePendingUnlock(lessonId: string, problemId: string): void {
+    const pending = this.#pendingUnlocks.get(lessonId);
+    if (!pending) return;
+    pending.delete(problemId);
+    if (pending.size === 0) this.#pendingUnlocks.delete(lessonId);
+  }
+
+  private async logUnlockBindingIssue(
+    lessonId: string,
+    problemId: string | null,
+    reason: string | null,
+  ): Promise<void> {
+    await this.storage.appendLog({
+      level: 'warn',
+      scope: 'lesson',
+      message: '官方题目事件无法绑定。',
+      details: { lessonId, problemId, reason: reason ?? 'unknown reason' },
+    });
   }
 
   private async resetSimulation(): Promise<void> {

@@ -198,6 +198,77 @@ describe('M8 LLM workflow', () => {
     });
     await runtime.stop();
   });
+
+  it('keeps a structurally valid AI proposal ready while submission is locked', async () => {
+    const lessons = new InMemoryLessonRepository();
+    const session = lessons.upsertLesson({
+      id: 'lesson-locked',
+      title: 'Locked lesson',
+      status: 'active',
+    });
+    session.upsertPresentation({
+      id: 'presentation-locked',
+      lessonId: 'lesson-locked',
+      title: 'Locked presentation',
+      width: null,
+      height: null,
+      slides: [
+        {
+          id: 'slide-locked',
+          index: 0,
+          title: 'Locked question',
+          imageUrl: null,
+          problem: {
+            id: 'problem-locked',
+            lessonId: 'lesson-locked',
+            presentationId: 'presentation-locked',
+            slideId: 'slide-locked',
+            type: ProblemType.SingleChoice,
+            prompt: '1 + 1 = ?',
+            options: ['3', '2', '4', '22'],
+            blanks: [],
+            result: null,
+          },
+        },
+      ],
+    });
+    const storage = new MemoryAppDataStore();
+    const provider = new FixtureProvider();
+    const runtime = createBackendRuntime({
+      lessons,
+      dataStore: storage,
+      aiProviders: [provider],
+    });
+    await runtime.start();
+    await runtime.facade.connectAiProfile({
+      providerId: provider.id,
+      baseUrl: 'https://fixture.example/v1',
+      apiKey: 'fixture-key',
+    });
+
+    expect(
+      await runtime.facade.generateAnswerProposal({
+        problemId: 'problem-locked',
+      }),
+    ).toMatchObject({
+      status: 'ready',
+      answer: ['B'],
+      failureReason: null,
+      validationIssues: [],
+    });
+    expect(
+      await runtime.facade.validateAnswer({
+        problemId: 'problem-locked',
+        answer: 'B',
+      }),
+    ).toMatchObject({
+      valid: false,
+      normalizedAnswer: ['B'],
+      issues: ['problem is locked'],
+    });
+
+    await runtime.stop();
+  });
 });
 
 class FixtureProvider implements AiProviderPlugin {

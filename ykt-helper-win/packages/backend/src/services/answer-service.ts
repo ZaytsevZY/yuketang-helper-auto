@@ -31,12 +31,27 @@ export interface SubmissionPlanInput {
 }
 
 export class AnswerService {
+  validateFormat(
+    problem: Problem,
+    input: string | AnswerValue,
+  ): ValidationResult {
+    const answer = normalizeAnswer(problem.type, input);
+    const issues = answer
+      ? validateNormalizedAnswer(problem, answer)
+      : ['answer format is not supported'];
+    return {
+      valid: issues.length === 0,
+      issues,
+      normalizedAnswer: answer,
+    };
+  }
+
   validate(
     problem: ProblemContext,
     input: string | AnswerValue,
     allowExpired = false,
   ): ValidationResult {
-    const answer = normalizeAnswer(problem.type, input);
+    const format = this.validateFormat(problem, input);
     const issues: string[] = [];
 
     if (problem.status === 'locked') issues.push('problem is locked');
@@ -44,13 +59,12 @@ export class AnswerService {
       issues.push('problem deadline has passed');
     if (problem.status === 'answered')
       issues.push('problem is already answered');
-    if (!answer) issues.push('answer format is not supported');
-    else issues.push(...validateFormat(problem, answer));
+    issues.push(...format.issues);
 
     return {
       valid: issues.length === 0,
       issues,
-      normalizedAnswer: answer,
+      normalizedAnswer: format.normalizedAnswer,
     };
   }
 }
@@ -131,7 +145,7 @@ function normalizeAnswer(
   return null;
 }
 
-function validateFormat(
+function validateNormalizedAnswer(
   problem: Problem,
   answer: AnswerValue,
 ): readonly string[] {
