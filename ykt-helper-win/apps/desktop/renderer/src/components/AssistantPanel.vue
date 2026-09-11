@@ -148,6 +148,11 @@ const lessons = ref<readonly Lesson[]>([]);
 const selectedLessonId = ref('');
 const problems = ref<readonly ProblemContext[]>([]);
 const selectedProblemId = ref('');
+const autoFilledDrafts = new Map<
+  string,
+  { draft: string; proposal: AnswerProposal }
+>();
+let automaticAnalysisRunning = false;
 const presentations = ref<readonly Presentation[]>([]);
 const selectedPresentationId = ref('');
 const selectedSlideId = ref('');
@@ -422,7 +427,9 @@ watch(
   },
 );
 
-watch(selectedProblemId, (id) => {
+watch(selectedProblemId, (id, previousId) => {
+  const saved = autoFilledDrafts.get(previousId);
+  if (saved) saved.draft = answerDraft.value;
   if (id) aiSlideContextId.value = '';
   resetAnswer();
 });
@@ -652,16 +659,22 @@ async function submitAnswer(): Promise<void> {
 }
 
 function resetAnswer(): void {
+  const saved =
+    selectedProblem.value?.status === 'available'
+      ? autoFilledDrafts.get(selectedProblemId.value)
+      : undefined;
   const result = selectedProblem.value?.result;
-  answerDraft.value = !result
-    ? ''
-    : Array.isArray(result)
-      ? result.join('')
-      : (result as { content: string }).content;
+  answerDraft.value = saved
+    ? saved.draft
+    : !result
+      ? ''
+      : Array.isArray(result)
+        ? result.join('')
+        : (result as { content: string }).content;
   validation.value = undefined;
   aiProposal.value = latestSessionProposal(currentAiSession.value);
   aiChatDraft.value = '';
-  appliedProposalId.value = '';
+  appliedProposalId.value = saved?.proposal.id ?? '';
   confirmed.value = false;
   submissionMessage.value = '';
 }
@@ -849,6 +862,7 @@ async function requestAiProposal(
   auto: boolean,
   retry: boolean,
 ): Promise<void> {
+  const managedSubmitAtStart = agentAutoSubmitEnabled.value;
   clearMessages();
   let session = aiChatSessions.get(contextId);
   if (!session) {
@@ -946,13 +960,32 @@ async function requestAiProposal(
   }
 
   if (!problem) return;
-  if (agentAutoSubmitEnabled.value) {
+  if (managedSubmitAtStart && agentAutoSubmitEnabled.value) {
     await applyAutomaticProposal(problem, proposal);
     return;
   }
+  const current = problems.value.find((item) => item.id === problem.id);
+  if (
+    selectedLessonId.value !== problem.lessonId ||
+    current?.status !== 'available' ||
+    (current.deadlineAt && current.deadlineAt <= Date.now())
+  )
+    return;
+  if (proposal.status === 'ready' && proposal.answer) {
+    const draft = answerValueToDraft(proposal.answer, problem.type);
+    autoFilledDrafts.set(problem.id, { draft, proposal });
+    if (selectedProblemId.value === problem.id) {
+      answerDraft.value = draft;
+      appliedProposalId.value = proposal.id;
+      validation.value = undefined;
+      confirmed.value = false;
+      submissionMessage.value = '';
+      emit('selectPage', 'problems');
+    }
+  }
   infoMessage.value =
     proposal.status === 'ready'
-      ? 'LLM 已生成答案，等待手动核对。'
+      ? 'LLM 已填入答案，尚未提交，等待手动核对、校验并确认提交。'
       : proposal.failureReason || 'LLM 未生成可用答案。';
   await emitLocalNotice(
     proposal.status === 'ready'
@@ -1509,19 +1542,35 @@ async function onAvailableProblem(problem: ProblemContext): Promise<void> {
     'LLM 答案生成已排队',
     `${Math.ceil(delay / 1000)} 秒后开始分析。`,
   );
-  const timer = setTimeout(() => {
-    scheduledProblems.delete(problem.id);
+  const startAnalysis = async (): Promise<void> => {
     const current = problems.value.find((item) => item.id === problem.id);
     if (
       !settings.value?.llmAutoGenerate ||
       current?.status !== 'available' ||
       (current.deadlineAt && current.deadlineAt <= Date.now())
-    )
+    ) {
+      scheduledProblems.delete(problem.id);
       return;
+    }
+    if (busy.value || aiRequestPending.value || automaticAnalysisRunning) {
+      scheduledProblems.set(
+        problem.id,
+        setTimeout(() => void startAnalysis(), 500),
+      );
+      return;
+    }
+    scheduledProblems.delete(problem.id);
+    automaticAnalysisRunning = true;
     selectedProblemId.value = current.id;
     aiSlideSelection.value = [];
-    void nextTick(() => analyzeProblem(true));
-  }, delay);
+    try {
+      await nextTick();
+      await analyzeProblem(true);
+    } finally {
+      automaticAnalysisRunning = false;
+    }
+  };
+  const timer = setTimeout(() => void startAnalysis(), delay);
   scheduledProblems.set(problem.id, timer);
 }
 
@@ -2792,8 +2841,8 @@ function clamp(value: number, min: number, max: number): number {
                 <span>
                   <strong>LLM 托管提交答案</strong>
                   <small
-                    >生成成功后由 Agent 校验并提交；关闭时仅保留 AI
-                    回答。</small
+                    >生成成功后由 Agent
+                    校验并提交；关闭时自动填入答案草稿，等待手动核对提交。</small
                   >
                 </span>
                 <input
