@@ -94,6 +94,10 @@ describe('M8 LLM workflow', () => {
       problemId: '11',
       customPrompt: '优先考虑第二项',
     });
+    await runtime.facade.updateSettings({
+      llmAutoGenerate: true,
+      llmManagedSubmit: true,
+    });
     const result = await runtime.facade.submitAnswer({
       problemId: '11',
       answer: 'A',

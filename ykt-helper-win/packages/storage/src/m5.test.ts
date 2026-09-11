@@ -22,7 +22,11 @@ describe('M5 persistent storage', () => {
     const directory = temporaryDirectory('app-data');
     const path = join(directory, 'data.sqlite');
     const first = new SqliteAppDataStore(path);
-    await first.updateSettings({ autoAnswerDelay: 4500 });
+    await first.updateSettings({
+      autoAnswerDelay: 4500,
+      autoAnswer: true,
+      aiAutoAnalyze: true,
+    });
     await first.saveUser({
       environment: BrowserEnvironment.Standard,
       id: '42',
@@ -45,7 +49,12 @@ describe('M5 persistent storage', () => {
     first.close();
 
     const second = new SqliteAppDataStore(path);
-    expect((await second.getSettings()).autoAnswerDelay).toBe(4500);
+    expect(await second.getSettings()).toMatchObject({
+      autoAnswerDelay: 4500,
+      llmAutoGenerate: true,
+      llmManagedSubmit: true,
+      aiAnalyzeLatestOnOpen: true,
+    });
     expect(await second.getUser(BrowserEnvironment.Standard)).toMatchObject({
       id: '42',
       name: 'Student',

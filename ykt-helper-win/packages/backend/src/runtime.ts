@@ -287,6 +287,16 @@ class BaselineFacade implements YuketangFacade {
   }
 
   async submitAnswer(input: AnswerInput): Promise<SubmissionResult> {
+    const settings = await this.storage.getSettings();
+    if (
+      input.confirmedBy === 'agent' &&
+      (!settings.llmAutoGenerate || !settings.llmManagedSubmit)
+    ) {
+      throw new YuketangError({
+        code: ErrorCode.PermissionDenied,
+        message: 'LLM 托管提交未开启，请在题目页核对后手动提交。',
+      });
+    }
     if (this.activeLessons) {
       return this.withLog(
         'answer',

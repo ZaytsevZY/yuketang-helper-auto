@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  watch,
+} from 'vue';
 import {
   ProblemType,
   type AiProfileView,
@@ -52,12 +60,12 @@ interface SettingsDraft {
   customNotifyAudioSrc: string;
   customNotifyAudioName: string;
   autoJoinEnabled: boolean;
-  autoAnswerOnAutoJoin: boolean;
-  autoAnswer: boolean;
+  llmAutoGenerate: boolean;
+  llmManagedSubmit: boolean;
   autoAnswerDelaySeconds: number;
   autoAnswerRandomDelaySeconds: number;
   keepScreenAwake: boolean;
-  aiAutoAnalyze: boolean;
+  aiAnalyzeLatestOnOpen: boolean;
   aiSlidePickPriority: boolean;
   iftex: boolean;
   showAllSlides: boolean;
@@ -202,7 +210,6 @@ const errorMessage = ref('');
 const infoMessage = ref('');
 const subscriptions: Array<() => void> = [];
 const connectedLessonIds = new Set<string>();
-const autoJoinedLessonIds = new Set<string>();
 const seenAvailableProblems = new Set<string>();
 const scheduledProblems = new Map<string, ReturnType<typeof setTimeout>>();
 let automationTimer: ReturnType<typeof setInterval> | undefined;
@@ -307,9 +314,8 @@ const canSubmit = computed(
 
 const agentAutoSubmitEnabled = computed(
   () =>
-    settings.value?.autoAnswer === true ||
-    (settings.value?.autoJoinEnabled === true &&
-      settings.value.autoAnswerOnAutoJoin === true),
+    settings.value?.llmAutoGenerate === true &&
+    settings.value.llmManagedSubmit === true,
 );
 
 const activeSlideIndex = computed(() =>
@@ -403,13 +409,8 @@ watch(selectedProblemId, (id) => {
 watch(
   () => props.page,
   (page) => {
-    if (
-      page === 'ai' &&
-      selectedProblem.value &&
-      settings.value?.aiAutoAnalyze &&
-      !aiProposal.value
-    ) {
-      void analyzeProblem(false);
+    if (page === 'ai' && settings.value?.aiAnalyzeLatestOnOpen) {
+      void analyzeLatestProblemOnOpen();
     }
   },
 );
@@ -418,6 +419,14 @@ watch(answerDraft, () => {
   confirmed.value = false;
   submissionMessage.value = '';
 });
+watch(
+  () => settingsDraft.value?.llmAutoGenerate,
+  (enabled) => {
+    if (enabled === false && settingsDraft.value) {
+      settingsDraft.value.llmManagedSubmit = false;
+    }
+  },
+);
 
 watch(selectedPresentationId, () => {
   selectedSlideId.value = selectedPresentation.value?.slides[0]?.id ?? '';
@@ -744,13 +753,29 @@ async function analyzeProblem(auto: boolean): Promise<void> {
   const problem = selectedProblem.value;
   const contextId = problem?.id ?? aiSlideContextId.value;
   if (!contextId) return;
-  const customPrompt = aiCustomPrompt.value.trim();
+  const customPrompt = auto ? '' : aiCustomPrompt.value.trim();
   if (!problem && !customPrompt) {
     errorMessage.value = '请输入要询问的课件问题。';
     return;
   }
   const prompt = customPrompt || '分析这道题并给出答案建议。';
   await requestAiProposal(problem, contextId, prompt, auto, false);
+}
+
+async function analyzeLatestProblemOnOpen(): Promise<void> {
+  const latest = problems.value
+    .filter(
+      (problem) =>
+        problem.status === 'available' &&
+        (!problem.deadlineAt || problem.deadlineAt > Date.now()),
+    )
+    .sort((left, right) => (left.unlockedAt ?? 0) - (right.unlockedAt ?? 0))
+    .at(-1);
+  if (!latest) return;
+  selectedProblemId.value = latest.id;
+  aiSlideSelection.value = [];
+  await nextTick();
+  if (!aiChatSessions.has(latest.id)) await analyzeProblem(false);
 }
 
 async function sendAiFollowUp(): Promise<void> {
@@ -886,7 +911,23 @@ async function requestAiProposal(
     return;
   }
 
-  if (problem) await applyAutomaticProposal(problem, proposal);
+  if (!problem) return;
+  if (agentAutoSubmitEnabled.value) {
+    await applyAutomaticProposal(problem, proposal);
+    return;
+  }
+  infoMessage.value =
+    proposal.status === 'ready'
+      ? 'LLM 已生成答案，等待手动核对。'
+      : proposal.failureReason || 'LLM 未生成可用答案。';
+  await emitLocalNotice(
+    proposal.status === 'ready'
+      ? 'auto-answer-succeeded'
+      : 'auto-answer-failed',
+    problem,
+    proposal.status === 'ready' ? 'LLM 已生成答案' : 'LLM 生成答案失败',
+    infoMessage.value,
+  );
 }
 
 async function applyAutomaticProposal(
@@ -923,6 +964,11 @@ async function applyAutomaticProposal(
       'Agent 未提交答案',
       infoMessage.value,
     );
+    return;
+  }
+
+  if (!agentAutoSubmitEnabled.value) {
+    infoMessage.value = 'LLM 已生成答案，托管提交已关闭。';
     return;
   }
 
@@ -1008,6 +1054,7 @@ function confidenceText(value: number | null): string {
 async function saveSettings(): Promise<void> {
   const draft = settingsDraft.value;
   if (!draft) return;
+  const wasAutoGenerateEnabled = settings.value?.llmAutoGenerate === true;
   await run('settings', async () => {
     const next = await window.yuketang.updateSettings({
       notifyProblems: draft.notifyProblems,
@@ -1029,13 +1076,13 @@ async function saveSettings(): Promise<void> {
       customNotifyAudioSrc: draft.customNotifyAudioSrc,
       customNotifyAudioName: draft.customNotifyAudioName,
       autoJoinEnabled: draft.autoJoinEnabled,
-      autoAnswerOnAutoJoin: draft.autoAnswerOnAutoJoin,
-      autoAnswer: draft.autoAnswer,
+      llmAutoGenerate: draft.llmAutoGenerate,
+      llmManagedSubmit: draft.llmAutoGenerate && draft.llmManagedSubmit,
       autoAnswerDelay: clamp(draft.autoAnswerDelaySeconds, 1, 60) * 1000,
       autoAnswerRandomDelay:
         clamp(draft.autoAnswerRandomDelaySeconds, 0, 30) * 1000,
       keepScreenAwake: draft.keepScreenAwake,
-      aiAutoAnalyze: draft.aiAutoAnalyze,
+      aiAnalyzeLatestOnOpen: draft.aiAnalyzeLatestOnOpen,
       aiSlidePickPriority: draft.aiSlidePickPriority,
       iftex: draft.iftex,
       showAllSlides: draft.showAllSlides,
@@ -1046,6 +1093,16 @@ async function saveSettings(): Promise<void> {
     applySettings(next);
     infoMessage.value = '设置已保存';
   });
+  if (!settings.value?.llmAutoGenerate) {
+    for (const timer of scheduledProblems.values()) clearTimeout(timer);
+    scheduledProblems.clear();
+  } else if (!wasAutoGenerateEnabled) {
+    for (const problem of problems.value) {
+      if (problem.status === 'available')
+        seenAvailableProblems.delete(problem.id);
+    }
+    void automationTick();
+  }
 }
 
 function applySettings(value: AppSettings): void {
@@ -1069,14 +1126,14 @@ function applySettings(value: AppSettings): void {
     customNotifyAudioSrc: value.customNotifyAudioSrc,
     customNotifyAudioName: value.customNotifyAudioName,
     autoJoinEnabled: value.autoJoinEnabled,
-    autoAnswerOnAutoJoin: value.autoAnswerOnAutoJoin,
-    autoAnswer: value.autoAnswer,
+    llmAutoGenerate: value.llmAutoGenerate,
+    llmManagedSubmit: value.llmManagedSubmit,
     autoAnswerDelaySeconds: Math.round(value.autoAnswerDelay / 1000),
     autoAnswerRandomDelaySeconds: Math.round(
       value.autoAnswerRandomDelay / 1000,
     ),
     keepScreenAwake: value.keepScreenAwake,
-    aiAutoAnalyze: value.aiAutoAnalyze,
+    aiAnalyzeLatestOnOpen: value.aiAnalyzeLatestOnOpen,
     aiSlidePickPriority: value.aiSlidePickPriority,
     iftex: value.iftex,
     showAllSlides: value.showAllSlides,
@@ -1371,7 +1428,6 @@ async function automationTick(): Promise<void> {
         if (connectedLessonIds.has(lesson.id)) continue;
         await window.yuketang.connectLesson(props.environment, lesson.id);
         connectedLessonIds.add(lesson.id);
-        autoJoinedLessonIds.add(lesson.id);
         if (!selectedLessonId.value) selectedLessonId.value = lesson.id;
       }
     }
@@ -1385,7 +1441,8 @@ async function automationTick(): Promise<void> {
     for (const problem of nextProblems) {
       if (
         problem.status !== 'available' ||
-        seenAvailableProblems.has(problem.id)
+        seenAvailableProblems.has(problem.id) ||
+        !currentSettings.llmAutoGenerate
       )
         continue;
       seenAvailableProblems.add(problem.id);
@@ -1401,11 +1458,8 @@ async function automationTick(): Promise<void> {
 async function onAvailableProblem(problem: ProblemContext): Promise<void> {
   const currentSettings = settings.value;
   if (!currentSettings) return;
-  const shouldAnalyze =
-    currentSettings.autoAnswer ||
-    (autoJoinedLessonIds.has(problem.lessonId) &&
-      currentSettings.autoAnswerOnAutoJoin);
-  if (!shouldAnalyze || scheduledProblems.has(problem.id)) return;
+  if (!currentSettings.llmAutoGenerate || scheduledProblems.has(problem.id))
+    return;
   const delay =
     currentSettings.autoAnswerDelay +
     Math.floor(Math.random() * (currentSettings.autoAnswerRandomDelay + 1));
@@ -1416,13 +1470,21 @@ async function onAvailableProblem(problem: ProblemContext): Promise<void> {
   await emitLocalNotice(
     'auto-answer-scheduled',
     problem,
-    'Agent 作答已排队',
+    'LLM 答案生成已排队',
     `${Math.ceil(delay / 1000)} 秒后开始分析。`,
   );
   const timer = setTimeout(() => {
     scheduledProblems.delete(problem.id);
-    selectedProblemId.value = problem.id;
-    void analyzeProblem(true);
+    const current = problems.value.find((item) => item.id === problem.id);
+    if (
+      !settings.value?.llmAutoGenerate ||
+      current?.status !== 'available' ||
+      (current.deadlineAt && current.deadlineAt <= Date.now())
+    )
+      return;
+    selectedProblemId.value = current.id;
+    aiSlideSelection.value = [];
+    void nextTick(() => analyzeProblem(true));
   }, delay);
   scheduledProblems.set(problem.id, timer);
 }
@@ -2665,34 +2727,36 @@ function clamp(value: number, min: number, max: number): number {
                   type="checkbox"
                 />
               </label>
-              <label
-                class="switch-row"
-                :class="{
-                  'agent-submit-row':
-                    settingsDraft.autoJoinEnabled &&
-                    settingsDraft.autoAnswerOnAutoJoin,
-                }"
-              >
+              <label class="switch-row">
                 <span>
-                  <strong>自动入课后提交答案</strong>
-                  <small>自动进入课堂后，由 Agent 分析并提交新题。</small>
+                  <strong>LLM 自动生成答案</strong>
+                  <small
+                    >检测到新题后自动生成答案；是否提交由下一项决定。</small
+                  >
                 </span>
                 <input
-                  v-model="settingsDraft.autoAnswerOnAutoJoin"
+                  v-model="settingsDraft.llmAutoGenerate"
                   type="checkbox"
                 />
               </label>
               <label
                 class="switch-row"
-                :class="{ 'agent-submit-row': settingsDraft.autoAnswer }"
+                :class="{
+                  'agent-submit-row': settingsDraft.llmManagedSubmit,
+                }"
               >
                 <span>
-                  <strong>自动确认提交</strong>
+                  <strong>LLM 托管提交答案</strong>
                   <small
-                    >新题开放后由 Agent 直接作答，用于测试 LLM 能力。</small
+                    >生成成功后由 Agent 校验并提交；关闭时仅保留 AI
+                    回答。</small
                   >
                 </span>
-                <input v-model="settingsDraft.autoAnswer" type="checkbox" />
+                <input
+                  v-model="settingsDraft.llmManagedSubmit"
+                  type="checkbox"
+                  :disabled="!settingsDraft.llmAutoGenerate"
+                />
               </label>
               <label class="switch-row">
                 <span>
@@ -2706,7 +2770,7 @@ function clamp(value: number, min: number, max: number): number {
               </label>
               <div class="paired-number-rows">
                 <label class="number-row">
-                  <span>提交延迟（秒）</span>
+                  <span>生成延迟（秒）</span>
                   <input
                     v-model.number="settingsDraft.autoAnswerDelaySeconds"
                     type="number"
@@ -2726,10 +2790,13 @@ function clamp(value: number, min: number, max: number): number {
               </div>
               <label class="switch-row">
                 <span>
-                  <strong>打开 AI 页时自动分析</strong>
-                  <small>仅在尚无建议时触发一次。</small>
+                  <strong>打开 AI 页时默认分析最新题</strong>
+                  <small>自动选择最新可作答题；已有对话时不会重复请求。</small>
                 </span>
-                <input v-model="settingsDraft.aiAutoAnalyze" type="checkbox" />
+                <input
+                  v-model="settingsDraft.aiAnalyzeLatestOnOpen"
+                  type="checkbox"
+                />
               </label>
               <label class="switch-row">
                 <span>
