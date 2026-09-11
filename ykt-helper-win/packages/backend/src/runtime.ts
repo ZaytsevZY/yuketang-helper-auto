@@ -178,8 +178,10 @@ class BaselineFacade implements YuketangFacade {
           ? 'AI 答案建议已生成。'
           : 'AI 答案建议生成失败。',
       details: {
-        problemId: input.problemId,
+        problemId: input.problemId ?? input.contextId ?? '',
         proposalId: proposal.id,
+        sessionId: proposal.sessionId,
+        retry: input.retry === true,
         ...(proposal.failureReason
           ? { failureReason: proposal.failureReason }
           : {}),

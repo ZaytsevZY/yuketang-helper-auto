@@ -178,11 +178,20 @@ function registerIpc(): void {
         (input.imageUrls ?? []).map(prepareAiImage),
       );
       return getRuntime().facade.generateAnswerProposal({
-        problemId: input.problemId,
+        ...(input.problemId === undefined
+          ? {}
+          : { problemId: input.problemId }),
+        ...(input.contextId === undefined
+          ? {}
+          : { contextId: input.contextId }),
         imageUrls,
         ...(input.customPrompt === undefined
           ? {}
           : { customPrompt: input.customPrompt }),
+        ...(input.sessionId === undefined
+          ? {}
+          : { sessionId: input.sessionId }),
+        ...(input.retry === undefined ? {} : { retry: input.retry }),
       });
     },
   );
@@ -533,9 +542,14 @@ function assertGenerateProposalInput(
 ): asserts value is GenerateAnswerProposalInput {
   if (
     !isRecord(value) ||
-    typeof value.problemId !== 'string' ||
+    (value.problemId !== undefined && typeof value.problemId !== 'string') ||
+    (value.contextId !== undefined && typeof value.contextId !== 'string') ||
+    (typeof value.problemId !== 'string' &&
+      typeof value.contextId !== 'string') ||
     (value.customPrompt !== undefined &&
       typeof value.customPrompt !== 'string') ||
+    (value.sessionId !== undefined && typeof value.sessionId !== 'string') ||
+    (value.retry !== undefined && typeof value.retry !== 'boolean') ||
     (value.imageUrls !== undefined &&
       (!Array.isArray(value.imageUrls) ||
         !value.imageUrls.every((url) => typeof url === 'string')))
@@ -579,8 +593,17 @@ function isHttpsUrl(value: string): boolean {
 async function prepareAiImage(value: string): Promise<string> {
   if (value.startsWith('data:image/')) return value;
   if (!isHttpsUrl(value)) throw new Error('课件图片必须使用 HTTPS。');
-  const response =
-    await getBrowserController().webContents.session.fetch(value);
+  let response: Response;
+  try {
+    response = await getBrowserController().webContents.session.fetch(value, {
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      throw new Error('课件图片读取超时，请重新请求。');
+    }
+    throw error;
+  }
   if (!response.ok)
     throw new Error(`课件图片读取失败：HTTP ${response.status}`);
   const contentType = (response.headers.get('content-type') ?? 'image/jpeg')

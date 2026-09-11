@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   ProblemType,
   type AiProfileView,
@@ -21,6 +21,7 @@ import {
 
 import ClassroomSimulator from './ClassroomSimulator.vue';
 import ProblemPicker from './ProblemPicker.vue';
+import { renderSimpleMarkdown } from '../simple-markdown';
 
 type WorkspacePage =
   | 'classroom'
@@ -91,6 +92,25 @@ interface NoticeToast extends ClassroomNotice {
   readonly id: number;
 }
 
+interface AiChatMessage {
+  readonly id: number;
+  readonly role: 'user' | 'assistant';
+  content: string;
+  status: 'pending' | 'ready' | 'failed';
+  proposal?: AnswerProposal;
+}
+
+interface AiChatSession {
+  readonly id: string;
+  readonly contextId: string;
+  readonly problemId?: string;
+  readonly imageUrls: readonly string[];
+  readonly messages: AiChatMessage[];
+  requestVersion: number;
+  lastPrompt: string;
+  lastAuto: boolean;
+}
+
 interface LogRow {
   id: number;
   level: AppLogEntry['level'];
@@ -122,6 +142,7 @@ const presentations = ref<readonly Presentation[]>([]);
 const selectedPresentationId = ref('');
 const selectedSlideId = ref('');
 const slidePickerOpen = ref(false);
+const aiSlideContextId = ref('');
 const settings = ref<AppSettings>();
 const settingsDraft = ref<SettingsDraft>();
 const aiProfiles = ref<readonly AiProfileView[]>([]);
@@ -158,6 +179,8 @@ const aiProfileSelections = ref<Record<string, AiProfileSelectionDraft>>({});
 const aiProposal = ref<AnswerProposal>();
 const appliedProposalId = ref('');
 const aiCustomPrompt = ref('');
+const aiChatDraft = ref('');
+const aiChatSessions = reactive(new Map<string, AiChatSession>());
 const aiSlideSelection = ref<string[]>([]);
 const logs = ref<readonly LogRow[]>([]);
 const noticeToasts = ref<readonly NoticeToast[]>([]);
@@ -186,6 +209,7 @@ let automationTimer: ReturnType<typeof setInterval> | undefined;
 let automationRunning = false;
 let lastAutoJoinAt = 0;
 let nextNoticeToastId = 1;
+let nextAiChatMessageId = 1;
 const seenNotices = new Map<string, number>();
 
 const selectedLesson = computed(() =>
@@ -224,6 +248,37 @@ const selectedAiImages = computed(() => {
     : selectedSlide.value?.imageUrl || problemImage;
   return fallback ? [fallback] : [];
 });
+
+const selectedAiImageSlides = computed(() => {
+  const urls = new Set(selectedAiImages.value);
+  return presentations.value
+    .flatMap((presentation) => presentation.slides)
+    .filter((slide) => slide.imageUrl && urls.has(slide.imageUrl))
+    .slice(0, 6);
+});
+
+const currentAiContextId = computed(
+  () => selectedProblemId.value || aiSlideContextId.value,
+);
+
+const currentAiSession = computed(() =>
+  currentAiContextId.value
+    ? aiChatSessions.get(currentAiContextId.value)
+    : undefined,
+);
+
+const hasSlideQuestionContext = computed(
+  () =>
+    !selectedProblem.value &&
+    Boolean(aiSlideContextId.value) &&
+    selectedAiImages.value.length > 0,
+);
+
+const aiRequestPending = computed(() =>
+  currentAiSession.value?.messages.some(
+    (message) => message.status === 'pending',
+  ),
+);
 
 const currentSourceEntries = computed(() => {
   const key =
@@ -334,17 +389,26 @@ watch(
   async () => {
     selectedLessonId.value = '';
     collectingLessonId.value = '';
+    aiSlideContextId.value = '';
     problems.value = [];
     presentations.value = [];
     await loadWorkspace();
   },
 );
 
-watch(selectedProblemId, () => resetAnswer());
+watch(selectedProblemId, (id) => {
+  if (id) aiSlideContextId.value = '';
+  resetAnswer();
+});
 watch(
   () => props.page,
   (page) => {
-    if (page === 'ai' && settings.value?.aiAutoAnalyze && !aiProposal.value) {
+    if (
+      page === 'ai' &&
+      selectedProblem.value &&
+      settings.value?.aiAutoAnalyze &&
+      !aiProposal.value
+    ) {
       void analyzeProblem(false);
     }
   },
@@ -358,6 +422,7 @@ watch(answerDraft, () => {
 watch(selectedPresentationId, () => {
   selectedSlideId.value = selectedPresentation.value?.slides[0]?.id ?? '';
   aiSlideSelection.value = [];
+  aiSlideContextId.value = '';
   slidePickerOpen.value = false;
   ocrText.value = '';
 });
@@ -493,6 +558,7 @@ function setLesson(id: string): void {
   selectedPresentationId.value = '';
   selectedSlideId.value = '';
   aiSlideSelection.value = [];
+  aiSlideContextId.value = '';
   slidePickerOpen.value = false;
   void run('lesson-data', loadLessonData);
 }
@@ -564,7 +630,8 @@ function resetAnswer(): void {
       ? result.join('')
       : (result as { content: string }).content;
   validation.value = undefined;
-  aiProposal.value = undefined;
+  aiProposal.value = latestSessionProposal(currentAiSession.value);
+  aiChatDraft.value = '';
   appliedProposalId.value = '';
   confirmed.value = false;
   submissionMessage.value = '';
@@ -622,10 +689,31 @@ function selectSlide(event: MouseEvent, id: string): void {
   aiSlideSelection.value = [...next];
 }
 
+function deselectSlide(id: string): void {
+  aiSlideSelection.value = aiSlideSelection.value.filter(
+    (selectedId) => selectedId !== id,
+  );
+}
+
+function clearAiSlideSelection(): void {
+  aiSlideSelection.value = [];
+  if (aiSlideContextId.value) aiSlideContextId.value = '';
+}
+
 function openAiForSelectedSlides(): void {
   if (!aiSlideSelection.value.length && selectedSlideId.value) {
     aiSlideSelection.value = [selectedSlideId.value];
   }
+  const slideIds = [...aiSlideSelection.value];
+  const slideProblem =
+    slideIds.length === 1
+      ? problems.value.find((problem) => problem.slideId === slideIds[0])
+      : undefined;
+  selectedProblemId.value = slideProblem?.id ?? '';
+  aiSlideContextId.value = slideProblem
+    ? ''
+    : `slides:${selectedPresentationId.value}:${slideIds.join(',')}`;
+  aiCustomPrompt.value = '';
   emit('selectPage', 'ai');
 }
 
@@ -654,8 +742,100 @@ async function translateOcrText(): Promise<void> {
 
 async function analyzeProblem(auto: boolean): Promise<void> {
   const problem = selectedProblem.value;
-  if (!problem || busy.value) return;
-  if (auto) {
+  const contextId = problem?.id ?? aiSlideContextId.value;
+  if (!contextId) return;
+  const customPrompt = aiCustomPrompt.value.trim();
+  if (!problem && !customPrompt) {
+    errorMessage.value = '请输入要询问的课件问题。';
+    return;
+  }
+  const prompt = customPrompt || '分析这道题并给出答案建议。';
+  await requestAiProposal(problem, contextId, prompt, auto, false);
+}
+
+async function sendAiFollowUp(): Promise<void> {
+  const problem = selectedProblem.value;
+  const session = currentAiSession.value;
+  const prompt = aiChatDraft.value.trim();
+  if (!session || !prompt || aiRequestPending.value) return;
+  aiChatDraft.value = '';
+  await requestAiProposal(problem, session.contextId, prompt, false, false);
+}
+
+async function retryAiRequest(): Promise<void> {
+  const problem = selectedProblem.value;
+  const session = currentAiSession.value;
+  if (!session) return;
+  await requestAiProposal(
+    problem,
+    session.contextId,
+    session.lastPrompt,
+    session.lastAuto,
+    true,
+  );
+}
+
+function startNewAiChat(): void {
+  const contextId = currentAiContextId.value;
+  if (!contextId || aiRequestPending.value) return;
+  aiChatSessions.delete(contextId);
+  aiProposal.value = undefined;
+  appliedProposalId.value = '';
+  aiCustomPrompt.value = '';
+  aiChatDraft.value = '';
+}
+
+async function requestAiProposal(
+  problem: ProblemContext | undefined,
+  contextId: string,
+  prompt: string,
+  auto: boolean,
+  retry: boolean,
+): Promise<void> {
+  clearMessages();
+  let session = aiChatSessions.get(contextId);
+  if (!session) {
+    aiChatSessions.set(contextId, {
+      id: crypto.randomUUID(),
+      contextId,
+      ...(problem ? { problemId: problem.id } : {}),
+      imageUrls: [...selectedAiImages.value],
+      messages: [],
+      requestVersion: 0,
+      lastPrompt: prompt,
+      lastAuto: auto,
+    });
+    session = aiChatSessions.get(contextId)!;
+  }
+
+  if (retry) {
+    const latestAssistantIndex = lastAssistantIndex(session.messages);
+    if (latestAssistantIndex >= 0) {
+      session.messages.splice(latestAssistantIndex, 1);
+    }
+  } else {
+    session.messages.push({
+      id: nextAiChatMessageId++,
+      role: 'user',
+      content: prompt,
+      status: 'ready',
+    });
+  }
+
+  session.lastPrompt = prompt;
+  session.lastAuto = auto;
+  session.requestVersion += 1;
+  const requestVersion = session.requestVersion;
+  session.messages.push({
+    id: nextAiChatMessageId++,
+    role: 'assistant',
+    content: '正在分析题目与上下文…',
+    status: 'pending',
+  });
+  const pendingMessage = session.messages[session.messages.length - 1]!;
+  aiProposal.value = undefined;
+
+  if (auto && problem) {
     void emitLocalNotice(
       'auto-answer-started',
       problem,
@@ -663,71 +843,137 @@ async function analyzeProblem(auto: boolean): Promise<void> {
       problem.prompt || '正在分析新题',
     );
   }
-  await run('ai', async () => {
-    aiProposal.value = await window.yuketang.generateAnswerProposal({
-      problemId: problem.id,
-      imageUrls: selectedAiImages.value,
-      customPrompt: aiCustomPrompt.value,
-    });
-    if (!auto) {
-      infoMessage.value =
-        aiProposal.value.status === 'ready'
-          ? 'AI 建议已生成，请核对后采用。'
-          : aiProposal.value.failureReason || '没有生成可用的 AI 建议。';
-      return;
-    }
 
-    if (aiProposal.value.status !== 'ready' || !aiProposal.value.answer) {
-      infoMessage.value =
-        aiProposal.value.failureReason || '没有生成可提交的 AI 答案。';
+  let proposal: AnswerProposal;
+  try {
+    const imageUrls =
+      retry || session.messages.length === 2 ? [...session.imageUrls] : [];
+    proposal = await window.yuketang.generateAnswerProposal({
+      ...(session.problemId
+        ? { problemId: session.problemId }
+        : { contextId: session.contextId }),
+      imageUrls,
+      customPrompt: prompt,
+      sessionId: session.id,
+      retry,
+    });
+  } catch (error) {
+    if (session.requestVersion !== requestVersion) return;
+    pendingMessage.status = 'failed';
+    pendingMessage.content = errorText(error);
+    if (auto && problem) {
       await emitLocalNotice(
         'auto-answer-failed',
         problem,
         'Agent 未提交答案',
-        infoMessage.value,
+        pendingMessage.content,
       );
-      return;
     }
+    return;
+  }
 
-    answerDraft.value = answerValueToDraft(
-      aiProposal.value.answer,
-      problem.type,
-    );
-    appliedProposalId.value = aiProposal.value.id;
-    validation.value = await window.yuketang.validateAnswer({
-      problemId: problem.id,
-      answer: aiProposal.value.answer,
-      proposalId: aiProposal.value.id,
-      confirmedBy: 'agent',
-    });
-    if (!validation.value.valid) {
-      infoMessage.value = `Agent 未提交：${validation.value.issues.join('；')}`;
-      await emitLocalNotice(
-        'auto-answer-failed',
-        problem,
-        'Agent 未提交答案',
-        infoMessage.value,
-      );
-      return;
-    }
+  if (session.requestVersion !== requestVersion) return;
+  pendingMessage.proposal = proposal;
+  pendingMessage.status = proposal.status;
+  pendingMessage.content = proposalResponseText(proposal);
+  if (currentAiContextId.value === contextId) aiProposal.value = proposal;
 
-    const result = await window.yuketang.submitAnswer({
-      problemId: problem.id,
-      answer: aiProposal.value.answer,
-      proposalId: aiProposal.value.id,
-      confirmedBy: 'agent',
-    });
-    appliedProposalId.value = '';
-    submissionMessage.value = `Agent 已于 ${formatTime(result.submittedAt)} 自动提交`;
-    infoMessage.value = 'Agent 已自动确认并提交答案';
-    await loadLessonData();
+  if (!auto) {
+    infoMessage.value =
+      proposal.status === 'ready'
+        ? 'AI 已回复，可继续追问或采用建议。'
+        : proposal.failureReason || '没有生成可用的 AI 建议。';
+    return;
+  }
+
+  if (problem) await applyAutomaticProposal(problem, proposal);
+}
+
+async function applyAutomaticProposal(
+  problem: ProblemContext,
+  proposal: AnswerProposal,
+): Promise<void> {
+  if (proposal.status !== 'ready' || !proposal.answer) {
+    infoMessage.value = proposal.failureReason || '没有生成可提交的 AI 答案。';
     await emitLocalNotice(
-      'auto-answer-succeeded',
+      'auto-answer-failed',
       problem,
-      'Agent 已提交答案',
-      `${problemTypeLabel(problem.type)}已由模型完成并提交。`,
+      'Agent 未提交答案',
+      infoMessage.value,
     );
+    return;
+  }
+
+  const proposalValidation = await window.yuketang.validateAnswer({
+    problemId: problem.id,
+    answer: proposal.answer,
+    proposalId: proposal.id,
+    confirmedBy: 'agent',
   });
+  if (selectedProblemId.value === problem.id) {
+    answerDraft.value = answerValueToDraft(proposal.answer, problem.type);
+    appliedProposalId.value = proposal.id;
+    validation.value = proposalValidation;
+  }
+  if (!proposalValidation.valid) {
+    infoMessage.value = `Agent 未提交：${proposalValidation.issues.join('；')}`;
+    await emitLocalNotice(
+      'auto-answer-failed',
+      problem,
+      'Agent 未提交答案',
+      infoMessage.value,
+    );
+    return;
+  }
+
+  const result = await window.yuketang.submitAnswer({
+    problemId: problem.id,
+    answer: proposal.answer,
+    proposalId: proposal.id,
+    confirmedBy: 'agent',
+  });
+  if (selectedProblemId.value === problem.id) appliedProposalId.value = '';
+  submissionMessage.value = `Agent 已于 ${formatTime(result.submittedAt)} 自动提交`;
+  infoMessage.value = 'Agent 已自动确认并提交答案';
+  await loadLessonData();
+  await emitLocalNotice(
+    'auto-answer-succeeded',
+    problem,
+    'Agent 已提交答案',
+    `${problemTypeLabel(problem.type)}已由模型完成并提交。`,
+  );
+}
+
+function proposalResponseText(proposal: AnswerProposal): string {
+  return (
+    proposal.failureReason ||
+    proposal.explanation ||
+    proposal.rawText ||
+    '模型没有返回可显示的内容。'
+  );
+}
+
+function latestSessionProposal(
+  session: AiChatSession | undefined,
+): AnswerProposal | undefined {
+  if (!session) return undefined;
+  for (let index = session.messages.length - 1; index >= 0; index -= 1) {
+    const proposal = session.messages[index]?.proposal;
+    if (proposal) return proposal;
+  }
+  return undefined;
+}
+
+function isLatestAssistantMessage(message: AiChatMessage): boolean {
+  const messages = currentAiSession.value?.messages ?? [];
+  return messages[lastAssistantIndex(messages)]?.id === message.id;
+}
+
+function lastAssistantIndex(messages: readonly AiChatMessage[]): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'assistant') return index;
+  }
+  return -1;
 }
 
 async function useProposal(): Promise<void> {
@@ -1612,7 +1858,9 @@ function clamp(value: number, min: number, max: number): number {
           </div>
 
           <div class="field-label">
-            <span>当前题目</span>
+            <span>{{
+              hasSlideQuestionContext ? '课堂题目（可选）' : '当前题目'
+            }}</span>
             <ProblemPicker
               v-model="selectedProblemId"
               :problems="problems"
@@ -1620,9 +1868,12 @@ function clamp(value: number, min: number, max: number): number {
             />
           </div>
 
-          <template v-if="selectedProblem">
+          <template v-if="selectedProblem || hasSlideQuestionContext">
             <div class="problem-context compact-context">
-              <p>{{ selectedProblem.prompt || '题干主要位于课件图片中。' }}</p>
+              <p v-if="selectedProblem">
+                {{ selectedProblem.prompt || '题干主要位于课件图片中。' }}
+              </p>
+              <p v-else>课件图片问答</p>
               <small>
                 {{
                   aiProfiles.find(
@@ -1632,7 +1883,7 @@ function clamp(value: number, min: number, max: number): number {
                 ·
                 {{
                   selectedAiImages.length
-                    ? `${selectedAiImages.length} 张课件图`
+                    ? `${selectedAiImages.length} 张课件图${hasSlideQuestionContext ? ' · 使用 VLM' : ''}`
                     : '纯文本'
                 }}
               </small>
@@ -1643,86 +1894,219 @@ function clamp(value: number, min: number, max: number): number {
               <button
                 type="button"
                 class="quiet-button"
-                @click="aiSlideSelection = []"
+                @click="clearAiSlideSelection"
               >
                 清除
               </button>
             </div>
 
-            <label class="field-label">
-              自定义提示（可选）
-              <textarea
-                v-model="aiCustomPrompt"
-                rows="3"
-                placeholder="例如：请用中文回答，并简要说明思路。"
-              />
-            </label>
-
-            <button
-              type="button"
-              class="primary-button full-width"
-              :disabled="busy === 'ai'"
-              @click="analyzeProblem(false)"
-            >
-              {{ busy === 'ai' ? '正在融合分析' : '生成答案建议' }}
-            </button>
-
             <div
-              v-if="aiProposal"
-              class="proposal-result"
-              :class="{ failed: aiProposal.status === 'failed' }"
+              v-if="hasSlideQuestionContext"
+              class="ai-slide-preview"
+              aria-label="将发送给 AI 的课件图片"
             >
-              <div class="proposal-head">
-                <strong>{{
-                  aiProposal.status === 'ready' ? '可采用的建议' : '未生成建议'
-                }}</strong>
-                <span>{{ confidenceText(aiProposal.confidence) }}</span>
-              </div>
-              <div v-if="aiProposal.answer" class="proposal-answer">
-                <span>建议答案</span>
-                <strong>{{ proposalAnswerText(aiProposal) }}</strong>
-              </div>
-              <p v-if="aiProposal.explanation" class="proposal-explanation">
-                {{ aiProposal.explanation }}
-              </p>
-              <div v-if="aiProposal.failureReason" class="proposal-failure">
-                <strong>{{ aiProposal.failureReason }}</strong>
-                <p v-if="aiProposal.validationIssues.length">
-                  {{ aiProposal.validationIssues.join('；') }}
-                </p>
-              </div>
-              <div class="proposal-meta">
-                <span v-if="aiProposal.model">{{ aiProposal.model }}</span>
-                <span
-                  v-for="source in aiProposal.contextSources"
-                  :key="source"
-                  >{{ source }}</span
-                >
-              </div>
-              <details v-if="aiProposal.rawText" class="proposal-raw">
-                <summary>查看模型原始输出</summary>
-                <pre>{{ aiProposal.rawText }}</pre>
-              </details>
+              <img
+                v-for="(slide, index) in selectedAiImageSlides"
+                :key="slide.id"
+                :src="slide.imageUrl!"
+                :alt="slide.title || `待提问课件第 ${index + 1} 页`"
+              />
+            </div>
+
+            <template v-if="!currentAiSession">
+              <label class="field-label">
+                {{ hasSlideQuestionContext ? '你的问题' : '补充要求（可选）' }}
+                <textarea
+                  v-model="aiCustomPrompt"
+                  rows="3"
+                  :placeholder="
+                    hasSlideQuestionContext
+                      ? '例如：请解释这一页中的公式和推导过程。'
+                      : '例如：请用中文回答，并简要说明思路。'
+                  "
+                />
+              </label>
+
               <button
                 type="button"
-                class="secondary-button full-width"
-                :disabled="aiProposal.status !== 'ready' || !aiProposal.answer"
-                @click="useProposal"
+                class="primary-button full-width"
+                :disabled="
+                  hasSlideQuestionContext &&
+                  (!aiCustomPrompt.trim() || !selectedAiImages.length)
+                "
+                @click="analyzeProblem(false)"
               >
-                采用建议并前往核对
+                {{ hasSlideQuestionContext ? '发送问题' : '发送题目' }}
               </button>
+            </template>
+
+            <div v-else class="ai-chat">
+              <div class="ai-chat-heading">
+                <div>
+                  <strong>题目对话</strong>
+                  <span>{{ currentAiSession.messages.length }} 条消息</span>
+                </div>
+                <button
+                  type="button"
+                  class="quiet-button"
+                  :disabled="aiRequestPending"
+                  @click="startNewAiChat"
+                >
+                  新对话
+                </button>
+              </div>
+
+              <ol class="ai-message-list" aria-live="polite">
+                <li
+                  v-for="message in currentAiSession.messages"
+                  :key="message.id"
+                  class="ai-message"
+                  :class="`is-${message.role}`"
+                >
+                  <div class="ai-message-label">
+                    <strong>{{
+                      message.role === 'user' ? 'User Request' : 'AI Response'
+                    }}</strong>
+                    <span v-if="message.status === 'pending'">请求中</span>
+                    <span v-else-if="message.status === 'failed'">未完成</span>
+                  </div>
+                  <div
+                    class="ai-message-body"
+                    :class="{
+                      pending: message.status === 'pending',
+                      failed: message.status === 'failed',
+                    }"
+                  >
+                    <template v-if="message.status === 'pending'">
+                      <div class="thinking-row">
+                        <span aria-hidden="true"><i></i><i></i><i></i></span>
+                        <p>{{ message.content }}</p>
+                      </div>
+                      <p class="request-recovery">
+                        若等待过久，可重新发起本次请求。
+                      </p>
+                    </template>
+                    <!-- eslint-disable vue/no-v-html -- output is escaped by renderSimpleMarkdown -->
+                    <template v-else-if="message.proposal">
+                      <div
+                        v-if="message.proposal.answer"
+                        class="proposal-answer"
+                      >
+                        <span>{{
+                          currentAiSession.problemId ? '建议答案' : '回答'
+                        }}</span>
+                        <strong v-if="currentAiSession.problemId">{{
+                          proposalAnswerText(message.proposal)
+                        }}</strong>
+                        <div
+                          v-else
+                          class="ai-markdown"
+                          v-html="
+                            renderSimpleMarkdown(
+                              proposalAnswerText(message.proposal),
+                            )
+                          "
+                        ></div>
+                      </div>
+                      <div
+                        v-if="message.proposal.explanation"
+                        class="proposal-explanation ai-markdown"
+                        v-html="
+                          renderSimpleMarkdown(message.proposal.explanation)
+                        "
+                      ></div>
+                      <div
+                        v-if="message.proposal.failureReason"
+                        class="proposal-failure"
+                      >
+                        <strong>{{ message.proposal.failureReason }}</strong>
+                        <p v-if="message.proposal.validationIssues.length">
+                          {{ message.proposal.validationIssues.join('；') }}
+                        </p>
+                      </div>
+                      <div class="proposal-meta">
+                        <span v-if="message.proposal.model">{{
+                          message.proposal.model
+                        }}</span>
+                        <span v-if="currentAiSession.problemId">{{
+                          confidenceText(message.proposal.confidence)
+                        }}</span>
+                      </div>
+                      <details
+                        v-if="
+                          message.proposal.rawText && currentAiSession.problemId
+                        "
+                        class="proposal-raw"
+                      >
+                        <summary>查看模型原始输出</summary>
+                        <pre>{{ message.proposal.rawText }}</pre>
+                      </details>
+                      <button
+                        v-if="
+                          isLatestAssistantMessage(message) &&
+                          currentAiSession.problemId &&
+                          message.proposal.status === 'ready' &&
+                          message.proposal.answer
+                        "
+                        type="button"
+                        class="secondary-button full-width"
+                        @click="useProposal"
+                      >
+                        采用建议并前往核对
+                      </button>
+                    </template>
+                    <!-- eslint-enable vue/no-v-html -->
+                    <p v-else>{{ message.content }}</p>
+
+                    <button
+                      v-if="
+                        message.role === 'assistant' &&
+                        isLatestAssistantMessage(message)
+                      "
+                      type="button"
+                      class="retry-request"
+                      @click="retryAiRequest"
+                    >
+                      {{
+                        message.status === 'pending' ? '重新请求' : '重新生成'
+                      }}
+                    </button>
+                  </div>
+                </li>
+              </ol>
+
+              <form class="ai-composer" @submit.prevent="sendAiFollowUp">
+                <textarea
+                  v-model="aiChatDraft"
+                  rows="2"
+                  aria-label="追问 AI"
+                  placeholder="继续追问…"
+                  :disabled="aiRequestPending"
+                  @keydown.enter.exact.prevent="sendAiFollowUp"
+                />
+                <button
+                  type="submit"
+                  class="primary-button"
+                  :disabled="!aiChatDraft.trim() || aiRequestPending"
+                >
+                  发送
+                </button>
+                <small>Enter 发送，Shift + Enter 换行</small>
+              </form>
             </div>
             <p class="honest-note">
               {{
-                agentAutoSubmitEnabled
-                  ? '自动提交已启用。新题会由 Agent 分析、校验并直接提交。'
-                  : '手动生成的建议仍需在“题目”页校验并确认。'
+                hasSlideQuestionContext
+                  ? '课件问答仅发送所选页面和你的问题，不会提交课堂答案。'
+                  : agentAutoSubmitEnabled
+                    ? '自动提交已启用。新题会由 Agent 分析、校验并直接提交。'
+                    : '手动生成的建议仍需在“题目”页校验并确认。'
               }}
             </p>
           </template>
           <div v-else class="empty-state">
-            <strong>尚未选择题目</strong>
-            <p>先连接课堂并选择需要分析的题目。</p>
+            <strong>尚未选择分析内容</strong>
+            <p>选择一道课堂题目，或从“课件”页选择图片后提问。</p>
           </div>
         </section>
 
@@ -1821,7 +2205,7 @@ function clamp(value: number, min: number, max: number): number {
             >
               <header>
                 <strong>全部页面</strong>
-                <span>单击单选 · Ctrl + 单击多选</span>
+                <span>单击单选 · Ctrl + 单击多选 · 双击取消</span>
               </header>
               <div
                 class="slide-thumbnail-list"
@@ -1850,6 +2234,7 @@ function clamp(value: number, min: number, max: number): number {
                   "
                   :title="slide.title || `第 ${index + 1} 页`"
                   @click="selectSlide($event, slide.id)"
+                  @dblclick.prevent="deselectSlide(slide.id)"
                 >
                   <span
                     class="slide-thumbnail-media"
@@ -3136,7 +3521,6 @@ button:focus-visible {
 }
 
 .selected-source-row,
-.proposal-head,
 .settings-actions,
 .settings-footer {
   display: flex;
@@ -3151,20 +3535,220 @@ button:focus-visible {
   font-size: 12px;
 }
 
-.proposal-result {
+.ai-slide-preview {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0 8px;
+}
+
+.ai-slide-preview img {
+  width: 92px;
+  height: 58px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  object-fit: contain;
+}
+
+.ai-chat {
   margin-top: 14px;
   border-top: 1px solid var(--line-strong);
   padding-top: 12px;
 }
 
-.proposal-result.failed .proposal-head strong {
+.ai-chat-heading,
+.ai-chat-heading > div,
+.ai-message-label,
+.thinking-row {
+  display: flex;
+  align-items: center;
+}
+
+.ai-chat-heading {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ai-chat-heading > div {
+  min-width: 0;
+  gap: 7px;
+}
+
+.ai-chat-heading strong {
+  font-size: 12px;
+}
+
+.ai-chat-heading span,
+.ai-message-label span,
+.request-recovery,
+.ai-composer small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.ai-message-list {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-message {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.ai-message.is-user {
+  justify-items: end;
+}
+
+.ai-message-label {
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.ai-message.is-user .ai-message-label {
+  width: min(88%, 300px);
+}
+
+.ai-message-label strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ai-message-body {
+  width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ai-message-body > p {
+  margin: 0;
+}
+
+.ai-message.is-user .ai-message-body {
+  width: min(88%, 300px);
+  border: 1px solid #cce3d6;
+  border-radius: 7px;
+  padding: 9px 10px;
+  background: var(--green-soft);
+}
+
+.ai-message.is-assistant .ai-message-body {
+  border-bottom: 1px solid var(--line);
+  padding: 3px 0 12px;
+}
+
+.ai-message-body.failed {
   color: #8d2d2d;
+}
+
+.thinking-row {
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.thinking-row > span {
+  display: flex;
+  height: 19px;
+  align-items: center;
+  gap: 3px;
+}
+
+.thinking-row i {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: ai-thinking 1.1s ease-in-out infinite;
+}
+
+.thinking-row i:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.thinking-row i:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+.thinking-row p,
+.request-recovery {
+  margin: 0;
+}
+
+.request-recovery {
+  margin-top: 5px;
+}
+
+.retry-request {
+  min-height: 28px;
+  margin-top: 8px;
+  border-color: transparent;
+  padding: 4px 0;
+  color: var(--green-strong);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.retry-request:hover:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ai-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  margin-top: 12px;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 12px;
+}
+
+.ai-composer textarea {
+  min-height: 58px;
+  resize: none;
+}
+
+.ai-composer button {
+  align-self: end;
+  min-width: 60px;
+}
+
+.ai-composer small {
+  grid-column: 1 / -1;
+}
+
+@keyframes ai-thinking {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
 }
 
 .proposal-answer {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  align-items: baseline;
+  align-items: start;
   gap: 10px;
   margin: 10px 0 8px;
   padding: 9px 10px;
@@ -3180,7 +3764,7 @@ button:focus-visible {
 
 .proposal-answer strong {
   overflow-wrap: anywhere;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .proposal-explanation {
@@ -3189,13 +3773,111 @@ button:focus-visible {
   line-height: 1.6;
 }
 
-.proposal-failure {
-  margin: 9px 0;
-  border: 1px solid #e2b5af;
+.ai-markdown {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.ai-markdown :deep(:first-child) {
+  margin-top: 0;
+}
+
+.ai-markdown :deep(:last-child) {
+  margin-bottom: 0;
+}
+
+.ai-markdown :deep(p) {
+  margin: 0 0 8px;
+}
+
+.ai-markdown :deep(h1),
+.ai-markdown :deep(h2),
+.ai-markdown :deep(h3),
+.ai-markdown :deep(h4),
+.ai-markdown :deep(h5),
+.ai-markdown :deep(h6) {
+  margin: 12px 0 5px;
+  color: var(--text);
+  line-height: 1.4;
+  font-weight: 700;
+}
+
+.ai-markdown :deep(h1),
+.ai-markdown :deep(h2) {
+  font-size: 15px;
+}
+
+.ai-markdown :deep(h3),
+.ai-markdown :deep(h4),
+.ai-markdown :deep(h5),
+.ai-markdown :deep(h6) {
+  font-size: 12px;
+}
+
+.ai-markdown :deep(ul),
+.ai-markdown :deep(ol) {
+  margin: 6px 0 8px;
+  padding-left: 20px;
+}
+
+.ai-markdown :deep(li + li) {
+  margin-top: 3px;
+}
+
+.ai-markdown :deep(blockquote) {
+  margin: 8px 0;
+  border-left: 1px solid var(--line-strong);
+  padding: 5px 9px;
+  color: var(--text-muted);
+  background: var(--surface-muted);
+}
+
+.ai-markdown :deep(hr) {
+  margin: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.ai-markdown :deep(.ai-markdown-code) {
+  max-width: 100%;
+  overflow: auto;
+  margin: 8px 0;
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 8px 9px;
-  color: #7d2929;
-  background: #fff8f7;
+  background: var(--surface-muted);
+  white-space: pre;
+}
+
+.ai-markdown :deep(.ai-markdown-code code),
+.ai-markdown :deep(.ai-markdown-inline-code) {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+
+.ai-markdown :deep(.ai-markdown-inline-code) {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 4px;
+  background: var(--surface-muted);
+}
+
+.ai-markdown :deep(a) {
+  color: var(--green-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.proposal-failure {
+  margin: 9px 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 8px 9px;
+  color: #8d2d2d;
+  background: #fff3f1;
   font-size: 12px;
 }
 
@@ -3203,7 +3885,6 @@ button:focus-visible {
   margin: 4px 0 0;
 }
 
-.proposal-head span,
 .proposal-meta,
 .credential-note {
   color: var(--text-muted);
@@ -3256,6 +3937,13 @@ button:focus-visible {
   padding: 3px 5px;
   color: var(--green-strong);
   background: var(--green-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-row i {
+    animation: none;
+    opacity: 0.8;
+  }
 }
 
 .option-list {

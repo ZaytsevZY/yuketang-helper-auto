@@ -24,9 +24,12 @@ import {
   OPENAI_COMPATIBLE_PROVIDER_ID,
   type AiProviderPlugin,
 } from '../llm/provider.js';
+import { LlmSessionManager, type LlmTurn } from '../llm/session-manager.js';
 import type { ProblemService } from './problem-service.js';
 
 export class AiService {
+  readonly #sessions = new LlmSessionManager();
+
   constructor(
     private readonly storage: AppDataStore,
     private readonly secrets: SecretStore,
@@ -172,28 +175,66 @@ export class AiService {
   async generateProposal(
     input: GenerateAnswerProposalInput,
   ): Promise<AnswerProposal> {
-    const problem = this.problems.getProblem(input.problemId);
+    const sessionId = input.sessionId?.trim() || randomUUID();
+    const problem = input.problemId
+      ? this.problems.getProblem(input.problemId)
+      : createQuestionContext(
+          input.contextId?.trim() || `question:${sessionId}`,
+          input.customPrompt ?? '',
+        );
+    const customQuestion = !input.problemId;
     const images = (input.imageUrls ?? []).filter(Boolean).slice(0, 6);
     const contextSources = [
-      `problem:${problem.id}`,
+      `${customQuestion ? 'context' : 'problem'}:${problem.id}`,
       ...images.map((_url, index) => `slide-image:${index + 1}`),
     ];
     let profile: AiProfileConfig | undefined;
     let model = '';
+    let turn: LlmTurn | undefined;
     try {
       profile = await this.activeProfile();
       model = images.length
         ? profile.visionModel || profile.model
         : profile.model;
+      turn = this.#sessions.begin({
+        sessionId,
+        problemId: problem.id,
+        initialMessages: customQuestion
+          ? slideQuestionMessages(images, input.customPrompt ?? '')
+          : answerMessages(problem, images, input.customPrompt ?? ''),
+        userMessage: input.customPrompt ?? '',
+        retry: input.retry === true,
+      });
       const rawText = await this.provider(profile.providerId).complete({
         baseUrl: profile.baseUrl,
         apiKey: await this.requireCredential(profile.id),
         model,
-        messages: answerMessages(problem, images, input.customPrompt ?? ''),
+        messages: turn.messages,
+        signal: turn.signal,
         ...(profile.temperature === null
           ? {}
           : { temperature: profile.temperature }),
       });
+      this.#sessions.complete(turn, rawText);
+      if (customQuestion) {
+        const answer = rawText.trim();
+        return this.saveProposal({
+          id: randomUUID(),
+          sessionId,
+          problemId: problem.id,
+          status: answer ? 'ready' : 'failed',
+          answer: answer ? { content: answer, pics: [] } : null,
+          explanation: '',
+          confidence: null,
+          failureReason: answer ? null : '模型没有返回可显示的内容。',
+          validationIssues: [],
+          rawText,
+          profileId: profile.id,
+          model,
+          contextSources,
+          createdAt: new Date().toISOString(),
+        });
+      }
       const parsed = parseProposal(problem, rawText);
       const validation = parsed.answer
         ? this.problems.validateAnswerFormat({
@@ -211,6 +252,7 @@ export class AiService {
             : null);
       return this.saveProposal({
         id: randomUUID(),
+        sessionId,
         problemId: problem.id,
         status: failureReason ? 'failed' : 'ready',
         answer: validation?.normalizedAnswer ?? parsed.answer,
@@ -225,8 +267,10 @@ export class AiService {
         createdAt: new Date().toISOString(),
       });
     } catch (error) {
+      if (turn) this.#sessions.fail(turn);
       return this.saveProposal({
         id: randomUUID(),
+        sessionId,
         problemId: problem.id,
         status: 'failed',
         answer: null,
@@ -658,6 +702,50 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function createQuestionContext(id: string, question: string): ProblemContext {
+  const prompt = question.trim();
+  if (!prompt) throw new Error('请输入要询问的课件问题。');
+  return {
+    id,
+    lessonId: '',
+    presentationId: '',
+    slideId: '',
+    type: ProblemType.Subjective,
+    prompt,
+    options: [],
+    blanks: [],
+    result: null,
+    status: 'available',
+    unlockedAt: null,
+    deadlineAt: null,
+  };
+}
+
+function slideQuestionMessages(
+  images: readonly string[],
+  question: string,
+): readonly unknown[] {
+  const prompt = [
+    '【页面说明】当前页面可能不是题目页；请结合课件图片和用户提示作答。',
+    `【用户自定义要求】\n${question.trim()}`,
+  ].join('\n\n');
+  const content = [
+    ...images.map((url) => ({
+      type: 'image_url',
+      image_url: { url: safeImageUrl(url) },
+    })),
+    { type: 'text', text: prompt },
+  ];
+  return [
+    {
+      role: 'system',
+      content:
+        '你是学习辅助工具。请结合用户选中的课件图片直接回答问题；不要假设当前页面一定包含课堂习题，也不要声称执行提交操作。',
+    },
+    { role: 'user', content },
+  ];
+}
+
 function answerMessages(
   problem: ProblemContext,
   images: readonly string[],
@@ -843,7 +931,10 @@ function parseStoredProposal(value: JsonValue): AnswerProposal | null {
     typeof record.id === 'string' &&
     typeof record.problemId === 'string' &&
     (record.status === 'ready' || record.status === 'failed')
-    ? (record as unknown as AnswerProposal)
+    ? ({
+        ...record,
+        sessionId: typeof record.sessionId === 'string' ? record.sessionId : '',
+      } as unknown as AnswerProposal)
     : null;
 }
 

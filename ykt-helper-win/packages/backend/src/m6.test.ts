@@ -300,6 +300,7 @@ describe('M6 facade support', () => {
 
     expect(proposal.answer).toEqual(['B']);
     expect(proposal.explanation).toBe('基础功能测试');
+    expect(proposal.sessionId).not.toBe('');
     expect(fetcher).toHaveBeenCalledTimes(2);
     const requestBody = JSON.parse(
       String(fetcher.mock.calls[1]?.[1]?.body),
@@ -312,6 +313,167 @@ describe('M6 facade support', () => {
     expect(await secretStore.get('ai-profile:moonshot:main')).toBe(
       'test-secret',
     );
+    await runtime.stop();
+  });
+
+  it('asks about ordinary slides with the image and the user question', async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const fetcher = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input).endsWith('/models')) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'vision-model',
+                  owned_by: 'test',
+                  input_modalities: ['text', 'image'],
+                },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          );
+        }
+        requests.push(
+          JSON.parse(String(init?.body)) as Record<string, unknown>,
+        );
+        return new Response(
+          JSON.stringify({
+            choices: [
+              { message: { content: '这一页介绍了光合作用的两个阶段。' } },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      },
+    );
+    const runtime = new BackendRuntime({ fetcher });
+    await runtime.start();
+    await runtime.facade.connectAiProfile({
+      baseUrl: 'https://vision.example/v1',
+      apiKey: 'test-secret',
+    });
+
+    const proposal = await runtime.facade.generateAnswerProposal({
+      contextId: 'slides:presentation-1:slide-ordinary',
+      imageUrls: ['data:image/png;base64,aW1hZ2U='],
+      customPrompt: '请概括这一页的主要内容。',
+    });
+
+    expect(proposal.status).toBe('ready');
+    expect(proposal.problemId).toBe('slides:presentation-1:slide-ordinary');
+    expect(proposal.answer).toEqual({
+      content: '这一页介绍了光合作用的两个阶段。',
+      pics: [],
+    });
+    expect(proposal.contextSources).toContain('slide-image:1');
+    expect(requests[0]).toEqual(
+      expect.objectContaining({ model: 'vision-model' }),
+    );
+    expect(JSON.stringify(requests[0]?.messages)).toContain(
+      '请概括这一页的主要内容。',
+    );
+    expect(JSON.stringify(requests[0]?.messages)).toContain(
+      'data:image/png;base64,aW1hZ2U=',
+    );
+    await runtime.stop();
+  });
+
+  it('continues an answer proposal in the same lightweight session', async () => {
+    const lessons = new InMemoryLessonRepository();
+    const session = lessons.upsertLesson({
+      id: 'lesson-chat',
+      title: 'AI 对话测试课堂',
+      status: 'active',
+    });
+    session.upsertPresentation({
+      id: 'presentation-chat',
+      lessonId: 'lesson-chat',
+      title: 'AI 对话测试课件',
+      width: null,
+      height: null,
+      slides: [
+        {
+          id: 'slide-chat',
+          index: 0,
+          title: '题目页',
+          imageUrl: null,
+          problem: {
+            id: 'problem-chat',
+            lessonId: 'lesson-chat',
+            presentationId: 'presentation-chat',
+            slideId: 'slide-chat',
+            type: ProblemType.SingleChoice,
+            prompt: '哪一项正确？',
+            options: ['选项一', '选项二'],
+            blanks: [],
+            result: null,
+          },
+        },
+      ],
+    });
+    session.unlockProblem(
+      'problem-chat',
+      'presentation-chat',
+      'slide-chat',
+      1000,
+      61_000,
+      1000,
+    );
+    const requests: unknown[][] = [];
+    const provider: AiProviderPlugin = {
+      id: 'session-fixture',
+      discoverModels: async () => [
+        {
+          id: 'session-model',
+          name: 'Session Model',
+          ownedBy: 'fixture',
+          created: null,
+          inputModalities: ['text'],
+          outputModalities: ['text'],
+          supportedParameters: [],
+          contextWindow: null,
+          outputLimit: null,
+        },
+      ],
+      complete: async (request) => {
+        requests.push([...request.messages]);
+        return requests.length === 1
+          ? JSON.stringify({
+              answer: 'B',
+              explanation: '首次回答。',
+              confidence: 0.8,
+              failureReason: null,
+            })
+          : JSON.stringify({
+              answer: 'B',
+              explanation: '结合追问后仍选择 B。',
+              confidence: 0.9,
+              failureReason: null,
+            });
+      },
+    };
+    const runtime = new BackendRuntime({ lessons, aiProviders: [provider] });
+    await runtime.start();
+    await runtime.facade.connectAiProfile({
+      providerId: provider.id,
+      baseUrl: 'https://session.example/v1',
+      apiKey: 'test-secret',
+    });
+
+    const first = await runtime.facade.generateAnswerProposal({
+      problemId: 'problem-chat',
+    });
+    const followUp = await runtime.facade.generateAnswerProposal({
+      problemId: 'problem-chat',
+      sessionId: first.sessionId,
+      customPrompt: '请重新检查为什么不是 A。',
+    });
+
+    expect(followUp.sessionId).toBe(first.sessionId);
+    expect(followUp.explanation).toBe('结合追问后仍选择 B。');
+    expect(JSON.stringify(requests[1])).toContain('首次回答');
+    expect(JSON.stringify(requests[1])).toContain('请重新检查为什么不是 A。');
     await runtime.stop();
   });
 });

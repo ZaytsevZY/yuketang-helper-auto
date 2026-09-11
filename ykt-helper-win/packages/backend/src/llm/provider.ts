@@ -11,6 +11,7 @@ export interface AiProviderCompletionRequest extends AiProviderDiscoveryRequest 
   readonly model: string;
   readonly messages: readonly unknown[];
   readonly temperature?: number;
+  readonly signal?: AbortSignal;
 }
 
 export interface AiProviderPlugin {
