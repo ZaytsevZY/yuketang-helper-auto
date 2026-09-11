@@ -55,6 +55,8 @@ export interface GenerateAnswerProposalInput {
   readonly problemId?: string;
   readonly contextId?: string;
   readonly imageUrls?: readonly string[];
+  readonly imageSource?: 'slide' | 'browser-page';
+  readonly captureCurrentPage?: boolean;
   readonly customPrompt?: string;
   readonly sessionId?: string;
   readonly retry?: boolean;

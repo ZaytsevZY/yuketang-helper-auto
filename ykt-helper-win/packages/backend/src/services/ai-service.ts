@@ -184,9 +184,11 @@ export class AiService {
         );
     const customQuestion = !input.problemId;
     const images = (input.imageUrls ?? []).filter(Boolean).slice(0, 6);
+    const imageSource =
+      input.imageSource === 'browser-page' ? 'browser-page' : 'slide-image';
     const contextSources = [
       `${customQuestion ? 'context' : 'problem'}:${problem.id}`,
-      ...images.map((_url, index) => `slide-image:${index + 1}`),
+      ...images.map((_url, index) => `${imageSource}:${index + 1}`),
     ];
     let profile: AiProfileConfig | undefined;
     let model = '';

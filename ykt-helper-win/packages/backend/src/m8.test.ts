@@ -253,12 +253,15 @@ describe('M8 LLM workflow', () => {
     expect(
       await runtime.facade.generateAnswerProposal({
         problemId: 'problem-locked',
+        imageUrls: ['data:image/png;base64,d2ViLXZpZXc='],
+        imageSource: 'browser-page',
       }),
     ).toMatchObject({
       status: 'ready',
       answer: ['B'],
       failureReason: null,
       validationIssues: [],
+      contextSources: ['problem:problem-locked', 'browser-page:1'],
     });
     expect(
       await runtime.facade.validateAnswer({

@@ -174,9 +174,12 @@ function registerIpc(): void {
     async (event, input: unknown) => {
       assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
       assertGenerateProposalInput(input);
-      const imageUrls = await Promise.all(
-        (input.imageUrls ?? []).map(prepareAiImage),
-      );
+      const requestedImageUrls = input.imageUrls ?? [];
+      const imageUrls = requestedImageUrls.length
+        ? await Promise.all(requestedImageUrls.map(prepareAiImage))
+        : input.captureCurrentPage === true
+          ? [await getBrowserController().captureCurrentPage()]
+          : [];
       return getRuntime().facade.generateAnswerProposal({
         ...(input.problemId === undefined
           ? {}
@@ -185,6 +188,13 @@ function registerIpc(): void {
           ? {}
           : { contextId: input.contextId }),
         imageUrls,
+        ...(imageUrls.length
+          ? {
+              imageSource: requestedImageUrls.length
+                ? (input.imageSource ?? 'slide')
+                : 'browser-page',
+            }
+          : {}),
         ...(input.customPrompt === undefined
           ? {}
           : { customPrompt: input.customPrompt }),
@@ -552,7 +562,12 @@ function assertGenerateProposalInput(
     (value.retry !== undefined && typeof value.retry !== 'boolean') ||
     (value.imageUrls !== undefined &&
       (!Array.isArray(value.imageUrls) ||
-        !value.imageUrls.every((url) => typeof url === 'string')))
+        !value.imageUrls.every((url) => typeof url === 'string'))) ||
+    (value.imageSource !== undefined &&
+      value.imageSource !== 'slide' &&
+      value.imageSource !== 'browser-page') ||
+    (value.captureCurrentPage !== undefined &&
+      typeof value.captureCurrentPage !== 'boolean')
   ) {
     throw new Error('Invalid AI proposal request.');
   }

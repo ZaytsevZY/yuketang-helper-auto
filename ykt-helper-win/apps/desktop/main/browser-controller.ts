@@ -132,6 +132,17 @@ export class BrowserController {
     this.webContents.reload();
   }
 
+  async captureCurrentPage(): Promise<string> {
+    const image = await this.webContents.capturePage();
+    if (image.isEmpty())
+      throw new Error('当前网页截图为空，请刷新页面后重试。');
+    const dataUrl = image.toDataURL();
+    if (dataUrl.length > 16 * 1024 * 1024) {
+      throw new Error('当前网页截图超过 16MB，请缩小窗口后重试。');
+    }
+    return dataUrl;
+  }
+
   async home(): Promise<void> {
     const tab = this.activeTab();
     await this.loadUrl(tab, targetForEnvironment(tab.environment).startUrl);

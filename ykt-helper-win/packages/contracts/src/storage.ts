@@ -36,6 +36,7 @@ export interface AppSettings {
   readonly keepScreenAwake: boolean;
   readonly aiAnalyzeLatestOnOpen: boolean;
   readonly aiSlidePickPriority: boolean;
+  readonly aiCaptureCurrentPage: boolean;
   readonly activeAiProfileId: string;
   readonly aiProfiles: readonly AiProfileConfig[];
   readonly iftex: boolean;
@@ -73,6 +74,7 @@ export const DefaultAppSettings: AppSettings = Object.freeze({
   keepScreenAwake: false,
   aiAnalyzeLatestOnOpen: false,
   aiSlidePickPriority: true,
+  aiCaptureCurrentPage: true,
   activeAiProfileId: '',
   aiProfiles: [],
   iftex: true,

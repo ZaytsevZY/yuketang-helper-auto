@@ -54,6 +54,7 @@ describe('M5 persistent storage', () => {
       llmAutoGenerate: true,
       llmManagedSubmit: true,
       aiAnalyzeLatestOnOpen: true,
+      aiCaptureCurrentPage: true,
     });
     expect(await second.getUser(BrowserEnvironment.Standard)).toMatchObject({
       id: '42',

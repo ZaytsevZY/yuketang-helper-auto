@@ -67,6 +67,7 @@ interface SettingsDraft {
   keepScreenAwake: boolean;
   aiAnalyzeLatestOnOpen: boolean;
   aiSlidePickPriority: boolean;
+  aiCaptureCurrentPage: boolean;
   iftex: boolean;
   showAllSlides: boolean;
   maxPresentations: number;
@@ -113,6 +114,7 @@ interface AiChatSession {
   readonly contextId: string;
   readonly problemId?: string;
   readonly imageUrls: readonly string[];
+  readonly captureCurrentPage: boolean;
   readonly messages: AiChatMessage[];
   requestVersion: number;
   lastPrompt: string;
@@ -212,6 +214,7 @@ const subscriptions: Array<() => void> = [];
 const connectedLessonIds = new Set<string>();
 const seenAvailableProblems = new Set<string>();
 const scheduledProblems = new Map<string, ReturnType<typeof setTimeout>>();
+const slideSelectionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let automationTimer: ReturnType<typeof setInterval> | undefined;
 let automationRunning = false;
 let lastAutoJoinAt = 0;
@@ -241,11 +244,13 @@ const selectedSlide = computed(() =>
 
 const selectedAiImages = computed(() => {
   const chosen = new Set(aiSlideSelection.value);
-  const images = presentations.value
+  const selected = presentations.value
     .flatMap((presentation) => presentation.slides)
     .filter((slide) => chosen.has(slide.id) && slide.imageUrl)
     .map((slide) => slide.imageUrl!);
-  if (images.length) return images;
+  if (selected.length || (settings.value?.aiCaptureCurrentPage ?? true)) {
+    return selected;
+  }
   const problem = selectedProblem.value;
   const problemImage = presentations.value
     .flatMap((presentation) => presentation.slides)
@@ -285,6 +290,20 @@ const aiRequestPending = computed(() =>
   currentAiSession.value?.messages.some(
     (message) => message.status === 'pending',
   ),
+);
+
+const captureCurrentBrowserPage = computed(
+  () =>
+    selectedAiImages.value.length === 0 &&
+    (settings.value?.aiCaptureCurrentPage ?? true),
+);
+
+const aiContextImageCount = computed(() =>
+  selectedAiImages.value.length > 0
+    ? selectedAiImages.value.length
+    : captureCurrentBrowserPage.value
+      ? 1
+      : 0,
 );
 
 const currentSourceEntries = computed(() => {
@@ -388,6 +407,7 @@ onUnmounted(() => {
   subscriptions.forEach((unsubscribe) => unsubscribe());
   if (automationTimer) clearInterval(automationTimer);
   for (const timer of scheduledProblems.values()) clearTimeout(timer);
+  for (const timer of slideSelectionTimers.values()) clearTimeout(timer);
 });
 
 watch(
@@ -687,18 +707,30 @@ async function downloadCurrentSlide(): Promise<void> {
 }
 
 function selectSlide(event: MouseEvent, id: string): void {
-  if (!event.ctrlKey) {
-    selectedSlideId.value = id;
-    aiSlideSelection.value = [id];
-    return;
-  }
-  const next = new Set(aiSlideSelection.value);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  aiSlideSelection.value = [...next];
+  const pending = slideSelectionTimers.get(id);
+  if (pending) clearTimeout(pending);
+  const ctrlKey = event.ctrlKey;
+  slideSelectionTimers.set(
+    id,
+    setTimeout(() => {
+      slideSelectionTimers.delete(id);
+      if (!ctrlKey) {
+        selectedSlideId.value = id;
+        aiSlideSelection.value = [id];
+        return;
+      }
+      const next = new Set(aiSlideSelection.value);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      aiSlideSelection.value = [...next];
+    }, 220),
+  );
 }
 
-function deselectSlide(id: string): void {
+function unselectSlide(id: string): void {
+  const pending = slideSelectionTimers.get(id);
+  if (pending) clearTimeout(pending);
+  slideSelectionTimers.delete(id);
   aiSlideSelection.value = aiSlideSelection.value.filter(
     (selectedId) => selectedId !== id,
   );
@@ -825,6 +857,7 @@ async function requestAiProposal(
       contextId,
       ...(problem ? { problemId: problem.id } : {}),
       imageUrls: [...selectedAiImages.value],
+      captureCurrentPage: captureCurrentBrowserPage.value,
       messages: [],
       requestVersion: 0,
       lastPrompt: prompt,
@@ -868,16 +901,17 @@ async function requestAiProposal(
       problem.prompt || '正在分析新题',
     );
   }
-
   let proposal: AnswerProposal;
   try {
-    const imageUrls =
-      retry || session.messages.length === 2 ? [...session.imageUrls] : [];
+    const includeInitialContext = retry || session.messages.length === 2;
+    const imageUrls = includeInitialContext ? [...session.imageUrls] : [];
     proposal = await window.yuketang.generateAnswerProposal({
       ...(session.problemId
         ? { problemId: session.problemId }
         : { contextId: session.contextId }),
       imageUrls,
+      ...(imageUrls.length ? { imageSource: 'slide' as const } : {}),
+      captureCurrentPage: includeInitialContext && session.captureCurrentPage,
       customPrompt: prompt,
       sessionId: session.id,
       retry,
@@ -1084,6 +1118,7 @@ async function saveSettings(): Promise<void> {
       keepScreenAwake: draft.keepScreenAwake,
       aiAnalyzeLatestOnOpen: draft.aiAnalyzeLatestOnOpen,
       aiSlidePickPriority: draft.aiSlidePickPriority,
+      aiCaptureCurrentPage: draft.aiCaptureCurrentPage,
       iftex: draft.iftex,
       showAllSlides: draft.showAllSlides,
       maxPresentations: clamp(draft.maxPresentations, 1, 50),
@@ -1135,6 +1170,7 @@ function applySettings(value: AppSettings): void {
     keepScreenAwake: value.keepScreenAwake,
     aiAnalyzeLatestOnOpen: value.aiAnalyzeLatestOnOpen,
     aiSlidePickPriority: value.aiSlidePickPriority,
+    aiCaptureCurrentPage: value.aiCaptureCurrentPage,
     iftex: value.iftex,
     showAllSlides: value.showAllSlides,
     maxPresentations: value.maxPresentations,
@@ -1916,7 +1952,13 @@ function clamp(value: number, min: number, max: number): number {
         <section v-else-if="page === 'ai'" class="panel-page">
           <div class="section-heading">
             <h2>AI 分析</h2>
-            <span class="count-badge">{{ selectedAiImages.length }} 图</span>
+            <span class="count-badge">
+              {{
+                captureCurrentBrowserPage
+                  ? '当前网页'
+                  : `${aiContextImageCount} 图`
+              }}
+            </span>
           </div>
 
           <div class="field-label">
@@ -1946,7 +1988,9 @@ function clamp(value: number, min: number, max: number): number {
                 {{
                   selectedAiImages.length
                     ? `${selectedAiImages.length} 张课件图${hasSlideQuestionContext ? ' · 使用 VLM' : ''}`
-                    : '纯文本'
+                    : captureCurrentBrowserPage
+                      ? '当前网页截图'
+                      : '纯文本'
                 }}
               </small>
             </div>
@@ -2296,7 +2340,7 @@ function clamp(value: number, min: number, max: number): number {
                   "
                   :title="slide.title || `第 ${index + 1} 页`"
                   @click="selectSlide($event, slide.id)"
-                  @dblclick.prevent="deselectSlide(slide.id)"
+                  @dblclick.stop.prevent="unselectSlide(slide.id)"
                 >
                   <span
                     class="slide-thumbnail-media"
@@ -2821,11 +2865,14 @@ function clamp(value: number, min: number, max: number): number {
               </label>
               <label class="switch-row">
                 <span>
-                  <strong>题目课件页优先</strong>
-                  <small>未手工选择图片时，优先使用题目所属课件页。</small>
+                  <strong>默认采集当前网页</strong>
+                  <small
+                    >未手工选择课件图片时，截取当前 Chromium
+                    标签页作为分析上下文。</small
+                  >
                 </span>
                 <input
-                  v-model="settingsDraft.aiSlidePickPriority"
+                  v-model="settingsDraft.aiCaptureCurrentPage"
                   type="checkbox"
                 />
               </label>
