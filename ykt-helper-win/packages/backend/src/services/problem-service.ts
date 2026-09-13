@@ -40,6 +40,13 @@ export class ProblemService {
     );
   }
 
+  validateAnswerFormat(input: AnswerInput): ValidationResult {
+    return this.answers.validateFormat(
+      this.getProblem(input.problemId),
+      input.answer,
+    );
+  }
+
   listProblems(lessonId: string): readonly ProblemContext[] {
     const session = this.repository.getSession(lessonId);
     if (!session) return [];

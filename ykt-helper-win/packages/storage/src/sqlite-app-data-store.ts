@@ -89,8 +89,11 @@ export class SqliteAppDataStore implements AppDataStore {
       .all() as unknown as SettingRow[];
     const stored = Object.fromEntries(
       rows.map((row) => [row.key, JSON.parse(row.value) as JsonValue]),
-    );
-    return { ...DefaultAppSettings, ...stored };
+    ) as Record<string, JsonValue>;
+    return {
+      ...DefaultAppSettings,
+      ...migrateLegacySettings(stored),
+    } as AppSettings;
   }
 
   async updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
@@ -238,6 +241,27 @@ export class SqliteAppDataStore implements AppDataStore {
       throw error;
     }
   }
+}
+
+function migrateLegacySettings(
+  stored: Record<string, JsonValue>,
+): Partial<AppSettings> {
+  const migrated: Record<string, JsonValue> = {};
+  for (const key of Object.keys(DefaultAppSettings)) {
+    if (stored[key] !== undefined) migrated[key] = stored[key];
+  }
+  if (stored.llmAutoGenerate === undefined) {
+    migrated.llmAutoGenerate =
+      stored.autoAnswer === true ||
+      (stored.autoJoinEnabled === true && stored.autoAnswerOnAutoJoin === true);
+  }
+  if (stored.llmManagedSubmit === undefined) {
+    migrated.llmManagedSubmit = stored.autoAnswer === true;
+  }
+  if (stored.aiAnalyzeLatestOnOpen === undefined) {
+    migrated.aiAnalyzeLatestOnOpen = stored.aiAutoAnalyze === true;
+  }
+  return migrated;
 }
 
 function mapUser(row: UserRow): UserProfile {

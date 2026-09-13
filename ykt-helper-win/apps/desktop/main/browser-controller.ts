@@ -20,6 +20,7 @@ import {
 
 const SESSION_PARTITION = 'persist:yuketang-browser';
 const TOOLBAR_HEIGHT = 128;
+const NEW_TAB_HOME_URL = 'https://www.yuketang.cn/v2/web/index';
 const NETWORK_LAB_EXPANDED_HEIGHT = 300;
 const NETWORK_LAB_COLLAPSED_HEIGHT = 43;
 const ASSISTANT_PANEL_EXPANDED_WIDTH = 380;
@@ -131,6 +132,17 @@ export class BrowserController {
     this.webContents.reload();
   }
 
+  async captureCurrentPage(): Promise<string> {
+    const image = await this.webContents.capturePage();
+    if (image.isEmpty())
+      throw new Error('当前网页截图为空，请刷新页面后重试。');
+    const dataUrl = image.toDataURL();
+    if (dataUrl.length > 16 * 1024 * 1024) {
+      throw new Error('当前网页截图超过 16MB，请缩小窗口后重试。');
+    }
+    return dataUrl;
+  }
+
   async home(): Promise<void> {
     const tab = this.activeTab();
     await this.loadUrl(tab, targetForEnvironment(tab.environment).startUrl);
@@ -145,10 +157,9 @@ export class BrowserController {
   }
 
   async newTab(): Promise<void> {
-    const environment = this.activeTab().environment;
-    const tab = this.createTab(environment);
+    const tab = this.createTab(BrowserEnvironment.Standard);
     this.activateTab(tab.id);
-    await this.loadUrl(tab, targetForEnvironment(environment).startUrl);
+    await this.loadUrl(tab, NEW_TAB_HOME_URL);
   }
 
   activateTab(tabId: string): void {
@@ -168,10 +179,6 @@ export class BrowserController {
   async closeTab(tabId: string): Promise<void> {
     const tab = this.#tabs.find((item) => item.id === tabId);
     if (!tab) return;
-    if (this.#tabs.length === 1) {
-      await this.home();
-      return;
-    }
     this.removeTab(tab, true);
   }
 
@@ -255,7 +262,8 @@ export class BrowserController {
     });
 
     contents.setWindowOpenHandler((details) => {
-      if (!isAllowedYuketangUrl(details.url)) {
+      const opensBlankPage = details.url === 'about:blank';
+      if (!opensBlankPage && !isAllowedYuketangUrl(details.url)) {
         tab.errorMessage = '已阻止外部新窗口';
         this.emitState();
         return { action: 'deny' };
@@ -361,14 +369,11 @@ export class BrowserController {
       return;
     }
     if (this.#tabs.length === 0) {
-      const replacement = this.createTab(tab.environment);
+      const replacement = this.createTab(BrowserEnvironment.Standard);
       this.#activeTabId = replacement.id;
       this.window.contentView.addChildView(replacement.view);
       this.resize();
-      void this.loadUrl(
-        replacement,
-        targetForEnvironment(replacement.environment).startUrl,
-      );
+      void this.loadUrl(replacement, NEW_TAB_HOME_URL);
       return;
     }
     const next = this.#tabs[Math.min(index, this.#tabs.length - 1)];

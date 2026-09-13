@@ -50,6 +50,8 @@ let mainWindow: BrowserWindow | undefined;
 let browserController: BrowserController | undefined;
 let networkLabController: NetworkLabController | undefined;
 let cliServer: DesktopCliServer | undefined;
+let serviceCleanupPromise: Promise<void> | undefined;
+let quitAfterCleanup = false;
 let keepScreenAwake = false;
 let wakeLockId: number | null = null;
 
@@ -58,6 +60,22 @@ if (electronSquirrelStartup) {
 }
 
 configureStorageProfile();
+
+const hasSingleInstanceLock =
+  !electronSquirrelStartup && app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      if (app.isReady()) void createWindow().catch(reportStartupError);
+      return;
+    }
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
 
 function configureStorageProfile(): void {
   const portableMarker = join(dirname(app.getPath('exe')), 'portable.flag');
@@ -156,15 +174,34 @@ function registerIpc(): void {
     async (event, input: unknown) => {
       assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
       assertGenerateProposalInput(input);
-      const imageUrls = await Promise.all(
-        (input.imageUrls ?? []).map(prepareAiImage),
-      );
+      const requestedImageUrls = input.imageUrls ?? [];
+      const imageUrls = requestedImageUrls.length
+        ? await Promise.all(requestedImageUrls.map(prepareAiImage))
+        : input.captureCurrentPage === true
+          ? [await getBrowserController().captureCurrentPage()]
+          : [];
       return getRuntime().facade.generateAnswerProposal({
-        problemId: input.problemId,
+        ...(input.problemId === undefined
+          ? {}
+          : { problemId: input.problemId }),
+        ...(input.contextId === undefined
+          ? {}
+          : { contextId: input.contextId }),
         imageUrls,
+        ...(imageUrls.length
+          ? {
+              imageSource: requestedImageUrls.length
+                ? (input.imageSource ?? 'slide')
+                : 'browser-page',
+            }
+          : {}),
         ...(input.customPrompt === undefined
           ? {}
           : { customPrompt: input.customPrompt }),
+        ...(input.sessionId === undefined
+          ? {}
+          : { sessionId: input.sessionId }),
+        ...(input.retry === undefined ? {} : { retry: input.retry }),
       });
     },
   );
@@ -226,12 +263,15 @@ function registerIpc(): void {
         throw new Error('Invalid lesson connection request.');
       }
       const facade = getRuntime().facade;
-      await facade.connectLesson(environment, lessonId);
+      const connectedEnvironment = await facade.connectLesson(
+        environment,
+        lessonId,
+      );
       const lesson = (await facade.listLessons()).find(
         (item) => item.id === lessonId,
       );
       await getBrowserController().openLesson(
-        environment,
+        connectedEnvironment,
         lessonId,
         lesson?.status,
       );
@@ -512,12 +552,22 @@ function assertGenerateProposalInput(
 ): asserts value is GenerateAnswerProposalInput {
   if (
     !isRecord(value) ||
-    typeof value.problemId !== 'string' ||
+    (value.problemId !== undefined && typeof value.problemId !== 'string') ||
+    (value.contextId !== undefined && typeof value.contextId !== 'string') ||
+    (typeof value.problemId !== 'string' &&
+      typeof value.contextId !== 'string') ||
     (value.customPrompt !== undefined &&
       typeof value.customPrompt !== 'string') ||
+    (value.sessionId !== undefined && typeof value.sessionId !== 'string') ||
+    (value.retry !== undefined && typeof value.retry !== 'boolean') ||
     (value.imageUrls !== undefined &&
       (!Array.isArray(value.imageUrls) ||
-        !value.imageUrls.every((url) => typeof url === 'string')))
+        !value.imageUrls.every((url) => typeof url === 'string'))) ||
+    (value.imageSource !== undefined &&
+      value.imageSource !== 'slide' &&
+      value.imageSource !== 'browser-page') ||
+    (value.captureCurrentPage !== undefined &&
+      typeof value.captureCurrentPage !== 'boolean')
   ) {
     throw new Error('Invalid AI proposal request.');
   }
@@ -558,8 +608,17 @@ function isHttpsUrl(value: string): boolean {
 async function prepareAiImage(value: string): Promise<string> {
   if (value.startsWith('data:image/')) return value;
   if (!isHttpsUrl(value)) throw new Error('课件图片必须使用 HTTPS。');
-  const response =
-    await getBrowserController().webContents.session.fetch(value);
+  let response: Response;
+  try {
+    response = await getBrowserController().webContents.session.fetch(value, {
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      throw new Error('课件图片读取超时，请重新请求。');
+    }
+    throw error;
+  }
   if (!response.ok)
     throw new Error(`课件图片读取失败：HTTP ${response.status}`);
   const contentType = (response.headers.get('content-type') ?? 'image/jpeg')
@@ -733,6 +792,10 @@ function sourceModulePath(id: SourceModuleId): string {
 }
 
 async function createWindow(): Promise<void> {
+  if (serviceCleanupPromise) {
+    await serviceCleanupPromise;
+    serviceCleanupPromise = undefined;
+  }
   const window = new BrowserWindow({
     show: false,
     width: 1180,
@@ -782,10 +845,9 @@ async function createWindow(): Promise<void> {
     disposed = true;
     nextNetworkLabController.destroy();
     nextBrowserController.destroy();
-    void windowResources.cliServer?.close();
+    void cleanupServices();
     keepScreenAwake = false;
     syncScreenWakeLock();
-    void runtime?.stop();
   });
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = undefined;
@@ -853,8 +915,8 @@ async function createWindow(): Promise<void> {
       prepareImage: prepareAiImage,
     }),
   );
-  await windowResources.cliServer.start();
   cliServer = windowResources.cliServer;
+  await windowResources.cliServer.start();
   if (window.isDestroyed()) return;
   let initialEnvironment = isBrowserEnvironment(settings.browserEnvironment)
     ? settings.browserEnvironment
@@ -885,23 +947,25 @@ async function createWindow(): Promise<void> {
   await browserStart;
 }
 
-void app
-  .whenReady()
-  .then(async () => {
-    Menu.setApplicationMenu(null);
-    registerIpc();
-    await createWindow();
+if (hasSingleInstanceLock) {
+  void app
+    .whenReady()
+    .then(async () => {
+      Menu.setApplicationMenu(null);
+      registerIpc();
+      await createWindow();
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        void createWindow().catch(reportStartupError);
-      }
+      app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+          void createWindow().catch(reportStartupError);
+        }
+      });
+    })
+    .catch((error: unknown) => {
+      reportStartupError(error);
+      app.quit();
     });
-  })
-  .catch((error: unknown) => {
-    reportStartupError(error);
-    app.quit();
-  });
+}
 
 function reportStartupError(error: unknown): void {
   console.error(
@@ -910,11 +974,26 @@ function reportStartupError(error: unknown): void {
   );
 }
 
+function cleanupServices(): Promise<void> {
+  if (serviceCleanupPromise) return serviceCleanupPromise;
+  const activeCliServer = cliServer;
+  const activeRuntime = runtime;
+  serviceCleanupPromise = Promise.allSettled([
+    activeCliServer?.close() ?? Promise.resolve(),
+    activeRuntime?.stop() ?? Promise.resolve(),
+  ]).then(() => undefined);
+  return serviceCleanupPromise;
+}
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
-  void cliServer?.close();
-  void runtime?.stop();
+app.on('before-quit', (event) => {
+  if (quitAfterCleanup) return;
+  event.preventDefault();
+  void cleanupServices().finally(() => {
+    quitAfterCleanup = true;
+    app.quit();
+  });
 });

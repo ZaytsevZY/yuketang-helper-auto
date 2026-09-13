@@ -29,13 +29,14 @@ export interface AppSettings {
   readonly customNotifyAudioSrc: string;
   readonly customNotifyAudioName: string;
   readonly autoJoinEnabled: boolean;
-  readonly autoAnswerOnAutoJoin: boolean;
-  readonly autoAnswer: boolean;
+  readonly llmAutoGenerate: boolean;
+  readonly llmManagedSubmit: boolean;
   readonly autoAnswerDelay: number;
   readonly autoAnswerRandomDelay: number;
   readonly keepScreenAwake: boolean;
-  readonly aiAutoAnalyze: boolean;
+  readonly aiAnalyzeLatestOnOpen: boolean;
   readonly aiSlidePickPriority: boolean;
+  readonly aiCaptureCurrentPage: boolean;
   readonly activeAiProfileId: string;
   readonly aiProfiles: readonly AiProfileConfig[];
   readonly iftex: boolean;
@@ -66,13 +67,14 @@ export const DefaultAppSettings: AppSettings = Object.freeze({
   customNotifyAudioSrc: '',
   customNotifyAudioName: '',
   autoJoinEnabled: false,
-  autoAnswerOnAutoJoin: true,
-  autoAnswer: false,
+  llmAutoGenerate: false,
+  llmManagedSubmit: false,
   autoAnswerDelay: 3000,
   autoAnswerRandomDelay: 2000,
   keepScreenAwake: false,
-  aiAutoAnalyze: false,
+  aiAnalyzeLatestOnOpen: false,
   aiSlidePickPriority: true,
+  aiCaptureCurrentPage: true,
   activeAiProfileId: '',
   aiProfiles: [],
   iftex: true,

@@ -1,6 +1,7 @@
 import type { WebContents } from 'electron';
 import {
   isClassroomReportResponse,
+  isProblemSubmissionResponse,
   type BrowserLessonCollector,
   type NetworkRecorder,
 } from '@ykt/routing';
@@ -16,6 +17,7 @@ interface RequestMetadata {
 interface CdpRequestMetadata {
   method: string;
   url: string;
+  body: string | null;
 }
 
 interface CdpResponseMetadata {
@@ -30,7 +32,7 @@ interface CdpMessage {
   requestId?: string;
   type?: string;
   encodedDataLength?: number;
-  request?: { method?: string; url?: string };
+  request?: { method?: string; url?: string; postData?: string };
   response?: {
     url?: string;
     status?: number;
@@ -186,6 +188,7 @@ export class ElectronNetworkObserver {
       this.#cdpRequests.set(requestId, {
         method: params.request?.method ?? 'GET',
         url: params.request?.url ?? '',
+        body: params.request?.postData ?? null,
       });
       return;
     }
@@ -312,7 +315,8 @@ export class ElectronNetworkObserver {
     const neededByLessonCollector =
       this.lessonCollector !== undefined &&
       (isPresentationResponseUrl(response.url) ||
-        isClassroomReportUrl(response.url));
+        isClassroomReportUrl(response.url) ||
+        isProblemSubmissionResponseUrl(response.url));
     if (!this.#deepCapture && !neededByLessonCollector) return;
 
     try {
@@ -327,6 +331,9 @@ export class ElectronNetworkObserver {
         url: response.url,
         statusCode: response.status,
         body: result.body,
+        ...(request
+          ? { method: request.method, requestBody: request.body }
+          : {}),
         contextId: String(this.contents.id),
         resourceType: response.resourceType,
       });
@@ -383,6 +390,14 @@ function isPresentationResponseUrl(value: string): boolean {
 function isClassroomReportUrl(value: string): boolean {
   try {
     return isClassroomReportResponse(new URL(value).pathname);
+  } catch {
+    return false;
+  }
+}
+
+function isProblemSubmissionResponseUrl(value: string): boolean {
+  try {
+    return isProblemSubmissionResponse(new URL(value).pathname);
   } catch {
     return false;
   }

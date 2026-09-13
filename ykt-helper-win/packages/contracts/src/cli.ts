@@ -1,6 +1,15 @@
 import type { JsonValue } from './storage.js';
 
-export const DesktopCliPipePath = String.raw`\\.\pipe\yuketang-helper-desktop-v1`;
+const windowsCliPipePath = String.raw`\\.\pipe\yuketang-helper-desktop-v1`;
+const unixUserSuffix =
+  typeof process !== 'undefined' && typeof process.getuid === 'function'
+    ? `-${process.getuid()}`
+    : '';
+
+export const DesktopCliPipePath =
+  typeof process !== 'undefined' && process.platform === 'win32'
+    ? windowsCliPipePath
+    : `/tmp/yuketang-helper-desktop-v1${unixUserSuffix}.sock`;
 
 export const CliRpcMethod = {
   Status: 'status',

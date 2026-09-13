@@ -2,6 +2,7 @@ export * from './domain/lesson-session.js';
 export * from './domain/problem-type.js';
 export * from './llm/openai-compatible-provider.js';
 export * from './llm/provider.js';
+export * from './llm/session-manager.js';
 export * from './repositories/lesson-repository.js';
 export * from './runtime.js';
 export * from './services/active-lesson-service.js';

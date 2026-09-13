@@ -38,4 +38,19 @@ describe('BackendRuntime', () => {
       code: ErrorCode.NotImplemented,
     });
   });
+
+  it('rejects agent submission when LLM managed submission is disabled', async () => {
+    const runtime = createBackendRuntime();
+
+    await expect(
+      runtime.facade.submitAnswer({
+        problemId: 'p1',
+        answer: 'A',
+        proposalId: 'proposal-1',
+        confirmedBy: 'agent',
+      }),
+    ).rejects.toMatchObject<Partial<YuketangError>>({
+      code: ErrorCode.PermissionDenied,
+    });
+  });
 });

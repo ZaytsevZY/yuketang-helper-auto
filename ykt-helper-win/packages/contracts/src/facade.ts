@@ -54,7 +54,10 @@ export interface YuketangFacade {
   listLogs(limit?: number): Promise<readonly AppLogEntry[]>;
   listLessons(): Promise<readonly Lesson[]>;
   refreshLessons(environment: BrowserEnvironment): Promise<readonly Lesson[]>;
-  connectLesson(environment: BrowserEnvironment, id: string): Promise<void>;
+  connectLesson(
+    environment: BrowserEnvironment,
+    id: string,
+  ): Promise<BrowserEnvironment>;
   listPresentations(lessonId: string): Promise<readonly Presentation[]>;
   listProblems(lessonId: string): Promise<readonly ProblemContext[]>;
   watchLesson(id: string): AsyncIterable<LessonEvent>;

@@ -78,12 +78,15 @@ async function dispatch(
   if (method === CliRpcMethod.LessonConnect) {
     const environment = environmentValue(input.environment);
     const lessonId = stringValue(input.id, 'lesson id');
-    await facade.connectLesson(environment, lessonId);
+    const connectedEnvironment = await facade.connectLesson(
+      environment,
+      lessonId,
+    );
     const lesson = (await facade.listLessons()).find(
       (item) => item.id === lessonId,
     );
-    await context.openLesson(environment, lessonId, lesson?.status);
-    return { ...lesson, id: lessonId, environment };
+    await context.openLesson(connectedEnvironment, lessonId, lesson?.status);
+    return { ...lesson, id: lessonId, environment: connectedEnvironment };
   }
   if (method === CliRpcMethod.PresentationList) {
     return facade.listPresentations(stringValue(input.lessonId, 'lesson id'));

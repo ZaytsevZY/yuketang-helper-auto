@@ -1,8 +1,9 @@
-import type { ClassroomNotice } from '@ykt/contracts';
+import type { AnswerValue, ClassroomNotice } from '@ykt/contracts';
 
 type RealtimeEvent =
   | { kind: 'timeline'; timeline: unknown }
   | { kind: 'unlockproblem'; problem: Record<string, unknown> }
+  | { kind: 'answered'; problemId: string; answer: AnswerValue }
   | { kind: 'lessonfinished' }
   | {
       kind: 'publish';
@@ -58,6 +59,16 @@ export function getRealtimeEvent(
               prob: message.prob ?? rawProblem ?? message.problemid,
             },
     };
+  }
+  if (op === 'problemanswered') {
+    const problemId = firstText(message, [
+      'problemId',
+      'problem_id',
+      'problemid',
+      'id',
+    ]);
+    const answer = answerValue(message.answer ?? message.result);
+    return problemId && answer ? { kind: 'answered', problemId, answer } : null;
   }
   if (op === 'lessonfinished') return { kind: 'lessonfinished' };
 
@@ -191,6 +202,20 @@ function findNestedText(
     }
   }
   return '';
+}
+
+function answerValue(value: unknown): AnswerValue | null {
+  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
+    return [...value];
+  }
+  const answer = record(value);
+  if (!answer || typeof answer.content !== 'string') return null;
+  return {
+    content: answer.content,
+    pics: Array.isArray(answer.pics)
+      ? answer.pics.filter((item): item is string => typeof item === 'string')
+      : [],
+  };
 }
 
 function record(value: unknown): Record<string, unknown> | null {

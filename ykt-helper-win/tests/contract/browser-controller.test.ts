@@ -35,6 +35,18 @@ class FakeContents extends EventEmitter {
     this.emit('did-stop-loading');
   }
 
+  async capturePage(): Promise<{
+    isEmpty(): boolean;
+    toDataURL(): string;
+  }> {
+    const url = this.url;
+    return {
+      isEmpty: () => false,
+      toDataURL: () =>
+        `data:image/png;base64,${Buffer.from(url).toString('base64')}`,
+    };
+  }
+
   setWindowOpenHandler(handler: (details: { url: string }) => unknown): void {
     this.windowOpenHandler = handler;
   }
@@ -124,6 +136,46 @@ describe('embedded browser tabs', () => {
     expect(controller.getState().tabs).toHaveLength(1);
   });
 
+  it('opens a standard diagnostic home page and replaces the final deleted page', async () => {
+    const { BrowserController } =
+      await import('../../apps/desktop/main/browser-controller.js');
+    const children: FakeView[] = [];
+    const window = {
+      contentView: {
+        addChildView: (view: FakeView) => children.push(view),
+        removeChildView: (view: FakeView) => {
+          const index = children.indexOf(view);
+          if (index >= 0) children.splice(index, 1);
+        },
+      },
+      getContentBounds: () => ({ width: 1180, height: 800 }),
+      on: vi.fn(),
+    };
+    const controller = new BrowserController(window as never, vi.fn());
+    await controller.start(BrowserEnvironment.Pro);
+    const firstTabId = controller.getState().activeTabId;
+
+    await controller.newTab();
+
+    const created = controller.getState();
+    expect(created.tabs).toHaveLength(2);
+    expect(created.environment).toBe(BrowserEnvironment.Standard);
+    expect(created.url).toBe('https://www.yuketang.cn/v2/web/index');
+    const createdTabId = created.activeTabId;
+
+    await controller.closeTab(firstTabId);
+    expect(controller.getState().tabs).toHaveLength(1);
+    expect(controller.getState().activeTabId).toBe(createdTabId);
+
+    await controller.closeTab(createdTabId);
+    const replacement = controller.getState();
+    expect(replacement.tabs).toHaveLength(1);
+    expect(replacement.activeTabId).not.toBe(createdTabId);
+    expect(replacement.environment).toBe(BrowserEnvironment.Standard);
+    expect(replacement.url).toBe('https://www.yuketang.cn/v2/web/index');
+    expect(children).toHaveLength(1);
+  });
+
   it('opens ended lessons on the classroom overview page', async () => {
     const { BrowserController } =
       await import('../../apps/desktop/main/browser-controller.js');
@@ -146,6 +198,27 @@ describe('embedded browser tabs', () => {
 
     expect(controller.getState().url).toBe(
       'https://pro.yuketang.cn/m/v2/lesson/student/1764118559357124352/overview',
+    );
+  });
+
+  it('captures the active official web view for AI context', async () => {
+    const { BrowserController } =
+      await import('../../apps/desktop/main/browser-controller.js');
+    const window = {
+      contentView: {
+        addChildView: vi.fn(),
+        removeChildView: vi.fn(),
+      },
+      getContentBounds: () => ({ width: 1180, height: 800 }),
+      on: vi.fn(),
+    };
+    const controller = new BrowserController(window as never, vi.fn());
+    const pageUrl =
+      'https://pro.yuketang.cn/m/v2/lesson/student/1764118559357124352/presentation/1764119402101849856';
+    await controller.navigate(pageUrl);
+
+    await expect(controller.captureCurrentPage()).resolves.toBe(
+      `data:image/png;base64,${Buffer.from(pageUrl).toString('base64')}`,
     );
   });
 });

@@ -52,13 +52,19 @@ export interface UpdateAiProfileSelectionInput {
 }
 
 export interface GenerateAnswerProposalInput {
-  readonly problemId: string;
+  readonly problemId?: string;
+  readonly contextId?: string;
   readonly imageUrls?: readonly string[];
+  readonly imageSource?: 'slide' | 'browser-page';
+  readonly captureCurrentPage?: boolean;
   readonly customPrompt?: string;
+  readonly sessionId?: string;
+  readonly retry?: boolean;
 }
 
 export interface AnswerProposal {
   readonly id: string;
+  readonly sessionId: string;
   readonly problemId: string;
   readonly status: 'ready' | 'failed';
   readonly answer: AnswerValue | null;

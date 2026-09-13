@@ -1,9 +1,13 @@
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 
 import {
   BrowserEnvironment,
   CliRpcMethod,
+  DesktopCliPipePath,
   type YuketangFacade,
 } from '@ykt/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -19,6 +23,59 @@ afterEach(async () => {
 });
 
 describe('desktop-attached CLI', () => {
+  it('uses a platform-appropriate local endpoint', () => {
+    if (process.platform === 'win32') {
+      expect(DesktopCliPipePath).toBe(
+        String.raw`\\.\pipe\yuketang-helper-desktop-v1`,
+      );
+      return;
+    }
+    expect(isAbsolute(DesktopCliPipePath)).toBe(true);
+    expect(DesktopCliPipePath).toMatch(/\.sock$/);
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'recovers a stale Unix socket left by a terminated process',
+    async () => {
+      const pipePath = testPipePath();
+      await leaveStaleSocket(pipePath);
+      const server = new DesktopCliServer(
+        async () => ({ recovered: true }),
+        pipePath,
+      );
+      try {
+        await server.start();
+        await expect(
+          requestDesktop(CliRpcMethod.Status, undefined, pipePath),
+        ).resolves.toEqual({ recovered: true });
+      } finally {
+        await server.close();
+        await rm(pipePath, { force: true });
+      }
+    },
+  );
+
+  it('does not replace an active CLI endpoint', async () => {
+    const pipePath = testPipePath();
+    const first = new DesktopCliServer(
+      async () => ({ owner: 'first' }),
+      pipePath,
+    );
+    const second = new DesktopCliServer(
+      async () => ({ owner: 'second' }),
+      pipePath,
+    );
+    servers.push(first);
+    await first.start();
+
+    await expect(second.start()).rejects.toMatchObject({
+      code: 'EADDRINUSE',
+    });
+    await expect(
+      requestDesktop(CliRpcMethod.Status, undefined, pipePath),
+    ).resolves.toEqual({ owner: 'first' });
+  });
+
   it('exchanges one JSON request over the local pipe', async () => {
     const pipePath = testPipePath();
     const server = new DesktopCliServer(
@@ -74,6 +131,44 @@ describe('desktop-attached CLI', () => {
       ],
       errors: [{ environment: 'changjiang', message: 'not logged in' }],
     });
+  });
+
+  it('opens a lesson in the environment resolved by the connector', async () => {
+    const connectLesson = vi.fn(async () => BrowserEnvironment.Pro);
+    const openLesson = vi.fn(async () => undefined);
+    const handler = createDesktopCliHandler({
+      facade: {
+        connectLesson,
+        listLessons: vi.fn(async () => [
+          {
+            id: 'ended-lesson',
+            title: 'Ended lesson',
+            status: 'ended' as const,
+          },
+        ]),
+      } as unknown as YuketangFacade,
+      openLesson,
+      prepareImage: vi.fn(),
+    });
+
+    await expect(
+      handler(CliRpcMethod.LessonConnect, {
+        environment: BrowserEnvironment.Standard,
+        id: 'ended-lesson',
+      }),
+    ).resolves.toMatchObject({
+      id: 'ended-lesson',
+      environment: BrowserEnvironment.Pro,
+    });
+    expect(connectLesson).toHaveBeenCalledWith(
+      BrowserEnvironment.Standard,
+      'ended-lesson',
+    );
+    expect(openLesson).toHaveBeenCalledWith(
+      BrowserEnvironment.Pro,
+      'ended-lesson',
+      'ended',
+    );
   });
 
   it('reads a slide through the desktop image pipeline before OCR', async () => {
@@ -148,4 +243,19 @@ function testPipePath(): string {
   return process.platform === 'win32'
     ? `\\\\.\\pipe\\${name}`
     : join(tmpdir(), `${name}.sock`);
+}
+
+async function leaveStaleSocket(pipePath: string): Promise<void> {
+  const child = spawn(
+    process.execPath,
+    [
+      '-e',
+      "const net=require('node:net');const server=net.createServer();server.listen(process.argv[1],()=>process.stdout.write('ready'));setInterval(()=>{},1000);",
+      pipePath,
+    ],
+    { stdio: ['ignore', 'pipe', 'inherit'] },
+  );
+  await once(child.stdout, 'data');
+  child.kill('SIGKILL');
+  await once(child, 'exit');
 }

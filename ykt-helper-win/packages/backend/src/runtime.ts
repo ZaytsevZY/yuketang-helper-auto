@@ -178,8 +178,10 @@ class BaselineFacade implements YuketangFacade {
           ? 'AI 答案建议已生成。'
           : 'AI 答案建议生成失败。',
       details: {
-        problemId: input.problemId,
+        problemId: input.problemId ?? input.contextId ?? '',
         proposalId: proposal.id,
+        sessionId: proposal.sessionId,
+        retry: input.retry === true,
         ...(proposal.failureReason
           ? { failureReason: proposal.failureReason }
           : {}),
@@ -245,8 +247,8 @@ class BaselineFacade implements YuketangFacade {
   async connectLesson(
     environment: BrowserEnvironment,
     id: string,
-  ): Promise<void> {
-    await this.withLog(
+  ): Promise<BrowserEnvironment> {
+    return this.withLog(
       'lesson',
       '已开始收集官方课堂数据。',
       () => this.requireActiveClient().connectLesson(environment, id),
@@ -285,6 +287,16 @@ class BaselineFacade implements YuketangFacade {
   }
 
   async submitAnswer(input: AnswerInput): Promise<SubmissionResult> {
+    const settings = await this.storage.getSettings();
+    if (
+      input.confirmedBy === 'agent' &&
+      (!settings.llmAutoGenerate || !settings.llmManagedSubmit)
+    ) {
+      throw new YuketangError({
+        code: ErrorCode.PermissionDenied,
+        message: 'LLM 托管提交未开启，请在题目页核对后手动提交。',
+      });
+    }
     if (this.activeLessons) {
       return this.withLog(
         'answer',

@@ -184,11 +184,10 @@ async function navigateAddress(): Promise<void> {
               <span class="tab-title">{{ tab.title }}</span>
             </button>
             <button
-              v-if="(browserState?.tabs.length ?? 0) > 1"
               class="tab-close"
               type="button"
-              :aria-label="`关闭 ${tab.title}`"
-              title="关闭标签页"
+              :aria-label="`删除页面 ${tab.title}`"
+              title="删除页面"
               @click="closeTab(tab.id)"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">

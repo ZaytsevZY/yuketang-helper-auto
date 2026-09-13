@@ -52,7 +52,9 @@ export class OpenAiCompatibleProvider implements AiProviderPlugin {
           ? {}
           : { temperature: request.temperature }),
       }),
-      signal: AbortSignal.timeout(60_000),
+      signal: request.signal
+        ? AbortSignal.any([request.signal, AbortSignal.timeout(60_000)])
+        : AbortSignal.timeout(60_000),
     });
     if (!response.ok) {
       throw new Error(`AI 接口请求失败：HTTP ${response.status}`);
