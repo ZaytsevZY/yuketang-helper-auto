@@ -49,6 +49,7 @@ import {
   writeSlideFile,
 } from './media-export.js';
 import { NetworkLabController } from './network-lab-controller.js';
+import { createNetworkRecorderForDesktop } from './network-recorder-factory.js';
 import { isSourceModuleId, sourceModulePath } from './source-modules.js';
 
 let runtime: BackendRuntime | undefined;
@@ -407,10 +408,14 @@ function registerIpc(): void {
   ipcMain.handle(IpcChannel.ExportNetworkFixture, async (event) => {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
     if (!mainWindow) throw new Error('Desktop window is not ready.');
+    const development =
+      getNetworkLabController().recorder.captureProfile.mode === 'development';
 
     const result = await dialog.showSaveDialog(mainWindow, {
-      title: '导出脱敏网络 Fixture',
-      defaultPath: `yuketang-network-${new Date().toISOString().slice(0, 10)}.json`,
+      title: development
+        ? '导出开发网络 Fixture（未脱敏）'
+        : '导出脱敏网络 Fixture',
+      defaultPath: `yuketang-network${development ? '-raw' : ''}-${new Date().toISOString().slice(0, 10)}.json`,
       filters: [{ name: 'JSON', extensions: ['json'] }],
     });
     if (result.canceled || !result.filePath) return null;
@@ -720,6 +725,11 @@ async function createWindow(): Promise<void> {
   });
   browserController = nextBrowserController;
   const browserLessonCollector = new BrowserLessonCollector();
+  const networkRecorder = await createNetworkRecorderForDesktop({
+    argv: process.argv,
+    isPackaged: app.isPackaged,
+    moduleDirectory: __dirname,
+  });
   const nextNetworkLabController = new NetworkLabController(
     nextBrowserController.webContents,
     (entry) => {
@@ -733,6 +743,7 @@ async function createWindow(): Promise<void> {
       }
     },
     browserLessonCollector,
+    networkRecorder,
   );
   nextBrowserController.onWebContentsCreated((contents) => {
     nextNetworkLabController.attach(contents);

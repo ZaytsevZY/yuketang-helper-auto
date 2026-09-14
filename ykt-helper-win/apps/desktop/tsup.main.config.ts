@@ -1,7 +1,10 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['main/index.ts'],
+  entry: {
+    index: 'main/index.ts',
+    'development-network-recorder': 'main/development-network-recorder.ts',
+  },
   format: ['cjs'],
   platform: 'node',
   target: 'node24',

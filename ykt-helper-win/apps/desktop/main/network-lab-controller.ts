@@ -16,7 +16,7 @@ import {
 import { ElectronNetworkObserver } from './electron-network-observer.js';
 
 export class NetworkLabController {
-  readonly recorder = new NetworkRecorder();
+  readonly recorder: NetworkRecorder;
   readonly #normalizers = new NormalizerPipeline();
   readonly #observers = new Map<number, ElectronNetworkObserver>();
   readonly #lessonCollector: BrowserLessonCollector | undefined;
@@ -30,8 +30,11 @@ export class NetworkLabController {
     private readonly onEntry: (entry: NetworkEntry) => void,
     private readonly onStateChanged: (state: NetworkCaptureState) => void,
     lessonCollector?: BrowserLessonCollector,
+    recorder: NetworkRecorder = new NetworkRecorder(),
   ) {
+    this.recorder = recorder;
     this.#lessonCollector = lessonCollector;
+    this.#deepCapture = recorder.captureProfile.deepCaptureByDefault;
     this.attach(contents);
     this.recorder.subscribe((entry) => this.handleEntry(entry));
   }
@@ -41,6 +44,14 @@ export class NetworkLabController {
     await Promise.all(
       [...this.#observers.values()].map((observer) => observer.start()),
     );
+    if (this.#deepCapture) {
+      await Promise.all(
+        [...this.#observers.values()].map((observer) =>
+          observer.setDeepCapture(true),
+        ),
+      );
+    }
+    this.emitState();
   }
 
   attach(contents: WebContents): void {
@@ -107,6 +118,7 @@ export class NetworkLabController {
 
   private getState(): NetworkCaptureState {
     return {
+      recorderMode: this.recorder.captureProfile.mode,
       paused: this.recorder.paused,
       deepCapture: this.#deepCapture,
       deepCaptureAvailable: true,

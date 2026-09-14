@@ -61,6 +61,7 @@ export class FetchHttpTransport implements ActiveHttpTransport {
       statusCode: response?.status ?? null,
       durationMs: Math.max(0, Date.now() - startedAt),
       requestHeaders: request.headers,
+      requestBody: request.body,
       responseHeaders: response?.headers ?? {},
       body,
       error,

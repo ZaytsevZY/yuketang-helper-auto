@@ -17,7 +17,7 @@
     "prepare:desktop": "npm run build && node scripts/prepare-desktop-package.mjs",
     "make:win": "npm run prepare:desktop && npm run make:installer -w yuketang-helper-desktop-package",
     "make:portable": "npm run prepare:desktop && npm run make:portable -w yuketang-helper-desktop-package",
-    "start": "npm run start -w @ykt/desktop",
+    "start": "npm run start -w @ykt/desktop --",
     "cli": "npm run start -w @ykt/cli --",
     "test": "vitest run",
     "lint": "eslint . && npm run boundaries",
