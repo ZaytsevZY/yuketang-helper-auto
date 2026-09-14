@@ -5,6 +5,7 @@ import {
   BrowserTargets,
   type BrowserState,
   type RuntimeStatus,
+  type WebAreaBounds,
 } from '@ykt/contracts';
 
 import AssistantPanel from './components/AssistantPanel.vue';
@@ -39,7 +40,10 @@ const assistantCollapsed = ref(initiallyCollapsed);
 const controlError = ref('');
 const addressDraft = ref('');
 const editingAddress = ref(false);
+const webArea = ref<HTMLElement | null>(null);
 let unsubscribe: (() => void) | undefined;
+let resizeObserver: ResizeObserver | undefined;
+let lastBoundsKey = '';
 
 const pageStatus = computed(() => {
   if (browserState.value?.errorMessage) return browserState.value.errorMessage;
@@ -51,9 +55,31 @@ const shellStyle = computed(() => ({
   '--assistant-width': assistantCollapsed.value ? '44px' : '380px',
 }));
 
+function reportWebAreaBounds(): void {
+  const element = webArea.value;
+  if (!element) return;
+  const rect = element.getBoundingClientRect();
+  const bounds: WebAreaBounds = {
+    x: Math.max(0, Math.round(rect.left)),
+    y: Math.max(0, Math.round(rect.top)),
+    width: Math.max(0, Math.round(rect.width)),
+    height: Math.max(0, Math.round(rect.height)),
+  };
+  const key = `${bounds.x},${bounds.y},${bounds.width},${bounds.height}`;
+  if (key === lastBoundsKey) return;
+  lastBoundsKey = key;
+  void window.yuketang.setWebAreaBounds(bounds).catch(() => {
+    lastBoundsKey = '';
+  });
+}
+
 onMounted(async () => {
+  resizeObserver = new ResizeObserver(() => reportWebAreaBounds());
+  if (webArea.value) resizeObserver.observe(webArea.value);
+
   unsubscribe = window.yuketang.onBrowserStateChanged((state) => {
     browserState.value = state;
+    assistantCollapsed.value = state.assistantPanelCollapsed;
     if (!editingAddress.value) addressDraft.value = state.url;
     controlError.value = '';
   });
@@ -66,13 +92,18 @@ onMounted(async () => {
       window.yuketang.getRuntimeStatus(),
       window.yuketang.getBrowserState(),
     ]);
+    assistantCollapsed.value = browserState.value.assistantPanelCollapsed;
     addressDraft.value = browserState.value.url;
+    reportWebAreaBounds();
   } catch {
     controlError.value = '无法连接桌面主进程';
   }
 });
 
-onUnmounted(() => unsubscribe?.());
+onUnmounted(() => {
+  unsubscribe?.();
+  resizeObserver?.disconnect();
+});
 
 async function selectEnvironment(event: Event): Promise<void> {
   const value = (event.target as HTMLSelectElement).value;
@@ -304,7 +335,7 @@ async function navigateAddress(): Promise<void> {
       </div>
     </header>
 
-    <main class="browser-placeholder" aria-hidden="true">
+    <main ref="webArea" class="browser-placeholder" aria-hidden="true">
       <div>
         <strong>正在打开雨课堂网页…</strong>
       </div>

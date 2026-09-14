@@ -49,6 +49,8 @@ export interface BrowserState {
   canGoBack: boolean;
   canGoForward: boolean;
   errorMessage: string | null;
+  assistantPanelCollapsed: boolean;
+  networkLabCollapsed: boolean;
 }
 
 export function isBrowserEnvironment(

@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type {
   DomainNetworkEntry,
+  BrowserState,
   NetworkCaptureState,
   NetworkEntry,
 } from '@ykt/contracts';
@@ -56,13 +57,20 @@ onMounted(async () => {
     window.yuketang.onNetworkCaptureStateChanged((state) => {
       captureState.value = state;
     }),
+    window.yuketang.onBrowserStateChanged((state: BrowserState) => {
+      collapsed.value = state.networkLabCollapsed;
+    }),
   );
 
   try {
-    const snapshot = await window.yuketang.getNetworkSnapshot();
+    const [snapshot, browserState] = await Promise.all([
+      window.yuketang.getNetworkSnapshot(),
+      window.yuketang.getBrowserState(),
+    ]);
     entries.value = [...snapshot.entries];
     captureState.value = snapshot.state;
     selectedId.value = entries.value.at(-1)?.id;
+    collapsed.value = browserState.networkLabCollapsed;
   } catch {
     message.value = '无法连接网络观察器';
   }
@@ -268,13 +276,12 @@ function shortUrl(value: string): string {
 
 <style scoped>
 .network-lab {
-  position: fixed;
+  position: relative;
   z-index: 3;
   display: grid;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  right: var(--assistant-width);
+  grid-column: 1;
+  grid-row: 3;
+  min-width: 0;
   height: 300px;
   grid-template-rows: 43px minmax(0, 1fr);
   overflow: hidden;
@@ -310,12 +317,15 @@ function shortUrl(value: string): string {
 
 .lab-toolbar button,
 .filters button {
+  flex: 0 0 auto;
   height: 27px;
+  padding: 0 10px;
   border: 1px solid var(--line-strong);
   border-radius: 5px;
   background: #fff;
   color: var(--text);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .lab-toolbar .collapse-toggle {

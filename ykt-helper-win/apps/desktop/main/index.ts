@@ -18,6 +18,7 @@ import {
   BrowserEnvironment,
   IpcChannel,
   isBrowserEnvironment,
+  isWebAreaBounds,
   type AnswerInput,
   type ConnectAiProfileInput,
   type ClassroomSimulationAction,
@@ -373,6 +374,11 @@ function registerIpc(): void {
       getBrowserController().setAssistantPanelCollapsed(collapsed);
     },
   );
+  ipcMain.handle(IpcChannel.SetWebAreaBounds, (event, bounds: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (!isWebAreaBounds(bounds)) throw new Error('Invalid web area bounds.');
+    getBrowserController().setWebAreaBounds(bounds);
+  });
   ipcMain.handle(IpcChannel.GetNetworkSnapshot, (event) => {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
     return getNetworkLabController().getSnapshot();

@@ -30,6 +30,7 @@ import {
   type UpdateAiProfileSelectionInput,
   type UserProfile,
   type ValidationResult,
+  type WebAreaBounds,
 } from '@ykt/contracts';
 
 const api: DesktopApi = Object.freeze({
@@ -169,6 +170,8 @@ const api: DesktopApi = Object.freeze({
       IpcChannel.SetAssistantPanelCollapsed,
       collapsed,
     ) as Promise<void>,
+  setWebAreaBounds: (bounds: WebAreaBounds) =>
+    ipcRenderer.invoke(IpcChannel.SetWebAreaBounds, bounds) as Promise<void>,
   onBrowserStateChanged: (listener: (state: BrowserState) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

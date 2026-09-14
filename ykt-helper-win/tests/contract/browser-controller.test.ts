@@ -91,12 +91,13 @@ class FakeContents extends EventEmitter {
 
 class FakeView {
   readonly webContents: FakeContents;
+  readonly setBounds = vi.fn();
+  readonly setVisible = vi.fn();
+  visible = true;
 
   constructor(options?: { webContents?: FakeContents }) {
     this.webContents = options?.webContents ?? new FakeContents();
   }
-
-  setBounds(): void {}
 }
 
 vi.doMock('electron', () => ({ WebContentsView: FakeView }));
@@ -220,5 +221,101 @@ describe('embedded browser tabs', () => {
     await expect(controller.captureCurrentPage()).resolves.toBe(
       `data:image/png;base64,${Buffer.from(pageUrl).toString('base64')}`,
     );
+  });
+});
+
+describe('web area layout', () => {
+  async function createController() {
+    const children: FakeView[] = [];
+    const window = {
+      contentView: {
+        addChildView: (view: FakeView) => children.push(view),
+        removeChildView: (view: FakeView) => {
+          const index = children.indexOf(view);
+          if (index >= 0) children.splice(index, 1);
+        },
+      },
+      getContentBounds: () => ({ width: 1180, height: 800 }),
+      on: vi.fn(),
+    };
+    const onStateChanged = vi.fn();
+    return {
+      window,
+      children,
+      onStateChanged,
+      activeView: () => {
+        const view = children.at(-1);
+        if (!view) throw new Error('No active view.');
+        return view;
+      },
+      controller: new (
+        await import('../../apps/desktop/main/browser-controller.js')
+      ).BrowserController(window as never, onStateChanged),
+    };
+  }
+
+  it('falls back to constant bounds before the first measurement', async () => {
+    const { activeView } = await createController();
+    expect(activeView().setBounds).toHaveBeenLastCalledWith({
+      x: 0,
+      y: 128,
+      width: 800,
+      height: 372,
+    });
+    expect(activeView().setVisible).toHaveBeenLastCalledWith(true);
+  });
+
+  it('applies measured bounds verbatim', async () => {
+    const { controller, activeView } = await createController();
+    const measured = { x: 0, y: 128, width: 640, height: 429 };
+    controller.setWebAreaBounds(measured);
+    expect(activeView().setBounds).toHaveBeenLastCalledWith(measured);
+    expect(activeView().setVisible).toHaveBeenLastCalledWith(true);
+  });
+
+  it('hides the view when the measured area collapses to zero', async () => {
+    const { controller, activeView } = await createController();
+    controller.setWebAreaBounds({ x: 0, y: 128, width: 0, height: 429 });
+    expect(activeView().setVisible).toHaveBeenLastCalledWith(false);
+
+    controller.setWebAreaBounds({ x: 0, y: 128, width: 640, height: 429 });
+    expect(activeView().setVisible).toHaveBeenLastCalledWith(true);
+  });
+
+  it('rejects malformed measured bounds', async () => {
+    const { controller } = await createController();
+    expect(() =>
+      controller.setWebAreaBounds({ x: 0, y: 128, width: -1, height: 429 }),
+    ).toThrow('Invalid web area bounds.');
+    expect(() =>
+      controller.setWebAreaBounds({ x: 0, y: 128, width: 1.5, height: 429 }),
+    ).toThrow('Invalid web area bounds.');
+  });
+
+  it('reports panel collapse state and re-lays out on toggles', async () => {
+    const { controller, activeView, onStateChanged } = await createController();
+    expect(controller.getState()).toMatchObject({
+      assistantPanelCollapsed: false,
+      networkLabCollapsed: false,
+    });
+
+    controller.setAssistantPanelCollapsed(true);
+    expect(controller.getState().assistantPanelCollapsed).toBe(true);
+    expect(activeView().setBounds).toHaveBeenLastCalledWith({
+      x: 0,
+      y: 128,
+      width: 1136,
+      height: 372,
+    });
+
+    controller.setNetworkLabCollapsed(true);
+    expect(controller.getState().networkLabCollapsed).toBe(true);
+    expect(activeView().setBounds).toHaveBeenLastCalledWith({
+      x: 0,
+      y: 128,
+      width: 1136,
+      height: 629,
+    });
+    expect(onStateChanged).toHaveBeenCalled();
   });
 });
