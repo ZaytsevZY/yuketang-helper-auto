@@ -938,6 +938,18 @@ async function requestAiProposal(
   )
     return;
   if (proposal.status === 'ready' && proposal.answer) {
+    const isCurrentProblem = selectedProblemId.value === problem.id;
+    const existingDraft = isCurrentProblem
+      ? answerDraft.value
+      : autoFilledDrafts.get(problem.id)?.draft;
+    if (
+      existingDraft?.trim() ||
+      (isCurrentProblem && (validation.value || confirmed.value))
+    ) {
+      infoMessage.value =
+        '已保留现有答案及校验、确认状态。LLM 建议可在 AI 页查看并手动采用。';
+      return;
+    }
     const draft = answerValueToDraft(proposal.answer, problem.type);
     autoFilledDrafts.set(problem.id, { draft, proposal });
     if (selectedProblemId.value === problem.id) {

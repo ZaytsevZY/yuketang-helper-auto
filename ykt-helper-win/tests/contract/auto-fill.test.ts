@@ -69,6 +69,48 @@ function setupPanel() {
 }
 
 describe('automatic draft-only answers', () => {
+  it.each(['before request', 'while pending'])(
+    'preserves an answer entered %s and its validation and confirmation',
+    async (when) => {
+      const { panel, api, problem, emit } = setupPanel();
+      panel.selectedProblemId.value = problem.id;
+      await nextTick();
+      if (when === 'before request') panel.answerDraft.value = 'B';
+      await nextTick();
+      let resolve!: (value: any) => void;
+      api.generateAnswerProposal.mockImplementationOnce(
+        () =>
+          new Promise((done) => {
+            resolve = done;
+          }),
+      );
+      const analysis = panel.analyzeProblem(true);
+      if (when === 'while pending') panel.answerDraft.value = 'B';
+      await nextTick();
+      await panel.validateAnswer();
+      panel.confirmed.value = true;
+      const validation = panel.validation.value;
+      resolve({
+        id: 'proposal-p1',
+        problemId: 'p1',
+        status: 'ready',
+        answer: ['A'],
+      });
+      await analysis;
+      await nextTick();
+      expect(panel.answerDraft.value).toBe('B');
+      expect(panel.validation.value).toBe(validation);
+      expect(panel.confirmed.value).toBe(true);
+      expect(panel.appliedProposalId.value).toBe('');
+      expect(
+        panel.currentAiSession.value.messages.at(-1).proposal.answer,
+      ).toEqual(['A']);
+      expect(emit).not.toHaveBeenCalledWith('selectPage', 'problems');
+      expect(api.submitAnswer).not.toHaveBeenCalled();
+      expect(panel.infoMessage.value).toContain('保留');
+    },
+  );
+
   it('requires validation and explicit user confirmation before manual submission', async () => {
     const { panel, api, problem } = setupPanel();
     await panel.onAvailableProblem(problem);
@@ -86,6 +128,38 @@ describe('automatic draft-only answers', () => {
       proposalId: 'proposal-p1',
       confirmedBy: 'user',
     });
+  });
+
+  it('preserves an edited saved draft when the response arrives after switching questions', async () => {
+    const { panel, api, problem } = setupPanel();
+    panel.problems.value.push({ ...problem, id: 'p2' });
+    panel.selectedProblemId.value = problem.id;
+    await nextTick();
+    await panel.analyzeProblem(true);
+    let resolve!: (value: any) => void;
+    api.generateAnswerProposal.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const analysis = panel.analyzeProblem(true);
+    panel.answerDraft.value = 'B';
+    await nextTick();
+    panel.selectedProblemId.value = 'p2';
+    await nextTick();
+    resolve({
+      id: 'proposal-new',
+      problemId: 'p1',
+      status: 'ready',
+      answer: ['A'],
+    });
+    await analysis;
+    panel.selectedProblemId.value = 'p1';
+    await nextTick();
+    expect(panel.answerDraft.value).toBe('B');
+    expect(panel.appliedProposalId.value).toBe('proposal-p1');
+    expect(api.submitAnswer).not.toHaveBeenCalled();
   });
 
   it('does not fill or submit when the model fails', async () => {
