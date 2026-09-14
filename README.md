@@ -41,11 +41,13 @@
 
 ## Quick Start
 
-- 安装 [Node.js](https://nodejs.org/en) > 11.6.0
+- 安装 [Node.js](https://nodejs.org/en) 24.x 和 npm 11.x。
 
-```bash
-git clone git@github.com:ZaytsevZY/yuketang-helper-auto.git
-cd yuketang-helper\ykt-helper-win
+```sh
+git clone https://github.com/ZaytsevZY/yuketang-helper-auto.git
+cd yuketang-helper-auto/ykt-helper-win
+npm ci --include=dev --include=optional
+npm run build
 npm start
 ```
 
