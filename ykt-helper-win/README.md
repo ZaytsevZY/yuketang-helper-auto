@@ -4,8 +4,10 @@
 
 ## 开发命令
 
+使用 Node.js 24.x、npm 11.x，在 `ykt-helper-win` 目录执行：
+
 ```powershell
-npm install
+npm ci --include=dev --include=optional
 npm run build
 npm test
 npm run lint
@@ -17,6 +19,25 @@ npm run format:check
 ```powershell
 npm start
 ```
+
+Electron 已声明为项目本地开发依赖，不需要全局安装。首次启动会下载锁定版本的 Electron 运行时。
+
+## 启动故障排查
+
+- 提示找不到 `electron`：先在 `ykt-helper-win` 执行上述依赖安装命令，确认成功后再构建、启动。不要用全局 Electron 代替项目依赖。
+- 提示找不到 `dist/main/index.cjs`：先执行 `npm run build`，构建成功后再启动。
+- 提示 `Cannot find native binding` 或 `Electron failed to install correctly`：先确认错误路径是否位于全局 `npm/node_modules/electron`。若是，请完成项目本地安装后重试；本项目的锁文件不控制全局安装的版本。
+
+若本地 Electron 仍安装失败，可在 `ykt-helper-win` 执行以下命令查看完整的原生模块加载错误和安装输出：
+
+```sh
+node -e "try { require('@electron-internal/extract-zip') } catch (error) { console.dir(error, { depth: null }); process.exitCode = 1 }"
+node node_modules/electron/install.js
+```
+
+`Cannot find native binding` 的 npm optional-dependencies 提示不一定是真正原因；Windows 应用控制阻止加载也可能产生该提示（[Electron #52481](https://github.com/electron/electron/issues/52481)）。请根据内层 `cause` 排查，不要直接删除项目锁文件或关闭系统安全策略。下载失败时可使用本文末尾的 Electron 镜像配置后重试安装命令。
+
+## CLI 调用
 
 桌面程序运行后，可通过本机 Named Pipe 调用同一个 Backend Runtime：
 
