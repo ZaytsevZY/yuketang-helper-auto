@@ -3199,12 +3199,12 @@ function clamp(value: number, min: number, max: number): number {
 
 <style scoped>
 .assistant-panel {
-  position: fixed;
+  position: relative;
   z-index: 4;
-  top: 96px;
-  right: 0;
-  bottom: 0;
-  width: var(--assistant-width);
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  min-width: 0;
+  min-height: 0;
   border-left: 1px solid var(--line-strong);
   background: var(--surface);
   color: var(--text);
@@ -4731,7 +4731,8 @@ button:focus-visible {
 .notice-stack {
   position: fixed;
   z-index: 8;
-  top: 140px;
+  top: auto;
+  bottom: calc(var(--network-lab-height) + 12px);
   right: calc(var(--assistant-width) + 12px);
   width: min(340px, calc(100vw - var(--assistant-width) - 24px));
   display: grid;
@@ -4877,19 +4878,10 @@ button:focus-visible {
   white-space: nowrap;
 }
 
-@media (max-width: 920px) {
-  .assistant-panel:not(.collapsed) {
-    width: min(380px, calc(100vw - 360px));
-  }
-}
-
 @media (max-width: 680px) {
-  .assistant-panel:not(.collapsed) {
-    width: 100vw;
-  }
-
   .notice-stack {
     right: 12px;
+    bottom: 12px;
     width: calc(100vw - 24px);
   }
 }

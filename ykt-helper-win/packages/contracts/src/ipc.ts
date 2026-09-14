@@ -69,6 +69,7 @@ export const IpcChannel = {
   BrowserCloseTab: 'browser:close-tab',
   SetNetworkLabCollapsed: 'browser:set-network-lab-collapsed',
   SetAssistantPanelCollapsed: 'browser:set-assistant-panel-collapsed',
+  SetWebAreaBounds: 'browser:set-web-area-bounds',
   BrowserStateChanged: 'browser:state-changed',
   ClassroomNotice: 'classroom:notice',
   GetNetworkSnapshot: 'network:get-snapshot',
@@ -130,6 +131,7 @@ export interface DesktopApi {
   browserCloseTab(tabId: string): Promise<void>;
   setNetworkLabCollapsed(collapsed: boolean): Promise<void>;
   setAssistantPanelCollapsed(collapsed: boolean): Promise<void>;
+  setWebAreaBounds(bounds: WebAreaBounds): Promise<void>;
   onBrowserStateChanged(listener: (state: BrowserState) => void): () => void;
   onClassroomNotice(listener: (notice: ClassroomNotice) => void): () => void;
   getNetworkSnapshot(): Promise<NetworkSnapshot>;
@@ -155,3 +157,30 @@ export interface DesktopApi {
 
 export type SourceModuleId =
   'renderer' | 'ipc' | 'backend' | 'routing' | 'storage';
+
+/**
+ * Rectangle occupied by the embedded web page inside the window, measured
+ * in DIPs by the renderer. The main process applies it verbatim to the
+ * native view, so there is a single source of truth for web-area geometry.
+ */
+export interface WebAreaBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export function isWebAreaBounds(value: unknown): value is WebAreaBounds {
+  if (typeof value !== 'object' || value === null) return false;
+  const rect = value as Record<string, unknown>;
+  return (
+    Number.isInteger(rect.x) &&
+    Number.isInteger(rect.y) &&
+    Number.isInteger(rect.width) &&
+    Number.isInteger(rect.height) &&
+    (rect.x as number) >= 0 &&
+    (rect.y as number) >= 0 &&
+    (rect.width as number) >= 0 &&
+    (rect.height as number) >= 0
+  );
+}
