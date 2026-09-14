@@ -8,3 +8,4 @@ export * from './network.js';
 export * from './storage.js';
 export * from './assistant.js';
 export * from './cli.js';
+export * from './settings-patch.js';

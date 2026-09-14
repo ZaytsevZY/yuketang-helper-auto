@@ -26,6 +26,7 @@ import {
   type UserProfile,
   type ValidationResult,
   type YuketangFacade,
+  assertSettingsPatch,
 } from '@ykt/contracts';
 import {
   EmptyRoutingService,
@@ -78,6 +79,7 @@ class BaselineFacade implements YuketangFacade {
   }
 
   async updateSettings(settings: Partial<AppSettings>): Promise<AppSettings> {
+    assertSettingsPatch(settings);
     return this.withLog(
       'settings',
       '设置已更新。',

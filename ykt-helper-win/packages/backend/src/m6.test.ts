@@ -1,4 +1,9 @@
-import { ProblemType, type AiProfileConfig } from '@ykt/contracts';
+import {
+  ErrorCode,
+  ProblemType,
+  YuketangError,
+  type AiProfileConfig,
+} from '@ykt/contracts';
 import { MemoryAppDataStore, MemorySecretStore } from '@ykt/storage';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -47,6 +52,24 @@ describe('M6 facade support', () => {
     const logs = await runtime.facade.listLogs();
 
     expect(logs.some((entry) => entry.scope === 'settings')).toBe(true);
+    await runtime.stop();
+  });
+
+  it('rejects settings patches outside the GUI-enforced rules', async () => {
+    const runtime = new BackendRuntime();
+    await runtime.start();
+
+    await expect(
+      runtime.facade.updateSettings({ notifyVolume: 5 } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.InvalidArgument });
+    await expect(
+      runtime.facade.updateSettings({ unknownKey: 1 } as never),
+    ).rejects.toBeInstanceOf(YuketangError);
+    await expect(
+      runtime.facade.updateSettings({ activeAiProfileId: 'x' } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.InvalidArgument });
+
+    expect((await runtime.facade.getSettings()).notifyVolume).toBe(0.6);
     await runtime.stop();
   });
 
