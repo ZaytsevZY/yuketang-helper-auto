@@ -24,8 +24,6 @@ import {
   type ClassroomSimulationAction,
   type GenerateAnswerProposalInput,
   type RecognizeSlideInput,
-  type Presentation,
-  type SourceModuleId,
   type TranslateTextInput,
   type UpdateAiProfileSelectionInput,
 } from '@ykt/contracts';
@@ -38,13 +36,20 @@ import {
 import electronSquirrelStartup from 'electron-squirrel-startup';
 
 import { BrowserController } from './browser-controller.js';
-import { isAllowedYuketangUrl, isClassroomUrl } from './browser-policy.js';
+import { isClassroomUrl } from './browser-policy.js';
 import { createDesktopCliHandler } from './cli-handler.js';
+import { createCliDesktopControls } from './cli-desktop-controls.js';
 import { DesktopCliServer } from './cli-server.js';
 import { ChromiumHttpTransport } from './chromium-http-transport.js';
 import { ElectronSessionCredentialSource } from './electron-session-credentials.js';
 import { ElectronSafeStorageCodec } from './electron-safe-storage-codec.js';
+import {
+  fetchSlideImage,
+  writePresentationPdf,
+  writeSlideFile,
+} from './media-export.js';
 import { NetworkLabController } from './network-lab-controller.js';
+import { isSourceModuleId, sourceModulePath } from './source-modules.js';
 
 let runtime: BackendRuntime | undefined;
 let mainWindow: BrowserWindow | undefined;
@@ -430,7 +435,13 @@ function registerIpc(): void {
         (item) => item.id === presentationId,
       );
       if (!presentation) throw new Error('Presentation was not found.');
-      return exportPresentationPdf(presentation);
+      const result = await dialog.showSaveDialog(mainWindow!, {
+        title: '导出课件 PDF',
+        defaultPath: `${safeFileName(presentation.title || '雨课堂课件')}.pdf`,
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (result.canceled || !result.filePath) return null;
+      return writePresentationPdf(presentation, result.filePath);
     },
   );
   ipcMain.handle(
@@ -444,7 +455,18 @@ function registerIpc(): void {
       ) {
         throw new Error('Invalid slide download request.');
       }
-      return downloadSlide(imageUrl, suggestedName);
+      const image = await fetchSlideImage(
+        getBrowserController().webContents.session,
+        imageUrl,
+      );
+      const result = await dialog.showSaveDialog(mainWindow!, {
+        title: '下载当前课件页',
+        defaultPath: `${safeFileName(suggestedName || '课件页')}${image.extension}`,
+        filters: [{ name: '图片', extensions: [image.extension.slice(1)] }],
+      });
+      if (result.canceled || !result.filePath) return null;
+      const written = await writeSlideFile(image, result.filePath);
+      return { filePath: written.filePath };
     },
   );
   ipcMain.handle(
@@ -665,136 +687,8 @@ function syncScreenWakeLock(): void {
   }
 }
 
-async function exportPresentationPdf(
-  presentation: Presentation,
-): Promise<{ filePath: string } | null> {
-  if (!mainWindow) throw new Error('Desktop window is not ready.');
-  const result = await dialog.showSaveDialog(mainWindow, {
-    title: '导出课件 PDF',
-    defaultPath: `${safeFileName(presentation.title || '雨课堂课件')}.pdf`,
-    filters: [{ name: 'PDF', extensions: ['pdf'] }],
-  });
-  if (result.canceled || !result.filePath) return null;
-
-  const printWindow = new BrowserWindow({
-    show: false,
-    webPreferences: {
-      partition: 'persist:yuketang-browser',
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-    },
-  });
-  try {
-    await printWindow.loadURL(
-      `data:text/html;charset=utf-8,${encodeURIComponent(presentationHtml(presentation))}`,
-    );
-    await printWindow.webContents.executeJavaScript(`
-      Promise.race([
-        Promise.all(Array.from(document.images).map((image) =>
-          image.complete
-            ? Promise.resolve()
-            : new Promise((resolve) => {
-                image.addEventListener('load', resolve, { once: true });
-                image.addEventListener('error', resolve, { once: true });
-              })
-        )),
-        new Promise((resolve) => setTimeout(resolve, 15000))
-      ])
-    `);
-    const pdf = await printWindow.webContents.printToPDF({
-      printBackground: true,
-      pageSize: 'A4',
-    });
-    await writeFile(result.filePath, pdf);
-    return { filePath: result.filePath };
-  } finally {
-    printWindow.destroy();
-  }
-}
-
-async function downloadSlide(
-  imageUrl: string,
-  suggestedName: string,
-): Promise<{ filePath: string } | null> {
-  if (!mainWindow) throw new Error('Desktop window is not ready.');
-  const response =
-    await getBrowserController().webContents.session.fetch(imageUrl);
-  if (!response.ok)
-    throw new Error(`课件图片下载失败：HTTP ${response.status}`);
-  const contentType = response.headers.get('content-type') ?? '';
-  const extension = imageExtension(contentType, imageUrl);
-  const result = await dialog.showSaveDialog(mainWindow, {
-    title: '下载当前课件页',
-    defaultPath: `${safeFileName(suggestedName || '课件页')}${extension}`,
-    filters: [{ name: '图片', extensions: [extension.slice(1)] }],
-  });
-  if (result.canceled || !result.filePath) return null;
-  await writeFile(result.filePath, Buffer.from(await response.arrayBuffer()));
-  return { filePath: result.filePath };
-}
-
-function imageExtension(contentType: string, imageUrl: string): string {
-  if (/image\/png/i.test(contentType)) return '.png';
-  if (/image\/webp/i.test(contentType)) return '.webp';
-  if (/image\/gif/i.test(contentType)) return '.gif';
-  const path = new URL(imageUrl).pathname;
-  const match = /\.(png|webp|gif|jpe?g)$/i.exec(path);
-  return match ? `.${match[1]!.toLowerCase().replace('jpeg', 'jpg')}` : '.jpg';
-}
-
-function presentationHtml(presentation: Presentation): string {
-  const slides = presentation.slides
-    .map((slide, index) => {
-      const image =
-        slide.imageUrl && isAllowedYuketangUrl(slide.imageUrl)
-          ? `<img src="${escapeHtml(slide.imageUrl)}" alt="第 ${index + 1} 页" />`
-          : '<div class="missing">该页没有可导出的图片</div>';
-      return `<section class="slide"><header>${index + 1} / ${presentation.slides.length}</header>${image}</section>`;
-    })
-    .join('');
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://yuketang.cn https://*.yuketang.cn; style-src 'unsafe-inline'"><title>${escapeHtml(presentation.title)}</title><style>@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{margin:0;color:#1f2924;font-family:"Microsoft YaHei","Segoe UI",sans-serif}.slide{display:grid;width:100%;height:190mm;grid-template-rows:8mm 1fr;break-after:page;page-break-after:always}.slide:last-child{break-after:auto;page-break-after:auto}header{color:#65736b;font-size:9pt;text-align:right}img{width:100%;height:100%;object-fit:contain}.missing{display:grid;place-items:center;border:1px solid #d9e1dc;color:#77847d}</style></head><body>${slides}</body></html>`;
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(
-    /[&<>"']/g,
-    (character) =>
-      ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;',
-      })[character] ?? character,
-  );
-}
-
 function safeFileName(value: string): string {
   return value.replace(/[\\/:*?"<>|]/g, '-').trim() || '雨课堂课件';
-}
-
-function isSourceModuleId(value: unknown): value is SourceModuleId {
-  return ['renderer', 'ipc', 'backend', 'routing', 'storage'].includes(
-    value as SourceModuleId,
-  );
-}
-
-function sourceModulePath(id: SourceModuleId): string {
-  const paths: Record<SourceModuleId, string> = {
-    renderer: join(__dirname, '../../renderer/src/App.vue'),
-    ipc: join(__dirname, '../../preload/index.ts'),
-    backend: join(__dirname, '../../../../packages/backend/src/runtime.ts'),
-    routing: join(
-      __dirname,
-      '../../../../packages/routing/src/active/client.ts',
-    ),
-    storage: join(
-      __dirname,
-      '../../../../packages/storage/src/sqlite-app-data-store.ts',
-    ),
-  };
-  return paths[id];
 }
 
 async function createWindow(): Promise<void> {
@@ -919,6 +813,11 @@ async function createWindow(): Promise<void> {
       openLesson: (environment, lessonId, status) =>
         nextBrowserController.openLesson(environment, lessonId, status),
       prepareImage: prepareAiImage,
+      desktop: createCliDesktopControls({
+        browser: nextBrowserController,
+        networkLab: nextNetworkLabController,
+        facade: nextRuntime.facade,
+      }),
     }),
   );
   cliServer = windowResources.cliServer;

@@ -39,20 +39,67 @@ node node_modules/electron/install.js
 
 ## CLI 调用
 
-桌面程序运行后，可通过本机 Named Pipe 调用同一个 Backend Runtime：
+桌面程序运行后，可通过本机 Named Pipe 调用同一个 Backend Runtime。CLI 与 GUI
+共用同一个 `YuketangFacade`，界面上的所有功能都有对应命令：
 
 ```powershell
+# 状态与设置
 npm run cli -- status
+npm run cli -- settings get
+'{ "autoAnswer": true }' | npm run cli -- settings update --from -
+npm run cli -- settings reset
+
+# 用户、课堂、课件、题目
+npm run cli -- user get --environment standard --refresh
 npm run cli -- lesson list --environment all --refresh
+npm run cli -- lesson connect <lesson-id> --environment standard
 npm run cli -- presentation list --lesson <lesson-id>
+npm run cli -- presentation export <presentation-id> --lesson <lesson-id> --out deck.pdf
 npm run cli -- slide get <slide-id> --lesson <lesson-id>
 npm run cli -- slide read <slide-id> --lesson <lesson-id>
+npm run cli -- slide download <slide-id> --lesson <lesson-id> --out slide.png
 npm run cli -- problem list --lesson <lesson-id>
-npm run cli -- answer propose <problem-id>
+npm run cli -- problem get <problem-id>
+
+# AI Profile 与 AI 调用
+npm run cli -- ai profile list
+npm run cli -- ai profile connect --base-url https://ai.example.com --api-key -
+npm run cli -- ai profile assign <profile-id> --model gpt --vision-model gpt-vision `
+  --ocr-model ocr --translation-model translator --temperature null
+npm run cli -- ai profile select <profile-id>
+npm run cli -- ai profile refresh <profile-id>
+npm run cli -- ai profile delete <profile-id>
+npm run cli -- ai ask --prompt "解释这道题" --problem <problem-id>
+"解释当前页面" | npm run cli -- ai ask --prompt - --capture-page
+npm run cli -- ai translate --text "你好" --to English
+
+# 嵌入浏览器、面板布局、网络实验室
+npm run cli -- browser state
+npm run cli -- browser environment pro
+npm run cli -- browser open https://www.yuketang.cn/web
+npm run cli -- browser back
+npm run cli -- browser tab-new
+npm run cli -- layout --assistant collapsed --network-lab expanded
+npm run cli -- network snapshot
+npm run cli -- network pause
+npm run cli -- network deep-capture on
+npm run cli -- network export --out fixture.json
+
+# 课堂本地模拟
+npm run cli -- simulate state
+npm run cli -- simulate show-slide
+npm run cli -- logs list --limit 50
+
+# 在资源管理器中打开内置模块源码（与助手面板“源码”入口一致）
+npm run cli -- source open backend
 ```
 
 CLI 的 stdout 只输出 JSON；诊断和用法信息写入 stderr。`slide read`
-会复用桌面 Chromium Session 读取课件图片，再交给当前 AI Profile 的 OCR 模型。
+会复用桌面 Chromium Session 读取课件图片，再交给当前 AI Profile 的 OCR 模型；
+`presentation export` 与 `slide download` 通过同一 Session 渲染/下载并写入
+`--out` 指定的路径。文本类参数（提问、翻译、API Key 等）传 `-` 表示从 stdin
+读取，避免密钥出现在命令行历史中。
+
 答案校验和提交从 stdin 接收 JSON，提交必须显式提供 `--commit`：
 
 ```powershell
@@ -61,7 +108,9 @@ CLI 的 stdout 只输出 JSON；诊断和用法信息写入 stderr。`slide read
   npm run cli -- answer submit <problem-id> --from - --confirmed-by agent --commit
 ```
 
-初版 CLI 仅支持 desktop-attached 模式，不会直接读取 Cookie、凭据文件或
+`browser`、`layout`、`network`、`presentation export`、`slide download` 以及
+`ai ask --capture-page` 依赖正在运行的桌面进程；未运行时返回 `NOT_IMPLEMENTED`
+（管道无法连接时为 `DESKTOP_UNAVAILABLE`）。CLI 不会直接读取 Cookie、凭据文件或
 SQLite，也不会自行启动 headless 登录会话。运行 `npm run cli -- help` 可查看完整命令。
 
 ## 当前边界
