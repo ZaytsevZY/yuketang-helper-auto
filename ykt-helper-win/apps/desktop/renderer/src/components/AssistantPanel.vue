@@ -29,6 +29,7 @@ import {
 
 import ClassroomSimulator from './ClassroomSimulator.vue';
 import ProblemPicker from './ProblemPicker.vue';
+import { enterActiveLessons } from '../auto-join';
 import { renderSimpleMarkdown } from '../simple-markdown';
 
 type WorkspacePage =
@@ -1458,13 +1459,14 @@ async function automationTick(): Promise<void> {
         props.environment,
       );
       lessons.value = await window.yuketang.listLessons();
-      for (const lesson of refreshedLessons.filter(
-        (item) => item.status === 'active',
-      )) {
-        if (connectedLessonIds.has(lesson.id)) continue;
-        await window.yuketang.connectLesson(props.environment, lesson.id);
-        connectedLessonIds.add(lesson.id);
-        if (!selectedLessonId.value) selectedLessonId.value = lesson.id;
+      const enteredLessonIds = await enterActiveLessons(
+        refreshedLessons,
+        connectedLessonIds,
+        (lessonId) =>
+          window.yuketang.connectLesson(props.environment, lessonId),
+      );
+      if (!selectedLessonId.value && enteredLessonIds[0]) {
+        selectedLessonId.value = enteredLessonIds[0];
       }
     }
     if (

@@ -90,7 +90,10 @@ function parseLessons(value: unknown): readonly ActiveLesson[] {
             lesson.lesson_name ??
             lesson.name,
         ),
-        status: Number(lesson.status) === 1 ? 'active' : 'upcoming',
+        // This endpoint only returns classrooms that are currently in lesson.
+        // Real responses do not consistently include a `status` field, so
+        // treating a missing value as upcoming prevents auto-join entirely.
+        status: 'active',
         classroomId:
           stringId(lesson.classroomId ?? lesson.classroom_id) ?? null,
         presentationId:
