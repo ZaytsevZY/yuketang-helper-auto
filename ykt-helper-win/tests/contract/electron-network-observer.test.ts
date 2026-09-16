@@ -4,6 +4,7 @@ import { BrowserLessonCollector, NetworkRecorder } from '@ykt/routing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ElectronNetworkObserver } from '../../apps/desktop/main/electron-network-observer.js';
+import { DevelopmentNetworkRecorder } from '../../apps/desktop/main/development-network-recorder.js';
 
 describe('Electron classroom network observer', () => {
   it('forwards successful browser answer responses without deep capture', async () => {
@@ -75,6 +76,52 @@ describe('Electron classroom network observer', () => {
           answer: ['B'],
         },
       });
+    });
+  });
+
+  it('records API bodies above the safe preview limit with the development recorder', async () => {
+    const contents = new FakeContents();
+    const recorder = new DevelopmentNetworkRecorder();
+    const observer = new ElectronNetworkObserver(
+      contents as never,
+      recorder,
+      vi.fn(),
+      undefined,
+      false,
+    );
+    await observer.start();
+    await observer.setDeepCapture(true);
+
+    const body = JSON.stringify({ courses: ['x'.repeat(80 * 1024)] });
+    contents.debugger.responseBody = body;
+    contents.debugger.emit('message', {}, 'Network.requestWillBeSent', {
+      requestId: 'courses-1',
+      request: {
+        method: 'GET',
+        url: 'https://pro.yuketang.cn/v2/api/web/courses/list?identity=2',
+      },
+    });
+    contents.debugger.emit('message', {}, 'Network.responseReceived', {
+      requestId: 'courses-1',
+      type: 'XHR',
+      response: {
+        url: 'https://pro.yuketang.cn/v2/api/web/courses/list?identity=2',
+        status: 200,
+        mimeType: 'application/json',
+        headers: {},
+      },
+    });
+    contents.debugger.emit('message', {}, 'Network.loadingFinished', {
+      requestId: 'courses-1',
+      encodedDataLength: Buffer.byteLength(body),
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        recorder.entries.find(
+          (entry) => entry.kind === 'http' && entry.phase === 'body',
+        ),
+      ).toEqual(expect.objectContaining({ body }));
     });
   });
 });

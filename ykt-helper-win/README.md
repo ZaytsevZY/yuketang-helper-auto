@@ -138,6 +138,15 @@ SQLite，也不会自行启动 headless 登录会话。运行 `npm run cli -- he
 
 底部网络实验室默认通过 Electron `webRequest` 捕获 HTTP 元数据。课堂收集器通过 CDP 旁路读取官方页面必要的课件响应和 WebSocket 帧，但不会把原始正文写入持久化存储；开启“深度捕获”后才会将受限、脱敏的正文和帧显示在实验室中。打开远程页面 DevTools 会占用或断开 CDP，界面会显示对应状态。
 
+Parser 开发时可用独立的未脱敏 recorder 启动桌面端：
+
+```powershell
+npm run build
+npm start -- --debug
+```
+
+`--debug` 只在未打包的 Electron 中生效，会用开发 recorder 替换网络实验室 recorder、自动开启深度捕获，并将单响应上限提高到 32 MiB。界面会持续显示“DEBUG · 未脱敏”警告，导出的 fixture 也可能包含 Cookie、Token、个人信息和完整 API 正文，禁止提交到版本库或公开分享。开发 recorder 使用独立构建文件，`prepare:desktop` 不会把它复制到正式发行包。
+
 记录进入界面前会脱敏 Cookie、Authorization、Token、API Key 等字段，并受到以下限制：
 
 - 单个文本正文或帧最多保留 64 KiB。

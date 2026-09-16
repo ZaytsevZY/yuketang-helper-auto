@@ -17,8 +17,10 @@ export interface HttpNetworkEntry extends NetworkEntryBase {
   statusCode: number | null;
   durationMs: number | null;
   requestHeaders: Readonly<Record<string, string>>;
+  requestBody: string | null;
   responseHeaders: Readonly<Record<string, string>>;
   body: string | null;
+  bodyEncoding: 'utf8' | 'base64' | null;
   error: string | null;
 }
 
@@ -45,6 +47,7 @@ export type NetworkEntry =
   HttpNetworkEntry | WebSocketNetworkEntry | DomainNetworkEntry;
 
 export interface NetworkCaptureState {
+  recorderMode: 'safe' | 'development';
   paused: boolean;
   deepCapture: boolean;
   deepCaptureAvailable: boolean;

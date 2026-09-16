@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { copyFile, cp, mkdir, readFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,9 +28,9 @@ for (const directory of generatedDirectories) {
 }
 
 await Promise.all([
-  cp(join(root, 'apps', 'desktop', 'dist', 'main'), join(packageRoot, 'main'), {
-    recursive: true,
-  }),
+  mkdir(join(packageRoot, 'main'), { recursive: true }).then(() =>
+    copyFile(mainBundlePath, join(packageRoot, 'main', 'index.cjs')),
+  ),
   cp(
     join(root, 'apps', 'desktop', 'dist', 'preload'),
     join(packageRoot, 'preload'),
@@ -41,6 +42,12 @@ await Promise.all([
     { recursive: true },
   ),
 ]);
+
+// The raw, unredacted development recorder is a separate desktop build output.
+// Only the safe main bundle enters the distributable package.
+if (existsSync(join(packageRoot, 'main', 'development-network-recorder.cjs'))) {
+  throw new Error('Development network recorder entered the package body.');
+}
 
 await mkdir(join(packageRoot, 'cli'), { recursive: true });
 await copyFile(

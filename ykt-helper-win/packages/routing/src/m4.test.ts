@@ -51,6 +51,16 @@ describe('M4 active routing', () => {
     ).toBe(3000);
   });
 
+  it('treats entries from the on-lesson endpoint as active without a status field', () => {
+    expect(
+      hostAdapterFor(BrowserEnvironment.Pro).parseLessons({
+        data: {
+          onLessonClassrooms: [{ lessonId: 'lesson-without-status' }],
+        },
+      }),
+    ).toMatchObject([{ id: 'lesson-without-status', status: 'active' }]);
+  });
+
   it('manages browser credentials, Set-Auth and lesson token expiry', async () => {
     let now = 1000;
     const savedTokens: (string | null)[] = [];

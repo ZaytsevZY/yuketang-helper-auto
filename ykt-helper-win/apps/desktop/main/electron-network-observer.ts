@@ -18,6 +18,7 @@ interface CdpRequestMetadata {
   method: string;
   url: string;
   body: string | null;
+  headers: Readonly<Record<string, string>>;
 }
 
 interface CdpResponseMetadata {
@@ -32,7 +33,12 @@ interface CdpMessage {
   requestId?: string;
   type?: string;
   encodedDataLength?: number;
-  request?: { method?: string; url?: string; postData?: string };
+  request?: {
+    method?: string;
+    url?: string;
+    postData?: string;
+    headers?: Readonly<Record<string, unknown>>;
+  };
   response?: {
     url?: string;
     status?: number;
@@ -44,9 +50,6 @@ interface CdpMessage {
   url?: string;
   errorMessage?: string;
 }
-
-const LAB_BODY_LIMIT = 64 * 1024;
-const COLLECTOR_BODY_LIMIT = 2 * 1024 * 1024;
 
 export class ElectronNetworkObserver {
   readonly #requests = new Map<number, RequestMetadata>();
@@ -189,6 +192,7 @@ export class ElectronNetworkObserver {
         method: params.request?.method ?? 'GET',
         url: params.request?.url ?? '',
         body: params.request?.postData ?? null,
+        headers: flattenUnknownHeaders(params.request?.headers),
       });
       return;
     }
@@ -311,7 +315,18 @@ export class ElectronNetworkObserver {
     encodedDataLength: number,
   ): Promise<void> {
     const response = this.#cdpResponses.get(requestId);
-    if (!response || !isTextResponse(response, encodedDataLength)) return;
+    if (!response) return;
+    const profile = this.recorder.captureProfile;
+    if (
+      !isCapturableResponse(
+        response,
+        encodedDataLength,
+        profile.resourceBufferLimitBytes,
+        profile.captureBinaryBodies,
+      )
+    ) {
+      return;
+    }
     const neededByLessonCollector =
       this.lessonCollector !== undefined &&
       (isPresentationResponseUrl(response.url) ||
@@ -324,20 +339,25 @@ export class ElectronNetworkObserver {
         'Network.getResponseBody',
         { requestId },
       )) as { body?: string; base64Encoded?: boolean };
-      if (!result.body || result.base64Encoded) return;
+      if (result.body === undefined) return;
 
       const request = this.#cdpRequests.get(requestId);
-      await this.lessonCollector?.observeHttp({
-        url: response.url,
-        statusCode: response.status,
-        body: result.body,
-        ...(request
-          ? { method: request.method, requestBody: request.body }
-          : {}),
-        contextId: String(this.contents.id),
-        resourceType: response.resourceType,
-      });
-      if (this.#deepCapture && encodedDataLength <= LAB_BODY_LIMIT) {
+      if (!result.base64Encoded) {
+        await this.lessonCollector?.observeHttp({
+          url: response.url,
+          statusCode: response.status,
+          body: result.body,
+          ...(request
+            ? { method: request.method, requestBody: request.body }
+            : {}),
+          contextId: String(this.contents.id),
+          resourceType: response.resourceType,
+        });
+      }
+      const bodyBytes = result.base64Encoded
+        ? Buffer.byteLength(result.body, 'base64')
+        : Buffer.byteLength(result.body);
+      if (this.#deepCapture) {
         this.recorder.addHttp({
           source: 'browser',
           phase: 'body',
@@ -347,14 +367,39 @@ export class ElectronNetworkObserver {
           resourceType: response.resourceType,
           statusCode: response.status,
           durationMs: null,
-          requestHeaders: {},
+          requestHeaders: request?.headers ?? {},
+          requestBody: request?.body ?? null,
           responseHeaders: response.headers,
-          body: result.body,
-          error: null,
+          body:
+            bodyBytes <= profile.responseBodyLimitBytes ? result.body : null,
+          bodyEncoding: result.base64Encoded ? 'base64' : 'utf8',
+          error:
+            bodyBytes <= profile.responseBodyLimitBytes
+              ? null
+              : `Response body exceeds the ${profile.responseBodyLimitBytes} byte capture limit.`,
         });
       }
-    } catch {
-      // Bodies can disappear from the CDP cache before they are requested.
+    } catch (error: unknown) {
+      if (!this.#deepCapture) return;
+      const request = this.#cdpRequests.get(requestId);
+      this.recorder.addHttp({
+        source: 'browser',
+        phase: 'body',
+        requestId,
+        method: request?.method ?? 'GET',
+        url: response.url,
+        resourceType: response.resourceType,
+        statusCode: response.status,
+        durationMs: null,
+        requestHeaders: request?.headers ?? {},
+        requestBody: request?.body ?? null,
+        responseHeaders: response.headers,
+        body: null,
+        error:
+          error instanceof Error
+            ? `Response body capture failed: ${error.message}`
+            : 'Response body capture failed.',
+      });
     }
   }
 
@@ -363,10 +408,11 @@ export class ElectronNetworkObserver {
     if (this.contents.debugger.isAttached()) return true;
     try {
       this.contents.debugger.attach('1.3');
+      const profile = this.recorder.captureProfile;
       await this.contents.debugger.sendCommand('Network.enable', {
-        maxTotalBufferSize: 8 * 1024 * 1024,
-        maxResourceBufferSize: COLLECTOR_BODY_LIMIT,
-        maxPostDataSize: LAB_BODY_LIMIT,
+        maxTotalBufferSize: profile.totalBufferLimitBytes,
+        maxResourceBufferSize: profile.resourceBufferLimitBytes,
+        maxPostDataSize: profile.postDataLimitBytes,
       });
       this.#deepCaptureError = null;
       return true;
@@ -403,14 +449,16 @@ function isProblemSubmissionResponseUrl(value: string): boolean {
   }
 }
 
-function isTextResponse(
+function isCapturableResponse(
   response: CdpResponseMetadata,
   encodedDataLength: number,
+  resourceBufferLimitBytes: number,
+  captureBinaryBodies: boolean,
 ): boolean {
   return (
     ['XHR', 'Fetch'].includes(response.resourceType) &&
-    encodedDataLength <= COLLECTOR_BODY_LIMIT &&
-    /json|text|javascript|xml/i.test(response.mimeType)
+    encodedDataLength <= resourceBufferLimitBytes &&
+    (captureBinaryBodies || /json|text|javascript|xml/i.test(response.mimeType))
   );
 }
 

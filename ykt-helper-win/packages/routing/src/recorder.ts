@@ -23,8 +23,10 @@ export interface HttpEntryInput {
   statusCode: number | null;
   durationMs: number | null;
   requestHeaders: Readonly<Record<string, string>>;
+  requestBody?: string | null;
   responseHeaders: Readonly<Record<string, string>>;
   body: string | null;
+  bodyEncoding?: 'utf8' | 'base64' | null;
   error: string | null;
   timestamp?: string;
 }
@@ -55,6 +57,26 @@ export interface RecorderOptions {
   maxBytes?: number;
 }
 
+export interface NetworkCaptureProfile {
+  readonly mode: 'safe' | 'development';
+  readonly deepCaptureByDefault: boolean;
+  readonly responseBodyLimitBytes: number;
+  readonly resourceBufferLimitBytes: number;
+  readonly totalBufferLimitBytes: number;
+  readonly postDataLimitBytes: number;
+  readonly captureBinaryBodies: boolean;
+}
+
+const SAFE_CAPTURE_PROFILE: NetworkCaptureProfile = Object.freeze({
+  mode: 'safe',
+  deepCaptureByDefault: false,
+  responseBodyLimitBytes: 64 * 1024,
+  resourceBufferLimitBytes: 2 * 1024 * 1024,
+  totalBufferLimitBytes: 8 * 1024 * 1024,
+  postDataLimitBytes: 64 * 1024,
+  captureBinaryBodies: false,
+});
+
 export class NetworkRecorder {
   readonly #entries: NetworkEntry[] = [];
   readonly #listeners = new Set<(entry: NetworkEntry) => void>();
@@ -72,6 +94,10 @@ export class NetworkRecorder {
 
   get entries(): readonly NetworkEntry[] {
     return this.#entries;
+  }
+
+  get captureProfile(): NetworkCaptureProfile {
+    return SAFE_CAPTURE_PROFILE;
   }
 
   get paused(): boolean {
@@ -104,14 +130,17 @@ export class NetworkRecorder {
       phase: input.phase,
       requestId: input.requestId,
       method: input.method,
-      url: sanitizeUrl(input.url),
+      url: this.prepareUrl(input.url),
       resourceType: input.resourceType,
       statusCode: input.statusCode,
       durationMs: input.durationMs,
-      requestHeaders: sanitizeHeaders(input.requestHeaders),
-      responseHeaders: sanitizeHeaders(input.responseHeaders),
-      body: input.body === null ? null : sanitizeText(input.body),
-      error: input.error === null ? null : sanitizeText(input.error),
+      requestHeaders: this.prepareHeaders(input.requestHeaders),
+      requestBody:
+        input.requestBody == null ? null : this.prepareText(input.requestBody),
+      responseHeaders: this.prepareHeaders(input.responseHeaders),
+      body: input.body === null ? null : this.prepareText(input.body),
+      bodyEncoding: input.body === null ? null : (input.bodyEncoding ?? 'utf8'),
+      error: input.error === null ? null : this.prepareText(input.error),
     });
   }
 
@@ -120,11 +149,11 @@ export class NetworkRecorder {
       ...this.base(input.source, input.timestamp),
       kind: 'websocket',
       requestId: input.requestId,
-      url: sanitizeUrl(input.url),
+      url: this.prepareUrl(input.url),
       direction: input.direction,
       opcode: input.opcode,
-      payload: input.payload === null ? null : sanitizeText(input.payload),
-      error: input.error === null ? null : sanitizeText(input.error),
+      payload: input.payload === null ? null : this.prepareText(input.payload),
+      error: input.error === null ? null : this.prepareText(input.error),
     });
   }
 
@@ -133,11 +162,29 @@ export class NetworkRecorder {
       ...this.base(input.source, input.timestamp),
       kind: 'domain',
       eventType: input.eventType,
-      summary: sanitizeText(input.summary),
+      summary: this.prepareText(input.summary),
       normalizerId: input.normalizerId,
       sourceEntryId: input.sourceEntryId,
-      data: sanitizeUnknown(input.data),
+      data: this.prepareUnknown(input.data),
     });
+  }
+
+  protected prepareHeaders(
+    headers: Readonly<Record<string, string>>,
+  ): Readonly<Record<string, string>> {
+    return sanitizeHeaders(headers);
+  }
+
+  protected prepareUrl(value: string): string {
+    return sanitizeUrl(value);
+  }
+
+  protected prepareText(value: string): string {
+    return sanitizeText(value);
+  }
+
+  protected prepareUnknown(value: unknown): unknown {
+    return sanitizeUnknown(value);
   }
 
   private base(source: NetworkSource, timestamp?: string) {

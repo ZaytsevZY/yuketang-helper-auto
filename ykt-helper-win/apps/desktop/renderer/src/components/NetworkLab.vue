@@ -11,6 +11,7 @@ type EntryFilter = 'all' | NetworkEntry['kind'];
 
 const entries = ref<NetworkEntry[]>([]);
 const captureState = ref<NetworkCaptureState>({
+  recorderMode: 'safe',
   paused: false,
   deepCapture: false,
   deepCaptureAvailable: true,
@@ -160,6 +161,13 @@ function shortUrl(value: string): string {
   <section class="network-lab" :class="{ collapsed }">
     <header class="lab-toolbar">
       <strong>网络实验室</strong>
+      <span
+        v-if="captureState.recorderMode === 'development'"
+        class="development-warning"
+        title="开发采集会保留未经脱敏的完整请求和响应正文"
+      >
+        DEBUG · 未脱敏
+      </span>
       <div v-if="!collapsed" class="filters" aria-label="记录类型">
         <button
           v-for="item in ['all', 'http', 'websocket', 'domain'] as const"
@@ -247,7 +255,13 @@ function shortUrl(value: string): string {
 
       <div class="detail-pane">
         <section>
-          <h3>原始记录（已脱敏）</h3>
+          <h3>
+            {{
+              captureState.recorderMode === 'development'
+                ? '原始记录（开发采集，未脱敏）'
+                : '原始记录（已脱敏）'
+            }}
+          </h3>
           <pre tabindex="0" aria-label="原始记录内容">{{
             selectedEntry
               ? JSON.stringify(selectedEntry, null, 2)
@@ -312,6 +326,16 @@ function shortUrl(value: string): string {
 
 .lab-toolbar strong {
   margin-right: 4px;
+  white-space: nowrap;
+}
+
+.development-warning {
+  border: 1px solid #d69e2e;
+  border-radius: 4px;
+  background: #fff7df;
+  color: #8a5a00;
+  padding: 2px 6px;
+  font-weight: 700;
   white-space: nowrap;
 }
 

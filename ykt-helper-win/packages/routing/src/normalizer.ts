@@ -89,7 +89,10 @@ const EVENT_MAPPINGS = [
 function searchableContent(
   entry: HttpNetworkEntry | WebSocketNetworkEntry,
 ): string {
-  if (entry.kind === 'http') return `${entry.url}\n${entry.body ?? ''}`;
+  if (entry.kind === 'http') {
+    const body = entry.bodyEncoding === 'base64' ? '' : (entry.body ?? '');
+    return `${entry.url}\n${body}`;
+  }
   return `${entry.url}\n${entry.payload ?? ''}`;
 }
 
