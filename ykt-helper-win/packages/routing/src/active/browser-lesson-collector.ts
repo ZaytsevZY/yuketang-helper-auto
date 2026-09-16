@@ -487,9 +487,12 @@ function slideImageUrl(value: Record<string, unknown>): string | null {
   const candidate =
     value.image_url ??
     value.imageUrl ??
+    value.coverAlt ??
     value.cover_url ??
     value.coverUrl ??
     value.cover ??
+    value.image ??
+    value.thumbnail ??
     value.src ??
     value.url;
   return typeof candidate === 'string' ? candidate : null;

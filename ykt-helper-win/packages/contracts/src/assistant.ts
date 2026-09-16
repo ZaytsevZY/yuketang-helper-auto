@@ -72,6 +72,7 @@ export interface AnswerProposal {
   readonly confidence: number | null;
   readonly failureReason: string | null;
   readonly validationIssues: readonly string[];
+  readonly warnings?: readonly string[];
   readonly rawText: string;
   readonly profileId: string;
   readonly model: string;
