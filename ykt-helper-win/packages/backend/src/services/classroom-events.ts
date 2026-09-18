@@ -8,6 +8,7 @@ type RealtimeEvent =
   | {
       kind: 'publish';
       notice: Omit<ClassroomNotice, 'lessonId' | 'occurredAt'>;
+      rawMessage?: Record<string, unknown>;
     }
   | null;
 
@@ -97,6 +98,7 @@ export function getRealtimeEvent(
       title,
       detail,
     },
+    ...(category === 'assessment' ? { rawMessage: message } : {}),
   };
 }
 
@@ -120,7 +122,7 @@ function normalizeOp(message: Record<string, unknown>): string {
     .replace(/[^a-z0-9]/g, '');
 }
 
-function findEntity(message: Record<string, unknown>): Record<string, unknown> {
+export function findEntity(message: Record<string, unknown>): Record<string, unknown> {
   const queue: unknown[] = [message];
   const visited = new Set<object>();
   let fallback = message;
@@ -165,7 +167,7 @@ const identifierKeys = [
   'activity_id',
 ];
 
-function firstText(
+export function firstText(
   source: Record<string, unknown>,
   keys: readonly string[],
 ): string {

@@ -2,12 +2,15 @@ import {
   ErrorCode,
   YuketangError,
   type AnswerInput,
+  type AnswerValue,
   type BrowserEnvironment,
   type ClassroomNotice,
   type ClassroomSimulationAction,
   type ClassroomSimulationState,
   type Lesson,
   type Presentation,
+  type Problem,
+  type ProblemContext,
   type SubmissionResult,
   type UserProfile,
 } from '@ykt/contracts';
@@ -25,9 +28,16 @@ import {
   systemClock,
   type Clock,
 } from '../workflows/lesson-state-machine.js';
-import { AnswerService, planSubmission } from './answer-service.js';
+import {
+  AnswerService,
+  planSubmission,
+} from './answer-service.js';
 import { ProblemService } from './problem-service.js';
-import { getRealtimeEvent } from './classroom-events.js';
+import {
+  getRealtimeEvent,
+  findEntity,
+  firstText,
+} from './classroom-events.js';
 
 const simulationLessonId = 'local-classroom-simulator';
 const noticeDedupeWindow = 60_000;
@@ -47,6 +57,7 @@ export class ActiveLessonService {
     string,
     Map<string, Record<string, unknown>>
   >();
+  readonly #pendingPublishes = new Map<string, Record<string, unknown>[]>();
   #simulation: ClassroomSimulationState = {
     lessonId: simulationLessonId,
     status: 'upcoming',
@@ -176,26 +187,74 @@ export class ActiveLessonService {
         message: 'Lesson is not connected.',
       });
     }
-    const now = this.clock.now();
-    const plan = planSubmission({
+    await this.#submitWithTokenRefresh(
+      environment,
       problem,
-      answer: validation.normalizedAnswer,
-      now,
-      startTime: problem.unlockedAt,
-      endTime: problem.deadlineAt,
-      ...(input.forceRetry === undefined
-        ? {}
-        : { forceRetry: input.forceRetry }),
-    });
-    await this.client.submit(environment, problem.lessonId, plan);
+      validation.normalizedAnswer,
+      input.forceRetry ?? false,
+    );
     this.repository
       .getSession(problem.lessonId)
       ?.answerProblem(problem.id, validation.normalizedAnswer);
     return {
       problemId: problem.id,
       status: 'submitted',
-      submittedAt: new Date(now).toISOString(),
+      submittedAt: new Date(this.clock.now()).toISOString(),
     };
+  }
+
+  async #submitWithTokenRefresh(
+    environment: BrowserEnvironment,
+    problem: ProblemContext,
+    answer: AnswerValue,
+    forceRetry: boolean,
+    retried = false,
+  ): Promise<void> {
+    // forceRetry only applies to the retry attempt; the first attempt
+    // always uses the deadline-based route from planSubmission.
+    const plan = planSubmission({
+      problem,
+      answer,
+      now: this.clock.now(),
+      startTime: problem.unlockedAt,
+      endTime: problem.deadlineAt,
+      ...(retried && forceRetry ? { forceRetry: true } : {}),
+    });
+    try {
+      await this.client.submit(environment, problem.lessonId, plan);
+      return;
+    } catch (error) {
+      if (retried || !this.#isTokenExpiredError(error)) {
+        throw error;
+      }
+      const refreshed = await this.client.checkin(
+        environment,
+        problem.lessonId,
+        this.#remoteLessons.get(problem.lessonId)?.classroomId ?? undefined,
+      );
+      if (!refreshed.lessonToken) {
+        throw new YuketangError({
+          code: ErrorCode.NotAuthenticated,
+          message: 'Unable to refresh the lesson token.',
+        });
+      }
+      // Recalculate the plan with the current time after re-checkin,
+      // in case the deadline was crossed during the checkin round-trip.
+      return this.#submitWithTokenRefresh(
+        environment,
+        problem,
+        answer,
+        forceRetry,
+        true,
+      );
+    }
+  }
+
+  #isTokenExpiredError(error: unknown): boolean {
+    if (error instanceof Error) {
+      return error.message.includes('code 50004');
+    }
+    return false;
   }
 
   getSimulation(): ClassroomSimulationState {
@@ -285,6 +344,7 @@ export class ActiveLessonService {
   close(): void {
     this.#stopArchivedCollection();
     this.#pendingUnlocks.clear();
+    this.#pendingPublishes.clear();
     this.client.close();
   }
 
@@ -385,6 +445,12 @@ export class ActiveLessonService {
         lessonId,
         occurredAt: this.clock.now(),
       });
+
+      // For assessment publishes, try to apply the problem to session
+      if (event.notice.kind === 'assessment-publish' && event.rawMessage) {
+        await this.applyProblemFromPublish(machine, lessonId, event.rawMessage);
+      }
+      return;
     }
   }
 
@@ -421,6 +487,7 @@ export class ActiveLessonService {
       },
     });
     await this.replayPendingUnlocks(lessonId);
+    await this.replayPendingPublishes(lessonId);
   }
 
   private async applyUnlock(
@@ -528,6 +595,63 @@ export class ActiveLessonService {
     });
   }
 
+  private async applyProblemFromPublish(
+    machine: LessonStateMachine,
+    lessonId: string,
+    message: Record<string, unknown>,
+  ): Promise<void> {
+    const problemId =
+      firstText(message, [
+        'problemId',
+        'problem_id',
+        'problemid',
+        'id',
+      ]) ||
+      firstText(findEntity(message), [
+        'problemId',
+        'problem_id',
+        'problemid',
+        'id',
+      ]);
+
+    if (!problemId) return;
+
+    const problem = machine.session.problems.get(problemId);
+    if (!problem) {
+      this.deferPublish(lessonId, problemId, message);
+      await this.storage.appendLog({
+        level: 'info',
+        scope: 'lesson',
+        message: '题目发布事件已接收，等待题目数据加载。',
+        details: { lessonId, problemId },
+      });
+      return;
+    }
+
+    machine.apply({
+      type: 'problem.published',
+      lessonId,
+      occurredAt: this.clock.now(),
+      problem,
+    });
+
+    this.emitNotice({
+      kind: 'problem-start',
+      lessonId,
+      dedupeKey: `problem-start:${lessonId}:${problemId}`,
+      title: '习题已发布',
+      detail: problem.prompt || '教师开启了一道可作答的习题',
+      occurredAt: this.clock.now(),
+    });
+
+    await this.storage.appendLog({
+      level: 'info',
+      scope: 'lesson',
+      message: '已应用题目发布事件到状态机。',
+      details: { lessonId, problemId },
+    });
+  }
+
   private async replayPendingUnlocks(lessonId: string): Promise<void> {
     const pending = this.#pendingUnlocks.get(lessonId);
     const session = this.repository.getSession(lessonId);
@@ -558,6 +682,31 @@ export class ActiveLessonService {
     if (!pending) return;
     pending.delete(problemId);
     if (pending.size === 0) this.#pendingUnlocks.delete(lessonId);
+  }
+
+  private deferPublish(
+    lessonId: string,
+    problemId: string,
+    message: Record<string, unknown>,
+  ): void {
+    const pending = this.#pendingPublishes.get(lessonId);
+    if (pending) {
+      pending.push({ ...message });
+    } else {
+      this.#pendingPublishes.set(lessonId, [{ ...message }]);
+    }
+  }
+
+  private async replayPendingPublishes(lessonId: string): Promise<void> {
+    const pending = this.#pendingPublishes.get(lessonId);
+    if (!pending || pending.length === 0) return;
+    this.#pendingPublishes.delete(lessonId);
+    const session = this.repository.getSession(lessonId);
+    if (!session) return;
+    const machine = new LessonStateMachine(session, this.clock);
+    for (const message of pending) {
+      await this.applyProblemFromPublish(machine, lessonId, message);
+    }
   }
 
   private async logUnlockBindingIssue(
