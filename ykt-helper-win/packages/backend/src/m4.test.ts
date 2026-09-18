@@ -1,15 +1,44 @@
 import { BrowserEnvironment, type ClassroomNotice } from '@ykt/contracts';
 import {
   BrowserLessonCollector,
+  type SessionCredentialSource,
   YuketangActiveClient,
   type ActiveHttpRequest,
   type ActiveHttpResponse,
   type ActiveHttpTransport,
+  type BrowserCredentials,
   type LessonSocket,
 } from '@ykt/routing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createBackendRuntime } from './runtime.js';
+
+class DynamicCredentialsSource implements SessionCredentialSource {
+  #token: string;
+  readonly cookieHeader: string;
+  readonly userId: string | null;
+
+  constructor(token: string, cookieHeader: string, userId: string | null) {
+    this.#token = token;
+    this.cookieHeader = cookieHeader;
+    this.userId = userId;
+  }
+
+  async load(_environment: BrowserEnvironment): Promise<BrowserCredentials> {
+    return {
+      cookieHeader: this.cookieHeader,
+      bearerToken: this.#token,
+      userId: this.userId,
+    };
+  }
+
+  async saveBearerToken(
+    _environment: BrowserEnvironment,
+    value: string | null,
+  ): Promise<void> {
+    if (value) this.#token = value;
+  }
+}
 
 describe('M4 backend active client', () => {
   it('lists, connects, loads a problem and submits through mocked transports', async () => {
@@ -144,6 +173,207 @@ describe('M4 backend active client', () => {
 
     await runtime.stop();
     expect(socket.closed).toBe(true);
+  });
+
+  it('retries submit after re-check-in when the server returns 50004', async () => {
+    const credentialsSource = new DynamicCredentialsSource(
+      'initial-token',
+      'session=abc',
+      '42',
+    );
+    const transport = new QueueTransport([
+      response({
+        data: {
+          onLessonClassrooms: [
+            {
+              lessonId: 7,
+              classroomId: 8,
+              presentationId: 9,
+              title: 'Active lesson',
+              status: 1,
+            },
+          ],
+        },
+      }),
+      response(
+        { data: { lessonToken: 'lesson-token' } },
+        { 'Set-Auth': 'set-by-checkin' },
+      ),
+      response({
+        data: {
+          id: 9,
+          title: 'Presentation',
+          slides: [
+            {
+              id: 10,
+              problem: {
+                problemId: 11,
+                problemType: 1,
+                content: 'Question',
+                options: ['One', 'Two'],
+              },
+            },
+          ],
+        },
+      }),
+      response({ code: 50004 }),
+      response(
+        { data: { lessonToken: 'fresh-token' } },
+        { 'Set-Auth': 'refreshed-token' },
+      ),
+      response({ code: 0 }),
+    ]);
+    const socket = new FakeSocket();
+    const activeClient = new YuketangActiveClient({
+      credentials: credentialsSource,
+      transport,
+      socketFactory: () => socket,
+    });
+    const runtime = createBackendRuntime({ activeClient });
+    await runtime.start();
+
+    await runtime.facade.refreshLessons(BrowserEnvironment.Standard);
+    await runtime.facade.connectLesson(BrowserEnvironment.Standard, '7');
+    const unlockedAt = Date.now();
+    socket.message(
+      JSON.stringify({
+        eventId: 'unlock-11',
+        op: 'unlockproblem',
+        problem: {
+          problemId: 11,
+          pres: 9,
+          slideId: 10,
+          dt: unlockedAt,
+          limit: 0,
+        },
+      }),
+    );
+
+    const result = await runtime.facade.submitAnswer({
+      problemId: '11',
+      answer: 'B',
+    });
+    expect(result).toMatchObject({ problemId: '11', status: 'submitted' });
+    expect(transport.requests).toHaveLength(6);
+    // First submit attempt (failed with 50004)
+    expect(transport.requests[3]).toMatchObject({
+      method: 'POST',
+      url: 'https://www.yuketang.cn/api/v3/lesson/problem/answer',
+    });
+    // Re-checkin to refresh lesson token
+    expect(transport.requests[4]).toMatchObject({
+      method: 'POST',
+      url: 'https://www.yuketang.cn/api/v3/lesson/checkin',
+    });
+    // Retry submit with fresh token — header must carry the new token
+    expect(transport.requests[5]).toMatchObject({
+      method: 'POST',
+      url: 'https://www.yuketang.cn/api/v3/lesson/problem/answer',
+      headers: expect.objectContaining({
+        'lesson-token': 'fresh-token',
+      }),
+    });
+
+    await runtime.stop();
+  });
+
+  it('recalculates the submission route when retrying after re-checkin', async () => {
+    const credentialsSource = new DynamicCredentialsSource(
+      'initial-token',
+      'session=abc',
+      '42',
+    );
+    const transport = new QueueTransport([
+      response({
+        data: {
+          onLessonClassrooms: [
+            {
+              lessonId: 7,
+              classroomId: 8,
+              presentationId: 9,
+              title: 'Active lesson',
+              status: 1,
+            },
+          ],
+        },
+      }),
+      response(
+        { data: { lessonToken: 'lesson-token' } },
+        { 'Set-Auth': 'set-by-checkin' },
+      ),
+      response({
+        data: {
+          id: 9,
+          title: 'Presentation',
+          slides: [
+            {
+              id: 10,
+              problem: {
+                problemId: 11,
+                problemType: 1,
+                content: 'Question',
+                options: ['One', 'Two'],
+              },
+            },
+          ],
+        },
+      }),
+      // First submit fails with 50004 (token expired)
+      response({ code: 50004 }),
+      // Re-checkin returns fresh token
+      response(
+        { data: { lessonToken: 'fresh-token' } },
+        { 'Set-Auth': 'refreshed-token' },
+      ),
+      // Retry with forceRetry=true must use /retry
+      response({ code: 0, data: { success: ['11'] } }),
+    ]);
+    const socket = new FakeSocket();
+    const activeClient = new YuketangActiveClient({
+      credentials: credentialsSource,
+      transport,
+      socketFactory: () => socket,
+    });
+    const runtime = createBackendRuntime({ activeClient });
+    await runtime.start();
+
+    await runtime.facade.refreshLessons(BrowserEnvironment.Standard);
+    await runtime.facade.connectLesson(BrowserEnvironment.Standard, '7');
+    const unlockedAt = Date.now();
+    socket.message(
+      JSON.stringify({
+        eventId: 'unlock-11',
+        op: 'unlockproblem',
+        problem: {
+          problemId: 11,
+          pres: 9,
+          slideId: 10,
+          dt: unlockedAt,
+          limit: 0,
+        },
+      }),
+    );
+
+    const result = await runtime.facade.submitAnswer({
+      problemId: '11',
+      answer: 'B',
+      forceRetry: true,
+    });
+    expect(result).toMatchObject({ problemId: '11', status: 'submitted' });
+    // First attempt used /answer (deadline not crossed, but forceRetry only
+    // affects the second planSubmission call)
+    expect(transport.requests[3]).toMatchObject({
+      method: 'POST',
+      url: 'https://www.yuketang.cn/api/v3/lesson/problem/answer',
+    });
+    // After re-checkin, planSubmission is recalculated with forceRetry=true
+    // → route switches to /retry
+    expect(transport.requests[5]).toMatchObject({
+      method: 'POST',
+      url: 'https://www.yuketang.cn/api/v3/lesson/problem/retry',
+    });
+
+    await runtime.stop();
   });
 
   it('collects the official lesson page without issuing a check-in request', async () => {
@@ -451,6 +681,247 @@ describe('M4 backend active client', () => {
       'problem-start',
       'lesson-finished',
     ]);
+
+    await runtime.stop();
+  });
+
+  it('applies problem.published state when receiving a probleminfo publish event', async () => {
+    const notices: ClassroomNotice[] = [];
+    const transport = new QueueTransport([
+      response({
+        data: {
+          onLessonClassrooms: [
+            {
+              lessonId: 7,
+              classroomId: 8,
+              presentationId: 9,
+              title: 'Active lesson',
+              status: 1,
+            },
+          ],
+        },
+      }),
+      response(
+        { data: { lessonToken: 'lesson-token' } },
+        { 'Set-Auth': 'new' },
+      ),
+      response({
+        data: {
+          id: 9,
+          title: 'Presentation',
+          slides: [
+            {
+              id: 10,
+              problem: {
+                problemId: 11,
+                problemType: 1,
+                content: 'Test Question',
+                options: ['A', 'B', 'C', 'D'],
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const socket = new FakeSocket();
+    const activeClient = new YuketangActiveClient({
+      credentials: {
+        load: async () => ({
+          cookieHeader: 'session=abc',
+          bearerToken: 'old',
+          userId: '42',
+        }),
+      },
+      transport,
+      socketFactory: () => socket,
+    });
+    const runtime = createBackendRuntime({
+      activeClient,
+      onClassroomNotice: (notice) => notices.push(notice),
+    });
+    await runtime.start();
+
+    await runtime.facade.refreshLessons(BrowserEnvironment.Standard);
+    await runtime.facade.connectLesson(BrowserEnvironment.Standard, '7');
+
+    // Before unlock, problem should be in session but status is 'locked'
+    const problemsBefore = await runtime.facade.listProblems('7');
+    expect(problemsBefore).toHaveLength(1);
+    expect(problemsBefore[0]).toMatchObject({
+      id: '11',
+      status: 'locked',
+    });
+
+    // Simulate receiving a probleminfo publish event (with problemid in message)
+    socket.message(
+      JSON.stringify({
+        eventId: 'publish-problem-11',
+        op: 'probleminfo',
+        problemid: '11',  // This should be found first
+        quiz: { id: 'quiz-1', title: '测试题组' },
+      }),
+    );
+
+    // Verify the publish event was logged with problemId '11' (not 'quiz-1')
+    // and that a problem-start notice was emitted (problem was already loaded
+    // from the presentation, so it is not deferred).
+    const logs = await runtime.facade.listLogs();
+    expect(logs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: 'info',
+          scope: 'lesson',
+          message: '已应用题目发布事件到状态机。',
+          details: expect.objectContaining({
+            lessonId: '7',
+            problemId: '11',
+          }),
+        }),
+      ]),
+    );
+    expect(notices).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'problem-start',
+          lessonId: '7',
+          detail: 'Test Question',
+        }),
+      ]),
+    );
+
+    // Now send unlockproblem event
+    const unlockedAt = Date.now();
+    socket.message(
+      JSON.stringify({
+        eventId: 'unlock-11',
+        op: 'unlockproblem',
+        problem: {
+          problemId: 11,
+          pres: 9,
+          slideId: 10,
+          dt: unlockedAt,
+          limit: 60,
+        },
+      }),
+    );
+
+    // After unlock, problem should become 'available'
+    const problemsAfter = await runtime.facade.listProblems('7');
+    expect(problemsAfter).toHaveLength(1);
+    expect(problemsAfter[0]).toMatchObject({
+      id: '11',
+      presentationId: '9',
+      slideId: '10',
+      status: 'available',
+      unlockedAt,
+      deadlineAt: unlockedAt + 60_000,
+    });
+
+    await runtime.stop();
+  });
+
+  it('defers probleminfo publish until the presentation loads, then replays it', async () => {
+    const notices: ClassroomNotice[] = [];
+    const collector = new BrowserLessonCollector();
+    const transport = new QueueTransport([
+      response({
+        data: {
+          onLessonClassrooms: [
+            {
+              lessonId: 7,
+              classroomId: 8,
+              presentationId: 9,
+              title: 'Active lesson',
+              status: 1,
+            },
+          ],
+        },
+      }),
+    ]);
+    const activeClient = new YuketangActiveClient({
+      credentials: {
+        load: async () => ({
+          cookieHeader: 'session=abc',
+          bearerToken: null,
+          userId: '42',
+        }),
+      },
+      transport,
+      browserCollector: collector,
+      socketFactory: () => {
+        throw new Error('Deferred publish test must not create a classroom socket.');
+      },
+    });
+    const runtime = createBackendRuntime({
+      activeClient,
+      onClassroomNotice: (notice) => notices.push(notice),
+    });
+    await runtime.start();
+
+    await runtime.facade.refreshLessons(BrowserEnvironment.Standard);
+    await runtime.facade.connectLesson(BrowserEnvironment.Standard, '7');
+
+    // probleminfo arrives before the presentation/problem data is loaded.
+    // The problem is not yet in the session, so the publish is deferred.
+    await collector.observeWebSocket({
+      requestId: 'browser-ws-1',
+      direction: 'sent',
+      payload: JSON.stringify({
+        op: 'hello',
+        lessonid: 7,
+        auth: 'browser-owned-token',
+      }),
+    });
+    await collector.observeWebSocket({
+      requestId: 'browser-ws-1',
+      direction: 'received',
+      payload: JSON.stringify({
+        eventId: 'publish-early',
+        op: 'probleminfo',
+        problemid: '11',
+        quiz: { id: 'quiz-1', title: '测试题组' },
+      }),
+    });
+
+    // No problem-start notice yet — problem is not loaded.
+    // The assessment-publish notice is emitted immediately by handleMessage.
+    expect(notices).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'problem-start' })]),
+    );
+
+    // Now the browser loads the presentation with the actual problem data
+    await collector.observeHttp({
+      url: 'https://www.yuketang.cn/api/v3/lesson/presentation/fetch?presentation_id=9',
+      statusCode: 200,
+      body: JSON.stringify({
+        data: {
+          id: 9,
+          title: 'Presentation',
+          slides: [
+            {
+              id: 10,
+              problem: {
+                problemId: 11,
+                problemType: 1,
+                content: 'Test Question',
+                options: ['A', 'B', 'C', 'D'],
+              },
+            },
+          ],
+        },
+      }),
+    });
+
+    // Deferred publish is now replayed — problem-start notice emitted
+    expect(notices).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'problem-start',
+          lessonId: '7',
+          detail: 'Test Question',
+        }),
+      ]),
+    );
 
     await runtime.stop();
   });
