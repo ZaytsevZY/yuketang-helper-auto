@@ -154,7 +154,19 @@ function parseSlide(
     index: numberValue(slide.index ?? slide.pageIndex) ?? fallbackIndex,
     title: stringValue(slide.title),
     imageUrl:
-      nullableString(slide.imageUrl ?? slide.image_url ?? slide.cover) ?? null,
+      [
+        slide.imageUrl,
+        slide.image_url,
+        slide.coverAlt,
+        slide.cover,
+        slide.image,
+        slide.thumbnail,
+        slide.cover_url,
+        slide.coverUrl,
+        slide.src,
+      ]
+        .map(nullableString)
+        .find(Boolean) ?? null,
     problem: slide.problem
       ? parseProblem(slide.problem, lessonId, presentationId, id)
       : null,

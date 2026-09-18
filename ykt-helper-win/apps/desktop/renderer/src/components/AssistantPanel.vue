@@ -249,13 +249,16 @@ const selectedAiImages = computed(() => {
     .flatMap((presentation) => presentation.slides)
     .filter((slide) => chosen.has(slide.id) && slide.imageUrl)
     .map((slide) => slide.imageUrl!);
-  if (selected.length || (settings.value?.aiCaptureCurrentPage ?? true)) {
+  if (selected.length) {
     return selected;
   }
   const problem = selectedProblem.value;
   const problemImage = presentations.value
+    .filter((presentation) => presentation.id === problem?.presentationId)
     .flatMap((presentation) => presentation.slides)
     .find((slide) => slide.id === problem?.slideId)?.imageUrl;
+  if (problemImage) return [problemImage];
+  if (settings.value?.aiCaptureCurrentPage ?? true) return [];
   const fallback = settings.value?.aiSlidePickPriority
     ? problemImage || selectedSlide.value?.imageUrl
     : selectedSlide.value?.imageUrl || problemImage;
@@ -2132,6 +2135,13 @@ function clamp(value: number, min: number, max: number): number {
                           {{ message.proposal.validationIssues.join('；') }}
                         </p>
                       </div>
+                      <p
+                        v-for="warning in message.proposal.warnings ?? []"
+                        :key="warning"
+                        role="status"
+                      >
+                        {{ warning }}
+                      </p>
                       <div class="proposal-meta">
                         <span v-if="message.proposal.model">{{
                           message.proposal.model
