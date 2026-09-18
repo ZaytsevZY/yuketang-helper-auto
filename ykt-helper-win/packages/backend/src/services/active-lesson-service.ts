@@ -9,7 +9,6 @@ import {
   type ClassroomSimulationState,
   type Lesson,
   type Presentation,
-  type Problem,
   type ProblemContext,
   type SubmissionResult,
   type UserProfile,
@@ -393,6 +392,7 @@ export class ActiveLessonService {
     if (!event) return;
     if (event.kind === 'lessonfinished') {
       this.#pendingUnlocks.delete(lessonId);
+      this.#pendingPublishes.delete(lessonId);
       machine.apply({
         type: 'lesson.ended',
         lessonId,
@@ -440,6 +440,7 @@ export class ActiveLessonService {
       return;
     }
     if (event.kind === 'publish') {
+      if (session.lesson.status === 'ended') return;
       this.emitNotice({
         ...event.notice,
         lessonId,
@@ -600,6 +601,9 @@ export class ActiveLessonService {
     lessonId: string,
     message: Record<string, unknown>,
   ): Promise<void> {
+    // Recheck for each replayed event: the lesson may end between awaits.
+    if (machine.session.lesson.status === 'ended') return;
+
     const problemId =
       firstText(message, [
         'problemId',
