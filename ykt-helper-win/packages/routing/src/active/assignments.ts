@@ -1,4 +1,4 @@
-// Protocol reference: smartThise/OneTHU PR #28 (d12d354), exthw/yuketang.ts.
+// Protocol reference: smartThise/OneTHU PR #28 (b9b82ef, R16b), exthw/yuketang.ts.
 // Implemented for this project's transport and DTOs; reuses the browser login.
 import {
   BrowserEnvironment,
@@ -26,8 +26,14 @@ export async function fetchAssignments(
   const warnings: string[] = [];
   const items = new Map<
     string,
-    { assignment: Assignment; leafTypeId: string }
+    { assignment: Assignment; leafTypeId: string; skuId: string }
   >();
+  const auditedClassrooms = new Set(
+    courses.list.flatMap((value) => {
+      const course = record(value);
+      return course?.role === 6 ? [id(course.classroom_id)] : [];
+    }),
+  );
 
   for (const rawCourse of courses.list) {
     const course = record(rawCourse);
@@ -70,6 +76,7 @@ export async function fetchAssignments(
           const key = `pro:${classroomId}:${activity.type}:${activityId}`;
           items.set(key, {
             leafTypeId,
+            skuId: id(content.sku_id),
             assignment: {
               id: key,
               classroomId,
@@ -78,8 +85,15 @@ export async function fetchAssignments(
                 id(activity.title) || (activity.type === 20 ? '考试' : '作业'),
               kind: activity.type === 20 ? 'exam' : 'homework',
               deadline: deadline(content.score_d),
-              url: `${ORIGIN}/v2/web/studentLog/${encodeURIComponent(classroomId)}${leaf ? `?leaf_id=${encodeURIComponent(leaf)}` : ''}`,
+              // R16b 学生端直链使用 leaf_id；/subject 是教师入口，不能使用。
+              url: leaf
+                ? `${ORIGIN}/ai-workspace/lms-graph/${encodeURIComponent(classroomId)}/${activity.type === 20 ? 'quiz' : 'exercise'}/${encodeURIComponent(leaf)}?is_chapter=1`
+                : `${ORIGIN}/v2/web/studentLog/${encodeURIComponent(classroomId)}`,
               status: 'unknown',
+              graded: null,
+              score: null,
+              totalScore: null,
+              audited: auditedClassrooms.has(classroomId),
               answeredCount: null,
               totalCount: null,
               questions: [],
@@ -120,6 +134,7 @@ export async function fetchAssignments(
               exam_id: item.leafTypeId,
               classroom_id: item.assignment.classroomId,
             });
+            if (item.skuId) examQuery.set('sku_id', item.skuId);
             const data = dataOf(
               await get(`${ORIGIN}/v/exam/cover?${examQuery}`),
             );
@@ -172,6 +187,9 @@ function parseExamProgress(
   | 'totalCount'
   | 'questions'
   | 'statusMessage'
+  | 'graded'
+  | 'score'
+  | 'totalScore'
 > {
   // Verified against the official cover component (web/1.2.310, chunk 33139):
   // result.status 4/5 => 已交卷, 6 => 缺考; monitor_status 2 overrides as 作废.
@@ -198,8 +216,21 @@ function parseExamProgress(
     unfinished <= totalCount
       ? totalCount - unfinished
       : null;
+  // R9/R16：只展示已交卷且已出分的有限数值；零分有效，-1 占位无效。
+  // 保留本项目已由官网验证的交卷判定，不用“有作答”推断已交卷。
+  const score = nonnegativeNumber(result?.score);
+  const totalScore = nonnegativeNumber(data.total_score);
+  const graded =
+    submitted &&
+    !invalid &&
+    result?.score_finish !== false &&
+    score !== null &&
+    totalScore !== null;
   return {
     examStatus,
+    graded,
+    score: graded ? score : null,
+    totalScore: graded ? totalScore : null,
     status:
       answeredCount === null
         ? 'unknown'
@@ -223,11 +254,22 @@ function nonnegativeInteger(value: unknown): number | null {
     : null;
 }
 
+function nonnegativeNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
 function parseProgress(
   data: JsonRecord,
 ): Pick<
   Assignment,
-  'status' | 'answeredCount' | 'totalCount' | 'questions' | 'statusMessage'
+  | 'status'
+  | 'answeredCount'
+  | 'totalCount'
+  | 'questions'
+  | 'statusMessage'
+  | 'graded'
 > {
   const raw = Array.isArray(data.problems) ? data.problems : [];
   const aggregate =
@@ -268,12 +310,42 @@ function parseProgress(
           : 'unknown';
   return {
     status,
+    graded: homeworkGraded(raw, aggregate, answered),
     answeredCount: count,
     totalCount: questions.length || null,
     questions,
     // 总作答数与逐题信息可能不完整；未知题目已通过 answered: null 表达。
     statusMessage: null,
   };
+}
+
+function homeworkGraded(
+  problems: unknown[],
+  aggregate: number | null,
+  answered: number,
+): boolean | null {
+  if (answered === 0 && (aggregate ?? 0) === 0) return false;
+  const relevant = problems.filter(
+    (value) =>
+      (aggregate ?? 0) > 0 ||
+      hasAnswer(record(record(record(value)?.user)?.my_answer)?.content),
+  );
+  if (!relevant.length) return null;
+  let allGraded = true;
+  for (const value of relevant) {
+    const user = record(record(value)?.user);
+    const rawScore = user?.my_score;
+    const score =
+      typeof rawScore === 'string' && rawScore.trim()
+        ? Number(rawScore)
+        : rawScore;
+    // R16：status=3 或 my_score=-1（含 "-1.00"）优先表示待批改。
+    if (user?.status === 3 || score === -1) return false;
+    // 缺少批改字段不能被“没有待批改标记”误判成已批改。
+    if (user?.status !== 4 && nonnegativeNumber(score) === null)
+      allGraded = false;
+  }
+  return allGraded ? true : null;
 }
 
 function hasAnswer(value: unknown): boolean {

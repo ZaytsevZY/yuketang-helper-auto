@@ -20,6 +20,11 @@ export interface Assignment {
   readonly deadline: number | null;
   readonly url: string;
   readonly status: AssignmentStatus;
+  /** Null means grading evidence is unavailable, not that grading is pending. */
+  readonly graded: boolean | null;
+  readonly score: number | null;
+  readonly totalScore: number | null;
+  readonly audited: boolean;
   /** Cover-level exam outcome, independent of whether every question was answered. */
   readonly examStatus?: 'submitted' | 'absent' | 'invalid' | 'unknown';
   readonly answeredCount: number | null;

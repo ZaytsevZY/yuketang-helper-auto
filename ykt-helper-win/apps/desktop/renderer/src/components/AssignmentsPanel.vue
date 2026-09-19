@@ -5,6 +5,10 @@ import {
   type Assignment,
   type AssignmentSnapshot,
 } from '@ykt/contracts';
+import {
+  assignmentStatusLabel,
+  matchesAssignmentStatus,
+} from '../assignment-status';
 
 const props = defineProps<{ environment: BrowserEnvironment }>();
 const snapshot = ref<AssignmentSnapshot | null>(null);
@@ -34,12 +38,7 @@ const filtered = computed(() =>
           .toLocaleLowerCase()
           .includes(query)) &&
       (kind.value === 'all' || item.kind === kind.value) &&
-      (status.value === 'all' ||
-        (status.value === 'overdue'
-          ? overdue(item)
-          : status.value === 'submitted'
-            ? item.examStatus === 'submitted'
-            : item.status === status.value))
+      matchesAssignmentStatus(item, status.value, now.value)
     );
   }),
 );
@@ -94,19 +93,6 @@ function overdue(item: Assignment): boolean {
   return item.deadline !== null && item.deadline <= now.value;
 }
 
-function statusLabel(item: Assignment): string {
-  // 考试交卷状态与作答进度分别读取；作业有作答记录不代表最终提交。
-  if (item.examStatus === 'submitted') return '已交卷';
-  if (item.examStatus === 'absent') return '缺考';
-  if (item.examStatus === 'invalid') return '已作废';
-  return {
-    unanswered: '未作答',
-    partial: item.totalCount ? '部分作答' : '有作答记录',
-    answered: '全部已答',
-    unknown: '状态未知',
-  }[item.status];
-}
-
 function formatTime(timestamp: number): string {
   return new Date(timestamp).toLocaleString('zh-CN', {
     year: 'numeric',
@@ -154,7 +140,11 @@ function remaining(item: Assignment): string {
       <div v-if="snapshot" class="summary" aria-live="polite">
         <strong>{{ assignments.length }} 项</strong> ·
         {{ unfinished }} 项未全部作答 ·
-        {{ assignments.filter((item) => item.status === 'unknown').length }}
+        {{
+          assignments.filter((item) =>
+            matchesAssignmentStatus(item, 'unknown', now),
+          ).length
+        }}
         项状态未知
         <p class="muted">
           更新于 {{ formatTime(snapshot.fetchedAt) }}（本地时间）
@@ -186,6 +176,7 @@ function remaining(item: Assignment): string {
           <option value="partial">部分 / 有作答</option>
           <option value="answered">全部已答</option>
           <option value="submitted">考试已交卷</option>
+          <option value="graded">已批改</option>
           <option value="unknown">状态未知</option>
           <option value="overdue">已截止</option>
         </select>
@@ -202,14 +193,18 @@ function remaining(item: Assignment): string {
       </p>
       <article v-for="item in filtered" :key="item.id" class="assignment-card">
         <div class="card-top">
-          <span class="muted">{{ item.courseName }}</span
+          <span class="muted"
+            >{{ item.courseName
+            }}<span v-if="item.audited" class="audit-badge">旁听</span></span
           ><span class="kind">{{
             item.kind === 'exam' ? '考试' : '作业'
           }}</span>
         </div>
         <h3>{{ item.title }}</h3>
         <div class="card-top">
-          <span class="badge" :class="item.status">{{ statusLabel(item) }}</span
+          <span class="badge" :class="item.graded ? 'answered' : item.status">{{
+            assignmentStatusLabel(item)
+          }}</span
           ><span class="deadline-state" :class="{ overdue: overdue(item) }">{{
             remaining(item)
           }}</span>
@@ -227,6 +222,9 @@ function remaining(item: Assignment): string {
               ? `已答 ${item.answeredCount} 题`
               : `已答 ${item.answeredCount} / ${item.totalCount} 题`
           }}
+        </p>
+        <p v-if="item.score != null && item.totalScore != null" class="score">
+          得分 {{ item.score }} / {{ item.totalScore }}
         </p>
         <details v-if="item.questions.length">
           <summary>查看逐题状态（{{ item.questions.length }} 题）</summary>
@@ -328,6 +326,17 @@ button:disabled {
 .kind {
   white-space: nowrap;
   color: var(--text-muted);
+}
+.audit-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 11px;
+}
+.score {
+  font-weight: 600;
 }
 .badge {
   padding: 2px 8px;

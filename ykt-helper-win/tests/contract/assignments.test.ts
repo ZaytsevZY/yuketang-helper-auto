@@ -75,7 +75,8 @@ function setup(
               data: { activities: options.activities ?? [activity(10)] },
             },
           };
-        const id = url.pathname.split('/').at(-2)!;
+        const id =
+          url.searchParams.get('exam_id') ?? url.pathname.split('/').at(-2)!;
         return {
           ...base,
           body: options.status
@@ -89,6 +90,216 @@ function setup(
 }
 
 describe('read-only assignments', () => {
+  it.each([
+    [19, 'leaf /?#', 'exercise/leaf%20%2F%3F%23?is_chapter=1'],
+    [20, 42, 'quiz/42?is_chapter=1'],
+    [19, null, null],
+    [20, '   ', null],
+  ])(
+    'builds the student deep link for type %s and leaf %s',
+    async (type, leafId, route) => {
+      const { client } = setup({
+        activities: [activity(10, type, { leaf_id: leafId })],
+      });
+      const item = (await client.listAssignments(BrowserEnvironment.Pro))
+        .assignments[0];
+      expect(item?.url).toBe(
+        route
+          ? `https://pro.yuketang.cn/ai-workspace/lms-graph/1/${route}`
+          : 'https://pro.yuketang.cn/v2/web/studentLog/1',
+      );
+      expect(item?.url).not.toContain('/subject');
+    },
+  );
+
+  it('uses the activity classroom for deep links and auditing, and passes the optional exam SKU', async () => {
+    const { client, requests } = setup({
+      courses: [
+        { classroom_id: 1, role: 5 },
+        { classroom_id: 2, role: 6 },
+      ],
+      logs: (cid) => ({
+        data: {
+          activities:
+            cid === '1'
+              ? [
+                  {
+                    ...activity(10, 20, {
+                      sku_id: 'sku /1',
+                      leaf_id: 'leaf-id',
+                    }),
+                    classroom_id: 2,
+                  },
+                ]
+              : [],
+        },
+      }),
+    });
+    const item = (await client.listAssignments(BrowserEnvironment.Pro))
+      .assignments[0];
+    expect(item).toMatchObject({
+      audited: true,
+      classroomId: '2',
+      url: 'https://pro.yuketang.cn/ai-workspace/lms-graph/2/quiz/leaf-id?is_chapter=1',
+    });
+    const url = new URL(
+      requests.find((r) => r.url.includes('/v/exam/cover'))!.url,
+    );
+    expect(url.searchParams.get('sku_id')).toBe('sku /1');
+    expect(url.searchParams.get('exam_id')).toBe('10');
+    expect(url.searchParams.get('classroom_id')).toBe('2');
+  });
+
+  it.each([5, undefined, 7])(
+    'does not mark regular or unknown course role %s as audited',
+    async (role) => {
+      const { client } = setup({ courses: [{ classroom_id: 1, role }] });
+      expect(
+        (await client.listAssignments(BrowserEnvironment.Pro)).assignments[0]
+          ?.audited,
+      ).toBe(false);
+    },
+  );
+
+  it.each([
+    [{ status: 4, my_score: '30.00' }, true],
+    [{ status: 4, my_score: '0.00' }, true],
+    [{ status: 4 }, true],
+    [{ my_score: 0 }, true],
+    [{ status: 3, my_score: '30.00' }, false],
+    [{ status: 4, my_score: '-1.00' }, false],
+    [{ my_score: -1 }, false],
+    [{ my_score: ' -1 ' }, false],
+    [{}, null],
+    [{ my_score: null }, null],
+    [{ my_score: '' }, null],
+    [{ my_score: 'NaN' }, null],
+  ])(
+    'recognizes homework grading fields without treating placeholders as marks: %j',
+    async (user, graded) => {
+      const { client } = setup({
+        status: () => ({
+          data: {
+            answer_count: 1,
+            problems: [{ user: { ...user, my_answer: { content: 'A' } } }],
+          },
+        }),
+      });
+      const item = (await client.listAssignments(BrowserEnvironment.Pro))
+        .assignments[0];
+      expect(item).toMatchObject({
+        graded,
+        status: 'answered',
+        answeredCount: 1,
+        score: null,
+      });
+    },
+  );
+
+  it.each([
+    [
+      {
+        answer_count: 2,
+        problems: [
+          { user: { status: 4, my_score: 30, my_answer: { content: 'A' } } },
+          {
+            user: { status: 3, my_score: '-1.00', my_answer: { content: 'B' } },
+          },
+        ],
+      },
+      false,
+    ],
+    [
+      {
+        answer_count: 2,
+        problems: [
+          { user: { status: 4, my_score: 30 } },
+          { user: { status: 3, my_score: -1 } },
+        ],
+      },
+      false,
+    ],
+    [
+      {
+        answer_count: 2,
+        problems: [{ user: { status: 4, my_score: 30 } }, {}],
+      },
+      null,
+    ],
+    [{ answer_count: 2, problems: [] }, null],
+    [
+      { answer_count: 0, problems: [{ user: { status: 3, my_score: -1 } }] },
+      false,
+    ],
+  ])(
+    'requires grading evidence for the whole relevant homework: %j',
+    async (data, graded) => {
+      const { client } = setup({ status: () => ({ data }) });
+      expect(
+        (await client.listAssignments(BrowserEnvironment.Pro)).assignments[0]
+          ?.graded,
+      ).toBe(graded);
+    },
+  );
+
+  it.each([
+    [{ score: 60, score_finish: true }, 100, true, 60],
+    [{ score: 0, score_finish: true }, 100, true, 0],
+    [{ score: 60 }, 100, true, 60],
+    [{ score: 60, score_finish: false }, 100, false, null],
+    [{ score: 60, score_finish: true }, undefined, false, null],
+    [{ score: null, score_finish: true }, 100, false, null],
+    [{ score: -1, score_finish: true }, 100, false, null],
+    [{ score: Infinity, score_finish: true }, 100, false, null],
+    [{ score: '60', score_finish: true }, 100, false, null],
+  ])(
+    'shows exam marks only when released: %j',
+    async (marks, totalScore, graded, score) => {
+      const { client } = setup({
+        activities: [activity(10, 20)],
+        status: () => ({
+          data: {
+            problem_count: 10,
+            total_score: totalScore,
+            result: { status: 4, unfinished_count: 0, ...marks },
+          },
+        }),
+      });
+      expect(
+        (await client.listAssignments(BrowserEnvironment.Pro)).assignments[0],
+      ).toMatchObject({
+        graded,
+        score,
+        totalScore: graded ? totalScore : null,
+        examStatus: 'submitted',
+      });
+    },
+  );
+
+  it.each([6, 99])(
+    'does not expose a score for absent or unconfirmed exam status %s',
+    async (status) => {
+      const { client } = setup({
+        activities: [activity(10, 20)],
+        status: () => ({
+          data: {
+            problem_count: 10,
+            total_score: 100,
+            result: {
+              status,
+              unfinished_count: 0,
+              score: 90,
+              score_finish: true,
+            },
+          },
+        }),
+      });
+      expect(
+        (await client.listAssignments(BrowserEnvironment.Pro)).assignments[0],
+      ).toMatchObject({ graded: false, score: null, totalScore: null });
+    },
+  );
+
   it.each([
     [{ status: 5, unfinished_count: 2 }, 'submitted', 'partial', 8],
     [{ status: 4, unfinished_count: 10 }, 'submitted', 'unanswered', 0],
@@ -215,7 +426,7 @@ describe('read-only assignments', () => {
       totalCount: 3,
       deadline,
       courseName: '线性代数',
-      url: 'https://pro.yuketang.cn/v2/web/studentLog/1?leaf_id=leaf%2010',
+      url: 'https://pro.yuketang.cn/ai-workspace/lms-graph/1/exercise/leaf%2010?is_chapter=1',
     });
     expect(snapshot.assignments[0]?.questions.map((q) => q.answered)).toEqual([
       true,
