@@ -27,12 +27,14 @@ import {
   type ValidationResult,
 } from '@ykt/contracts';
 
+import AssignmentsPanel from './AssignmentsPanel.vue';
 import ClassroomSimulator from './ClassroomSimulator.vue';
 import ProblemPicker from './ProblemPicker.vue';
 import { enterActiveLessons } from '../auto-join';
 import { renderSimpleMarkdown } from '../simple-markdown';
 
 type WorkspacePage =
+  | 'assignments'
   | 'classroom'
   | 'problems'
   | 'ai'
@@ -1813,6 +1815,10 @@ function clamp(value: number, min: number, max: number): number {
               连接课堂后，这里会显示对应 API 或 WebSocket 事件。
             </p>
           </div>
+        </section>
+
+        <section v-else-if="page === 'assignments'" class="panel-page">
+          <AssignmentsPanel :environment="environment" />
         </section>
 
         <section v-else-if="page === 'problems'" class="panel-page">

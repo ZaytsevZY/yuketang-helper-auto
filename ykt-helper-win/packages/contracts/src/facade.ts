@@ -1,3 +1,4 @@
+import type { AssignmentSnapshot } from './assignments.js';
 import type {
   AnswerInput,
   Lesson,
@@ -53,6 +54,7 @@ export interface YuketangFacade {
   refreshUser(environment: BrowserEnvironment): Promise<UserProfile>;
   listLogs(limit?: number): Promise<readonly AppLogEntry[]>;
   listLessons(): Promise<readonly Lesson[]>;
+  listAssignments(environment: BrowserEnvironment): Promise<AssignmentSnapshot>;
   refreshLessons(environment: BrowserEnvironment): Promise<readonly Lesson[]>;
   connectLesson(
     environment: BrowserEnvironment,

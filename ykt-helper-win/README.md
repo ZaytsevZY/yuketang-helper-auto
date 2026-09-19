@@ -37,6 +37,19 @@ node node_modules/electron/install.js
 
 `Cannot find native binding` 的 npm optional-dependencies 提示不一定是真正原因；Windows 应用控制阻止加载也可能产生该提示（[Electron #52481](https://github.com/electron/electron/issues/52481)）。请根据内层 `cause` 排查，不要直接删除项目锁文件或关闭系统安全策略。下载失败时可使用本文末尾的 Electron 镜像配置后重试安装命令。
 
+## 作业 / 考试
+
+顶部新增“作业”栏。切换到**荷塘雨课堂**，在内嵌网页完成登录，再点击刷新，可查看课程作业、考试、截止时间、剩余时间和逐题作答状态；支持按课程或标题搜索、类型与状态筛选，并可打开对应官方学习日志页。
+
+接口依据 [OneTHU PR #28](https://github.com/smartThise/OneTHU/pull/28)（`d12d354`）的雨课堂协议实现，复用 Electron 持久登录会话，不需要复制 Cookie 或另行扫码。当前仅支持 PR 验证过的 `pro.yuketang.cn`；标准版和长江版会提示切换。
+
+- 学习日志 `type=19/20` 分别对应作业与考试，`content.score_d` 按毫秒解释；已截止和无截止时间的条目也会保留。不限制未来 30 天。
+- 逐题读取 `problems[].user.my_answer.content`，仅向界面传递是否作答，不传递题干或答案。区分未作答、部分作答、全部已答和未知；`answer_count` 只有总数时不会推断每题已答，也不会把有作答记录标成最终交卷。
+- 考试使用 `/v/exam/cover?exam_id=…&classroom_id=…`，`result.status=4/5` 显示“已交卷”，6 显示“缺考”；`face_auth_status.monitor_status=2` 优先显示“已作废”。已交卷考试通过 `problem_count - result.unfinished_count` 展示作答总数，不生成逐题明细。无权限、缺少字段或未识别状态仍显示未知，可在官网确认。课程读取失败会显示部分结果警告；登录失效会提示重新登录。刷新失败时保留并标明旧结果。
+- 学习日志按每页 200 条读取，最多 50 页，达到上限会提示；作答状态请求并发上限为 4。结果仅保留在当前页面内存中。
+
+CLI 同样通过 Facade 只读获取：`npm run cli -- assignment list`（默认 `pro`）。
+
 ## CLI 调用
 
 桌面程序运行后，可通过本机 Named Pipe 调用同一个 Backend Runtime。CLI 与 GUI

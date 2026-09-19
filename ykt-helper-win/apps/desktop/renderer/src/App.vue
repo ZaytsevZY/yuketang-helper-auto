@@ -12,6 +12,7 @@ import AssistantPanel from './components/AssistantPanel.vue';
 import NetworkLab from './components/NetworkLab.vue';
 
 type WorkspacePage =
+  | 'assignments'
   | 'classroom'
   | 'problems'
   | 'ai'
@@ -23,6 +24,7 @@ type WorkspacePage =
 
 const pages: ReadonlyArray<{ id: WorkspacePage; label: string }> = [
   { id: 'classroom', label: '课堂' },
+  { id: 'assignments', label: '作业' },
   { id: 'problems', label: '题目' },
   { id: 'ai', label: 'AI' },
   { id: 'courseware', label: '课件' },

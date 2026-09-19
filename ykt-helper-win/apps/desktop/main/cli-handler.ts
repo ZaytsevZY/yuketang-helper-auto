@@ -153,6 +153,7 @@ async function dispatch(
     case CliRpcMethod.DebugGetSimulation:
       return facade.getClassroomSimulation();
     case CliRpcMethod.UserGet:
+    case CliRpcMethod.AssignmentList:
     case CliRpcMethod.LessonList:
     case CliRpcMethod.LessonConnect:
     case CliRpcMethod.PresentationList:
@@ -197,6 +198,10 @@ async function dispatch(
         ? facade.refreshUser(environment)
         : facade.getUser(environment);
     }
+    case CliRpcMethod.AssignmentList:
+      return facade.listAssignments(
+        environmentValue(input.environment ?? 'pro'),
+      );
     case CliRpcMethod.LessonList:
       return listLessons(context, input);
     case CliRpcMethod.LessonConnect: {

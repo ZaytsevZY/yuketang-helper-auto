@@ -258,6 +258,15 @@ function registerIpc(): void {
       return getRuntime().facade.refreshLessons(environment);
     },
   );
+  ipcMain.handle(
+    IpcChannel.ListAssignments,
+    async (event, environment: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (!isBrowserEnvironment(environment))
+        throw new Error('Invalid browser environment.');
+      return getRuntime().facade.listAssignments(environment);
+    },
+  );
   ipcMain.handle(IpcChannel.ListLessons, async (event) => {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
     return getRuntime().facade.listLessons();

@@ -1,3 +1,4 @@
+import type { AssignmentSnapshot } from './assignments.js';
 import type { BrowserEnvironment, BrowserState } from './browser.js';
 import type {
   AnswerInput,
@@ -52,6 +53,7 @@ export const IpcChannel = {
   ListLogs: 'storage:list-logs',
   RefreshLessons: 'backend:refresh-lessons',
   ListLessons: 'backend:list-lessons',
+  ListAssignments: 'backend:list-assignments',
   ConnectLesson: 'backend:connect-lesson',
   ListPresentations: 'backend:list-presentations',
   ListProblems: 'backend:list-problems',
@@ -114,6 +116,7 @@ export interface DesktopApi {
   listLogs(limit?: number): Promise<readonly AppLogEntry[]>;
   refreshLessons(environment: BrowserEnvironment): Promise<readonly Lesson[]>;
   listLessons(): Promise<readonly Lesson[]>;
+  listAssignments(environment: BrowserEnvironment): Promise<AssignmentSnapshot>;
   connectLesson(environment: BrowserEnvironment, id: string): Promise<void>;
   listPresentations(lessonId: string): Promise<readonly Presentation[]>;
   listProblems(lessonId: string): Promise<readonly ProblemContext[]>;

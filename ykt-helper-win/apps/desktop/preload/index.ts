@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   IpcChannel,
+  type AssignmentSnapshot,
   type AiProfileView,
   type AnswerInput,
   type AnswerProposal,
@@ -111,6 +112,11 @@ const api: DesktopApi = Object.freeze({
     ipcRenderer.invoke(IpcChannel.RefreshLessons, environment) as Promise<
       readonly Lesson[]
     >,
+  listAssignments: (environment: BrowserEnvironment) =>
+    ipcRenderer.invoke(
+      IpcChannel.ListAssignments,
+      environment,
+    ) as Promise<AssignmentSnapshot>,
   listLessons: () =>
     ipcRenderer.invoke(IpcChannel.ListLessons) as Promise<readonly Lesson[]>,
   connectLesson: (environment: BrowserEnvironment, id: string) =>

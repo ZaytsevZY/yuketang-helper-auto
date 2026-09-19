@@ -18,6 +18,7 @@ export const CliRpcMethod = {
   SettingsReset: 'settings.reset',
   UserGet: 'user.get',
   LessonList: 'lesson.list',
+  AssignmentList: 'assignment.list',
   LessonConnect: 'lesson.connect',
   PresentationList: 'presentation.list',
   PresentationExport: 'presentation.export',
