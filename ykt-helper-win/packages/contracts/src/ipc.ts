@@ -1,3 +1,9 @@
+import type {
+  WebProbeReport,
+  WebProbeEvidence,
+  WebProbeRequest,
+  WebProbeResponse,
+} from './web-probe.js';
 import type { AssignmentSnapshot } from './assignments.js';
 import type { BrowserEnvironment, BrowserState } from './browser.js';
 import type {
@@ -74,6 +80,13 @@ export const IpcChannel = {
   SetWebAreaBounds: 'browser:set-web-area-bounds',
   BrowserStateChanged: 'browser:state-changed',
   ClassroomNotice: 'classroom:notice',
+  GetWebProbeReport: 'network:web-probe-report',
+  ScanWebPage: 'network:scan-web-page',
+  AnalyzeWebAsset: 'network:analyze-web-asset',
+  SearchWebSources: 'network:search-web-sources',
+  ProbeWebGet: 'network:probe-web-get',
+  CancelWebProbe: 'network:cancel-web-probe',
+  ExportWebProbe: 'network:export-web-probe',
   GetNetworkSnapshot: 'network:get-snapshot',
   SetNetworkPaused: 'network:set-paused',
   SetDeepCapture: 'network:set-deep-capture',
@@ -137,6 +150,13 @@ export interface DesktopApi {
   setWebAreaBounds(bounds: WebAreaBounds): Promise<void>;
   onBrowserStateChanged(listener: (state: BrowserState) => void): () => void;
   onClassroomNotice(listener: (notice: ClassroomNotice) => void): () => void;
+  getWebProbeReport(): Promise<WebProbeReport | null>;
+  scanWebPage(): Promise<WebProbeReport>;
+  analyzeWebAsset(url: string): Promise<WebProbeReport>;
+  searchWebSources(query: string): Promise<readonly WebProbeEvidence[]>;
+  probeWebGet(request: WebProbeRequest): Promise<WebProbeResponse>;
+  cancelWebProbe(): Promise<void>;
+  exportWebProbe(): Promise<FixtureExportResult | null>;
   getNetworkSnapshot(): Promise<NetworkSnapshot>;
   setNetworkPaused(paused: boolean): Promise<void>;
   setDeepCapture(enabled: boolean): Promise<void>;

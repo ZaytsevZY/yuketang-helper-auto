@@ -153,6 +153,8 @@ SQLite，也不会自行启动 headless 登录会话。运行 `npm run cli -- he
 
 ## 网络实验室
 
+「Web 探测」支持从当前页面发现 bundle、还原路由和接口候选、跟进懒加载脚本、搜索源码、复用登录态手动 GET 探测及导出报告。操作流程与解析边界见 [Web 探测说明](docs/web-probe.md)。
+
 底部网络实验室默认通过 Electron `webRequest` 捕获 HTTP 元数据。课堂收集器通过 CDP 旁路读取官方页面必要的课件响应和 WebSocket 帧，但不会把原始正文写入持久化存储；开启“深度捕获”后才会将受限、脱敏的正文和帧显示在实验室中。打开远程页面 DevTools 会占用或断开 CDP，界面会显示对应状态。
 
 Parser 开发时可用独立的未脱敏 recorder 启动桌面端：

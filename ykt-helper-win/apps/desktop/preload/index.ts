@@ -32,6 +32,10 @@ import {
   type UserProfile,
   type ValidationResult,
   type WebAreaBounds,
+  type WebProbeReport,
+  type WebProbeEvidence,
+  type WebProbeRequest,
+  type WebProbeResponse,
 } from '@ykt/contracts';
 
 const api: DesktopApi = Object.freeze({
@@ -198,6 +202,32 @@ const api: DesktopApi = Object.freeze({
     return () =>
       ipcRenderer.removeListener(IpcChannel.ClassroomNotice, handler);
   },
+  getWebProbeReport: () =>
+    ipcRenderer.invoke(
+      IpcChannel.GetWebProbeReport,
+    ) as Promise<WebProbeReport | null>,
+  scanWebPage: () =>
+    ipcRenderer.invoke(IpcChannel.ScanWebPage) as Promise<WebProbeReport>,
+  analyzeWebAsset: (url: string) =>
+    ipcRenderer.invoke(
+      IpcChannel.AnalyzeWebAsset,
+      url,
+    ) as Promise<WebProbeReport>,
+  searchWebSources: (query: string) =>
+    ipcRenderer.invoke(IpcChannel.SearchWebSources, query) as Promise<
+      readonly WebProbeEvidence[]
+    >,
+  probeWebGet: (request: WebProbeRequest) =>
+    ipcRenderer.invoke(
+      IpcChannel.ProbeWebGet,
+      request,
+    ) as Promise<WebProbeResponse>,
+  cancelWebProbe: () =>
+    ipcRenderer.invoke(IpcChannel.CancelWebProbe) as Promise<void>,
+  exportWebProbe: () =>
+    ipcRenderer.invoke(
+      IpcChannel.ExportWebProbe,
+    ) as Promise<FixtureExportResult | null>,
   getNetworkSnapshot: () =>
     ipcRenderer.invoke(
       IpcChannel.GetNetworkSnapshot,
