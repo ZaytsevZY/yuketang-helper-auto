@@ -21,7 +21,7 @@ const usage = `Usage:
   ykt settings update --from -
   ykt settings reset
   ykt user get --environment <standard|pro|changjiang> [--refresh]
-  ykt assignment list [--environment pro]
+  ykt assignment list [--environment pro] [--refresh]
   ykt lesson list [--environment <standard|pro|changjiang|all>] [--refresh]
   ykt lesson connect <lesson-id> --environment <standard|pro|changjiang>
   ykt presentation list --lesson <lesson-id>
@@ -114,7 +114,10 @@ async function execute(args: ParsedArgs): Promise<JsonValue> {
   if (group === 'assignment' && action === 'list') {
     return requestDesktop(
       CliRpcMethod.AssignmentList,
-      json({ environment: option(args, 'environment') ?? 'pro' }),
+      json({
+        environment: option(args, 'environment') ?? 'pro',
+        refresh: args.options.has('refresh'),
+      }),
     );
   }
 

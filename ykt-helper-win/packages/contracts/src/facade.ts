@@ -54,7 +54,11 @@ export interface YuketangFacade {
   refreshUser(environment: BrowserEnvironment): Promise<UserProfile>;
   listLogs(limit?: number): Promise<readonly AppLogEntry[]>;
   listLessons(): Promise<readonly Lesson[]>;
-  listAssignments(environment: BrowserEnvironment): Promise<AssignmentSnapshot>;
+  /** Reuse this app session's collection unless an explicit refresh is requested. */
+  listAssignments(
+    environment: BrowserEnvironment,
+    refresh?: boolean,
+  ): Promise<AssignmentSnapshot>;
   refreshLessons(environment: BrowserEnvironment): Promise<readonly Lesson[]>;
   connectLesson(
     environment: BrowserEnvironment,

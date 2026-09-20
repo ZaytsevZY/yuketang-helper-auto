@@ -1,29 +1,22 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue';
-import {
-  BrowserEnvironment,
-  type Assignment,
-  type AssignmentSnapshot,
-} from '@ykt/contracts';
+import { computed, onUnmounted, ref, toRefs } from 'vue';
+import { assignmentCollection } from '../assignment-collection';
+import { BrowserEnvironment, type Assignment } from '@ykt/contracts';
 import {
   assignmentStatusLabel,
   matchesAssignmentStatus,
 } from '../assignment-status';
 
 const props = defineProps<{ environment: BrowserEnvironment }>();
-const snapshot = ref<AssignmentSnapshot | null>(null);
-const loading = ref(false);
-const error = ref('');
+const { snapshot, loading, error } = toRefs(assignmentCollection.state);
 const search = ref('');
 const kind = ref('all');
 const status = ref('all');
 const now = ref(Date.now());
-let version = 0;
 const clock = setInterval(() => {
   now.value = Date.now();
 }, 30_000);
 onUnmounted(() => {
-  version++;
   clearInterval(clock);
 });
 
@@ -49,34 +42,9 @@ const unfinished = computed(
     ).length,
 );
 
-watch(
-  () => props.environment,
-  () => {
-    version++;
-    snapshot.value = null;
-    error.value = '';
-    loading.value = false;
-    if (supported.value) void refresh();
-  },
-  { immediate: true },
-);
-
 async function refresh(): Promise<void> {
-  // 请求复用内嵌网页的登录会话，界面无需展示会话实现细节。
-  if (!supported.value || loading.value) return;
-  const request = ++version;
-  loading.value = true;
-  error.value = '';
-  try {
-    const result = await window.yuketang.listAssignments(props.environment);
-    if (request === version) snapshot.value = result;
-  } catch (cause) {
-    if (request === version)
-      error.value =
-        cause instanceof Error ? cause.message : '作业读取失败，请重试。';
-  } finally {
-    if (request === version) loading.value = false;
-  }
+  if (!supported.value) return;
+  await assignmentCollection.refresh();
 }
 
 async function open(url?: string): Promise<void> {

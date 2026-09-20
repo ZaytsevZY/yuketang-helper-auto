@@ -42,13 +42,21 @@ describe('desktop-attached CLI', () => {
       environment: 'pro',
       assignments: [],
     });
-    expect(listAssignments).toHaveBeenCalledWith(BrowserEnvironment.Pro);
+    expect(listAssignments).toHaveBeenCalledWith(BrowserEnvironment.Pro, false);
+    await handler(CliRpcMethod.AssignmentList, { refresh: true });
+    expect(listAssignments).toHaveBeenLastCalledWith(
+      BrowserEnvironment.Pro,
+      true,
+    );
+    await expect(
+      handler(CliRpcMethod.AssignmentList, { refresh: 'yes' }),
+    ).rejects.toThrow();
     await expect(
       handler(CliRpcMethod.AssignmentList, {
         environment: 'https://evil.example',
       }),
     ).rejects.toThrow();
-    expect(listAssignments).toHaveBeenCalledTimes(1);
+    expect(listAssignments).toHaveBeenCalledTimes(2);
   });
 
   it('uses a platform-appropriate local endpoint', () => {

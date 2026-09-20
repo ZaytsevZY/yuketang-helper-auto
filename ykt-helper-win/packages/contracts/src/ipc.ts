@@ -129,7 +129,11 @@ export interface DesktopApi {
   listLogs(limit?: number): Promise<readonly AppLogEntry[]>;
   refreshLessons(environment: BrowserEnvironment): Promise<readonly Lesson[]>;
   listLessons(): Promise<readonly Lesson[]>;
-  listAssignments(environment: BrowserEnvironment): Promise<AssignmentSnapshot>;
+  /** Reuse this app session's collection unless an explicit refresh is requested. */
+  listAssignments(
+    environment: BrowserEnvironment,
+    refresh?: boolean,
+  ): Promise<AssignmentSnapshot>;
   connectLesson(environment: BrowserEnvironment, id: string): Promise<void>;
   listPresentations(lessonId: string): Promise<readonly Presentation[]>;
   listProblems(lessonId: string): Promise<readonly ProblemContext[]>;

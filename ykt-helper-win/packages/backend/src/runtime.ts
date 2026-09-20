@@ -61,6 +61,14 @@ import { systemClock } from './workflows/lesson-state-machine.js';
 const VERSION = '2.0.0';
 
 class BaselineFacade implements YuketangFacade {
+  readonly #assignmentCache = new Map<
+    BrowserEnvironment,
+    Promise<AssignmentSnapshot>
+  >();
+  readonly #assignmentInFlight = new Map<
+    BrowserEnvironment,
+    Promise<AssignmentSnapshot>
+  >();
   constructor(
     private readonly status: () => RuntimeStatus,
     private readonly routing: RoutingService,
@@ -233,6 +241,7 @@ class BaselineFacade implements YuketangFacade {
 
   async listAssignments(
     environment: BrowserEnvironment,
+    refresh = false,
   ): Promise<AssignmentSnapshot> {
     if (!this.activeClient) {
       throw new YuketangError({
@@ -240,7 +249,59 @@ class BaselineFacade implements YuketangFacade {
         message: 'The active network client is not configured.',
       });
     }
-    return this.activeClient.listAssignments(environment);
+    const pending = this.#assignmentInFlight.get(environment);
+    if (pending) return pending;
+    const cached = this.#assignmentCache.get(environment);
+    if (!refresh && cached) return cached;
+    // Retain settled failures too: homepage reloads must not retry an expired
+    // login. Only the assignment page's explicit refresh starts another attempt.
+    const request = this.collectAssignments(environment, refresh);
+    this.#assignmentCache.set(environment, request);
+    this.#assignmentInFlight.set(environment, request);
+    const complete = () => {
+      this.#assignmentInFlight.delete(environment);
+    };
+    void request.then(complete, complete);
+    return request;
+  }
+
+  private async collectAssignments(
+    environment: BrowserEnvironment,
+    refresh: boolean,
+  ): Promise<AssignmentSnapshot> {
+    const startedAt = Date.now();
+    const details = { environment, trigger: refresh ? 'manual' : 'startup' };
+    try {
+      const result = await this.activeClient!.listAssignments(environment);
+      await this.storage
+        .appendLog({
+          level: result.warnings.length ? 'warn' : 'info',
+          scope: 'assignments',
+          message: '作业 / 考试收集完成。',
+          details: {
+            ...details,
+            durationMs: Date.now() - startedAt,
+            assignmentCount: result.assignments.length,
+            warningCount: result.warnings.length,
+          },
+        })
+        .catch(() => undefined);
+      return result;
+    } catch (error) {
+      await this.storage
+        .appendLog({
+          level: 'error',
+          scope: 'assignments',
+          message: '作业 / 考试收集失败。',
+          details: {
+            ...details,
+            durationMs: Date.now() - startedAt,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          },
+        })
+        .catch(() => undefined);
+      throw error;
+    }
   }
 
   async listLessons(): Promise<readonly Lesson[]> {

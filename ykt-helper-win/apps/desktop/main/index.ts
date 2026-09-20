@@ -263,11 +263,13 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     IpcChannel.ListAssignments,
-    async (event, environment: unknown) => {
+    async (event, environment: unknown, refresh: unknown) => {
       assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
       if (!isBrowserEnvironment(environment))
         throw new Error('Invalid browser environment.');
-      return getRuntime().facade.listAssignments(environment);
+      if (refresh !== undefined && typeof refresh !== 'boolean')
+        throw new Error('Invalid assignment refresh flag.');
+      return getRuntime().facade.listAssignments(environment, refresh === true);
     },
   );
   ipcMain.handle(IpcChannel.ListLessons, async (event) => {

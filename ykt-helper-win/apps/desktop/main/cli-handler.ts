@@ -201,6 +201,9 @@ async function dispatch(
     case CliRpcMethod.AssignmentList:
       return facade.listAssignments(
         environmentValue(input.environment ?? 'pro'),
+        input.refresh === undefined
+          ? false
+          : booleanValue(input.refresh, 'refresh'),
       );
     case CliRpcMethod.LessonList:
       return listLessons(context, input);
