@@ -1,11 +1,13 @@
 import type { LessonEvent } from '@ykt/contracts';
 
 export * from './active/client.js';
+export { AssignmentAuthError } from './active/assignments.js';
 export * from './active/browser-lesson-collector.js';
 export * from './active/host-adapter.js';
 export * from './active/http-transport.js';
 export * from './active/lesson-websocket.js';
 export * from './active/session-manager.js';
+export * from './active/node-assignment-session.js';
 export * from './active/types.js';
 export * from './fixture.js';
 export * from './normalizer.js';

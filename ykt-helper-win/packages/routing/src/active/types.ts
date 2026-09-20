@@ -34,6 +34,8 @@ export interface ActiveHttpRequest {
   url: string;
   headers: Readonly<Record<string, string>>;
   body: string | null;
+  /** Login handoffs stop at the redirect; do not forward credentials to its target. */
+  redirect?: 'manual';
 }
 
 export interface ActiveHttpResponse {

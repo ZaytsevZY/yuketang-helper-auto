@@ -24,10 +24,8 @@ export async function fetchAssignments(
   if (!Array.isArray(courses.list))
     throw new Error('雨课堂课程列表格式异常，请重新登录荷塘雨课堂后重试。');
   const warnings: string[] = [];
-  const items = new Map<
-    string,
-    { assignment: Assignment; leafTypeId: string; skuId: string }
-  >();
+  type Item = { assignment: Assignment; leafTypeId: string; skuId: string };
+  const items = new Map<string, Item>();
   const auditedClassrooms = new Set(
     courses.list.flatMap((value) => {
       const course = record(value);
@@ -35,134 +33,158 @@ export async function fetchAssignments(
     }),
   );
 
-  for (const rawCourse of courses.list) {
-    const course = record(rawCourse);
-    const cid = id(course?.classroom_id);
-    if (!course || !cid) continue;
-    const courseName =
-      id(course.name) || id(record(course.course)?.name) || '雨课堂课程';
-    try {
-      const seenPages = new Set<string>();
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const data = dataOf(
-          await get(
-            `${ORIGIN}/v2/api/web/logs/learn/${encodeURIComponent(cid)}?page=${page}&offset=${PAGE_SIZE}&sort=0&actype=-1`,
-          ),
-        );
-        if (!Array.isArray(data.activities))
-          throw new Error('学习日志格式异常');
-        const signature = JSON.stringify(data.activities);
-        if (seenPages.has(signature)) {
-          warnings.push(
-            `${courseName}：学习日志分页返回重复数据，结果可能不完整。`,
+  const uniqueCourses = [
+    ...new Map(
+      courses.list.flatMap((value) => {
+        const course = record(value);
+        const cid = id(course?.classroom_id);
+        return course && cid ? [[cid, course] as const] : [];
+      }),
+    ).values(),
+  ];
+  // Concurrency is across courses; pages within a course remain ordered.
+  const courseResults = await mapConcurrent(
+    uniqueCourses,
+    async (rawCourse, stopped) => {
+      const courseItems = new Map<string, Item>();
+      const courseWarnings: string[] = [];
+      const course = record(rawCourse);
+      const cid = id(course?.classroom_id);
+      if (!course || !cid)
+        return { items: courseItems, warnings: courseWarnings };
+      const courseName =
+        id(course.name) || id(record(course.course)?.name) || '雨课堂课程';
+      try {
+        const seenPages = new Set<string>();
+        for (let page = 0; page < MAX_PAGES && !stopped(); page++) {
+          const data = dataOf(
+            await get(
+              `${ORIGIN}/v2/api/web/logs/learn/${encodeURIComponent(cid)}?page=${page}&offset=${PAGE_SIZE}&sort=0&actype=-1`,
+            ),
           );
-          break;
-        }
-        seenPages.add(signature);
-        for (const raw of data.activities) {
-          const activity = record(raw);
-          if (!activity || (activity.type !== 19 && activity.type !== 20))
-            continue;
-          const content = record(activity.content) ?? {};
-          const leaf = id(content.leaf_id);
-          const leafTypeId = id(content.leaf_type_id);
-          const activityId =
-            id(activity.id) || id(activity.courseware_id) || leaf || leafTypeId;
-          if (!activityId) {
-            warnings.push(`${courseName}：一条作业缺少标识，未能读取。`);
-            continue;
+          if (!Array.isArray(data.activities))
+            throw new Error('学习日志格式异常');
+          const signature = JSON.stringify(data.activities);
+          if (seenPages.has(signature)) {
+            courseWarnings.push(
+              `${courseName}：学习日志分页返回重复数据，结果可能不完整。`,
+            );
+            break;
           }
-          const classroomId = id(activity.classroom_id) || cid;
-          const key = `pro:${classroomId}:${activity.type}:${activityId}`;
-          items.set(key, {
-            leafTypeId,
-            skuId: id(content.sku_id),
-            assignment: {
-              id: key,
-              classroomId,
-              courseName,
-              title:
-                id(activity.title) || (activity.type === 20 ? '考试' : '作业'),
-              kind: activity.type === 20 ? 'exam' : 'homework',
-              deadline: deadline(content.score_d),
-              // R16b 学生端直链使用 leaf_id；/subject 是教师入口，不能使用。
-              url: leaf
-                ? `${ORIGIN}/ai-workspace/lms-graph/${encodeURIComponent(classroomId)}/${activity.type === 20 ? 'quiz' : 'exercise'}/${encodeURIComponent(leaf)}?is_chapter=1`
-                : `${ORIGIN}/v2/web/studentLog/${encodeURIComponent(classroomId)}`,
-              status: 'unknown',
-              graded: null,
-              score: null,
-              totalScore: null,
-              audited: auditedClassrooms.has(classroomId),
-              answeredCount: null,
-              totalCount: null,
-              questions: [],
-              statusMessage: leafTypeId
-                ? null
-                : '暂无法获取作答状态，请在官网查看。',
-            },
-          });
+          seenPages.add(signature);
+          for (const raw of data.activities) {
+            const activity = record(raw);
+            if (!activity || (activity.type !== 19 && activity.type !== 20))
+              continue;
+            const content = record(activity.content) ?? {};
+            const leaf = id(content.leaf_id);
+            const leafTypeId = id(content.leaf_type_id);
+            const activityId =
+              id(activity.id) ||
+              id(activity.courseware_id) ||
+              leaf ||
+              leafTypeId;
+            if (!activityId) {
+              courseWarnings.push(
+                `${courseName}：一条作业缺少标识，未能读取。`,
+              );
+              continue;
+            }
+            const classroomId = id(activity.classroom_id) || cid;
+            const key = `pro:${classroomId}:${activity.type}:${activityId}`;
+            courseItems.set(key, {
+              leafTypeId,
+              skuId: id(content.sku_id),
+              assignment: {
+                id: key,
+                classroomId,
+                leafTypeId,
+                skuId: id(content.sku_id),
+                courseName,
+                title:
+                  id(activity.title) ||
+                  (activity.type === 20 ? '考试' : '作业'),
+                kind: activity.type === 20 ? 'exam' : 'homework',
+                deadline: deadline(content.score_d),
+                // R16b 学生端直链使用 leaf_id；/subject 是教师入口，不能使用。
+                url: leaf
+                  ? `${ORIGIN}/ai-workspace/lms-graph/${encodeURIComponent(classroomId)}/${activity.type === 20 ? 'quiz' : 'exercise'}/${encodeURIComponent(leaf)}?is_chapter=1`
+                  : `${ORIGIN}/v2/web/studentLog/${encodeURIComponent(classroomId)}`,
+                status: 'unknown',
+                graded: null,
+                score: null,
+                totalScore: null,
+                audited: auditedClassrooms.has(classroomId),
+                answeredCount: null,
+                totalCount: null,
+                questions: [],
+                statusMessage: leafTypeId
+                  ? null
+                  : '暂无法获取作答状态，请在官网查看。',
+              },
+            });
+          }
+          if (data.activities.length < PAGE_SIZE) break;
+          if (page === MAX_PAGES - 1)
+            courseWarnings.push(
+              `${courseName}：学习日志过多，仅显示前 ${MAX_PAGES * PAGE_SIZE} 条活动中的作业。`,
+            );
         }
-        if (data.activities.length < PAGE_SIZE) break;
-        if (page === MAX_PAGES - 1)
-          warnings.push(
-            `${courseName}：学习日志过多，仅显示前 ${MAX_PAGES * PAGE_SIZE} 条活动中的作业。`,
-          );
+      } catch (error) {
+        if (error instanceof AssignmentAuthError) throw error;
+        courseWarnings.push(
+          `${courseName}：部分学习日志未能读取，请刷新重试。`,
+        );
       }
-    } catch (error) {
-      if (error instanceof AssignmentAuthError) throw error;
-      warnings.push(`${courseName}：部分学习日志未能读取，请刷新重试。`);
-    }
+      return { items: courseItems, warnings: courseWarnings };
+    },
+  );
+  // Merge in course-list order so network completion order cannot change titles.
+  for (const result of courseResults) {
+    for (const [key, item] of result.items) items.set(key, item);
+    warnings.push(...result.warnings);
   }
 
   // Bound status requests to four workers, as in the upstream implementation.
   const pending = [...items.values()];
-  let cursor = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(4, pending.length) }, async () => {
-      while (cursor < pending.length) {
-        const item = pending[cursor++];
-        if (!item?.leafTypeId) continue;
-        const query = new URLSearchParams({
+  await mapConcurrent(pending, async (item) => {
+    if (!item.leafTypeId) return;
+    const query = new URLSearchParams({
+      classroom_id: item.assignment.classroomId,
+      term: 'latest',
+      uv_id: universityId,
+    });
+    try {
+      if (item.assignment.kind === 'exam') {
+        const examQuery = new URLSearchParams({
+          exam_id: item.leafTypeId,
           classroom_id: item.assignment.classroomId,
-          term: 'latest',
-          uv_id: universityId,
         });
-        try {
-          if (item.assignment.kind === 'exam') {
-            const examQuery = new URLSearchParams({
-              exam_id: item.leafTypeId,
-              classroom_id: item.assignment.classroomId,
-            });
-            if (item.skuId) examQuery.set('sku_id', item.skuId);
-            const data = dataOf(
-              await get(`${ORIGIN}/v/exam/cover?${examQuery}`),
-            );
-            item.assignment = {
-              ...item.assignment,
-              ...parseExamProgress(data),
-            };
-            continue;
-          }
-          const data = dataOf(
-            await get(
-              `${ORIGIN}/mooc-api/v1/lms/exercise/get_exercise_list/${encodeURIComponent(item.leafTypeId)}/?${query}`,
-            ),
-          );
-          item.assignment = { ...item.assignment, ...parseProgress(data) };
-        } catch (error) {
-          if (error instanceof AssignmentAuthError) throw error;
-          item.assignment = {
-            ...item.assignment,
-            statusMessage:
-              item.assignment.kind === 'exam'
-                ? '考试状态获取失败，请刷新或在官网查看。'
-                : '作答状态获取失败，请刷新或在官网确认。',
-          };
-        }
+        if (item.skuId) examQuery.set('sku_id', item.skuId);
+        const data = dataOf(await get(`${ORIGIN}/v/exam/cover?${examQuery}`));
+        item.assignment = {
+          ...item.assignment,
+          ...parseExamProgress(data),
+        };
+        return;
       }
-    }),
-  );
+      const data = dataOf(
+        await get(
+          `${ORIGIN}/mooc-api/v1/lms/exercise/get_exercise_list/${encodeURIComponent(item.leafTypeId)}/?${query}`,
+        ),
+      );
+      item.assignment = { ...item.assignment, ...parseProgress(data) };
+    } catch (error) {
+      if (error instanceof AssignmentAuthError) throw error;
+      item.assignment = {
+        ...item.assignment,
+        statusMessage:
+          item.assignment.kind === 'exam'
+            ? '考试状态获取失败，请刷新或在官网查看。'
+            : '作答状态获取失败，请刷新或在官网确认。',
+      };
+    }
+  });
   return {
     environment: BrowserEnvironment.Pro,
     fetchedAt: now(),
@@ -177,7 +199,34 @@ export async function fetchAssignments(
   };
 }
 
-function parseExamProgress(
+/** A failed authorization stops the queue and drains in-flight work before
+ * rejecting, so an explicit retry cannot overlap an abandoned collection. */
+async function mapConcurrent<T, R>(
+  items: readonly T[],
+  task: (item: T, stopped: () => boolean) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  let failed = false;
+  let failure: unknown;
+  await Promise.all(
+    Array.from({ length: Math.min(4, items.length) }, async () => {
+      while (!failed && cursor < items.length) {
+        const index = cursor++;
+        try {
+          results[index] = await task(items[index]!, () => failed);
+        } catch (error) {
+          if (!failed) failure = error;
+          failed = true;
+        }
+      }
+    }),
+  );
+  if (failed) throw failure;
+  return results;
+}
+
+export function parseExamProgress(
   data: JsonRecord,
 ): Pick<
   Assignment,
@@ -260,7 +309,7 @@ function nonnegativeNumber(value: unknown): number | null {
     : null;
 }
 
-function parseProgress(
+export function parseProgress(
   data: JsonRecord,
 ): Pick<
   Assignment,
@@ -270,14 +319,11 @@ function parseProgress(
   | 'questions'
   | 'statusMessage'
   | 'graded'
+  | 'score'
+  | 'totalScore'
 > {
   const raw = Array.isArray(data.problems) ? data.problems : [];
-  const aggregate =
-    typeof data.answer_count === 'number' &&
-    Number.isInteger(data.answer_count) &&
-    data.answer_count >= 0
-      ? data.answer_count
-      : null;
+  const aggregate = nonnegativeInteger(numericScore(data.answer_count));
   if (!raw.length && aggregate === null)
     throw new Error('Empty exercise status');
   const questions: AssignmentQuestionStatus[] = raw.map((value, index) => {
@@ -289,7 +335,12 @@ function parseProgress(
       id: id(problem?.problem_id) || id(problem?.id) || String(index + 1),
       index: index + 1,
       // Missing user data is not evidence that the question was left blank.
-      answered: !user ? null : hasAnswer(content),
+      answered: !user
+        ? null
+        : user.status === 3 ||
+          user.status === 4 ||
+          hasAnswer(content) ||
+          (Array.isArray(answer?.attachment) && answer.attachment.length > 0),
     };
   });
   const answered = questions.filter(
@@ -308,9 +359,36 @@ function parseProgress(
         : allKnown || aggregate === 0
           ? 'unanswered'
           : 'unknown';
+  const scored =
+    raw.length > 0 &&
+    raw.every((value) => {
+      const user = record(record(value)?.user);
+      return (
+        user?.status !== 3 &&
+        numericScore(user?.my_score) !== null &&
+        numericScore(record(record(value)?.content)?.score) !== null
+      );
+    });
+  const graded = homeworkGraded(raw, aggregate, answered);
   return {
     status,
-    graded: homeworkGraded(raw, aggregate, answered),
+    score:
+      graded === true && scored
+        ? raw.reduce<number>(
+            (sum, value) =>
+              sum + numericScore(record(record(value)?.user)?.my_score)!,
+            0,
+          )
+        : null,
+    totalScore:
+      graded === true && scored
+        ? raw.reduce<number>(
+            (sum, value) =>
+              sum + numericScore(record(record(value)?.content)?.score)!,
+            0,
+          )
+        : null,
+    graded,
     answeredCount: count,
     totalCount: questions.length || null,
     questions,
@@ -328,7 +406,15 @@ function homeworkGraded(
   const relevant = problems.filter(
     (value) =>
       (aggregate ?? 0) > 0 ||
-      hasAnswer(record(record(record(value)?.user)?.my_answer)?.content),
+      [3, 4].includes(record(record(value)?.user)?.status as number) ||
+      hasAnswer(record(record(record(value)?.user)?.my_answer)?.content) ||
+      (Array.isArray(
+        record(record(record(value)?.user)?.my_answer)?.attachment,
+      ) &&
+        (
+          record(record(record(value)?.user)?.my_answer)
+            ?.attachment as unknown[]
+        ).length > 0),
   );
   if (!relevant.length) return null;
   let allGraded = true;
@@ -360,7 +446,7 @@ export class AssignmentAuthError extends Error {
   }
 }
 
-function dataOf(value: unknown): JsonRecord {
+export function dataOf(value: unknown): JsonRecord {
   const body = record(value);
   if (!body) throw new Error('雨课堂返回非 JSON，请重新登录后重试。');
   for (const field of ['errcode', 'error_code', 'code']) {
@@ -396,4 +482,10 @@ function deadline(value: unknown): number | null {
     !Number.isNaN(new Date(value).getTime())
     ? value
     : null;
+}
+
+function numericScore(value: unknown): number | null {
+  return nonnegativeNumber(
+    typeof value === 'string' && value.trim() ? Number(value) : value,
+  );
 }

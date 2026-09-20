@@ -9,6 +9,7 @@ import {
 } from '@ykt/contracts';
 
 import AssistantPanel from './components/AssistantPanel.vue';
+import { assignmentCollection } from './assignment-collection';
 import NetworkLab from './components/NetworkLab.vue';
 
 type WorkspacePage =
@@ -76,6 +77,8 @@ function reportWebAreaBounds(): void {
 }
 
 onMounted(async () => {
+  // Startup collection is independent of browser navigation and global refresh.
+  void assignmentCollection.initialize();
   resizeObserver = new ResizeObserver(() => reportWebAreaBounds());
   if (webArea.value) resizeObserver.observe(webArea.value);
 

@@ -26,6 +26,45 @@ afterEach(async () => {
 });
 
 describe('desktop-attached CLI', () => {
+  it('reads one assignment detail through the facade with validated parameters', async () => {
+    const getAssignmentDetail = vi.fn(async () => ({
+      mode: 'exercise',
+      problems: [],
+    }));
+    const handler = createDesktopCliHandler({
+      facade: { getAssignmentDetail } as unknown as YuketangFacade,
+      openLesson: async () => {},
+      prepareImage: async (url) => url,
+    });
+    expect(
+      await handler(CliRpcMethod.AssignmentDetail, { id: 'pro:1:19:2' }),
+    ).toMatchObject({ mode: 'exercise' });
+    expect(getAssignmentDetail).toHaveBeenCalledWith(
+      BrowserEnvironment.Pro,
+      'pro:1:19:2',
+      false,
+    );
+    await handler(CliRpcMethod.AssignmentDetail, {
+      id: 'pro:1:19:2',
+      refresh: true,
+    });
+    expect(getAssignmentDetail).toHaveBeenLastCalledWith(
+      BrowserEnvironment.Pro,
+      'pro:1:19:2',
+      true,
+    );
+    await expect(
+      handler(CliRpcMethod.AssignmentDetail, { id: 'x', refresh: 'yes' }),
+    ).rejects.toThrow();
+    await expect(handler(CliRpcMethod.AssignmentDetail, {})).rejects.toThrow();
+    await expect(
+      handler(CliRpcMethod.AssignmentDetail, {
+        id: 'x',
+        environment: 'invalid',
+      }),
+    ).rejects.toThrow();
+  });
+
   it('reads assignments through the shared facade and validates the environment', async () => {
     const listAssignments = vi.fn(async () => ({
       environment: 'pro',
@@ -42,13 +81,21 @@ describe('desktop-attached CLI', () => {
       environment: 'pro',
       assignments: [],
     });
-    expect(listAssignments).toHaveBeenCalledWith(BrowserEnvironment.Pro);
+    expect(listAssignments).toHaveBeenCalledWith(BrowserEnvironment.Pro, false);
+    await handler(CliRpcMethod.AssignmentList, { refresh: true });
+    expect(listAssignments).toHaveBeenLastCalledWith(
+      BrowserEnvironment.Pro,
+      true,
+    );
+    await expect(
+      handler(CliRpcMethod.AssignmentList, { refresh: 'yes' }),
+    ).rejects.toThrow();
     await expect(
       handler(CliRpcMethod.AssignmentList, {
         environment: 'https://evil.example',
       }),
     ).rejects.toThrow();
-    expect(listAssignments).toHaveBeenCalledTimes(1);
+    expect(listAssignments).toHaveBeenCalledTimes(2);
   });
 
   it('uses a platform-appropriate local endpoint', () => {

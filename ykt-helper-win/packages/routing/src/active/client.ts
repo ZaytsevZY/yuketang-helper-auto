@@ -1,6 +1,10 @@
+import { fetchAssignmentDetail } from './assignment-detail.js';
+import { openExamReviewSession } from './exam-review-session.js';
 import {
   BrowserEnvironment,
   type AssignmentSnapshot,
+  type Assignment,
+  type AssignmentDetail,
   type Presentation,
 } from '@ykt/contracts';
 import { AssignmentAuthError, fetchAssignments } from './assignments.js';
@@ -78,31 +82,90 @@ export class YuketangActiveClient {
     if (environment !== BrowserEnvironment.Pro) {
       throw new Error('作业接口目前仅支持荷塘雨课堂，请切换到荷塘雨课堂。');
     }
-    const headers = await this.sessions.headers(environment);
-    const cookie = headers.cookie ?? '';
-    const universityId =
-      /(?:^|;\s*)uv_id=([^;]+)/.exec(cookie)?.[1] ??
-      /(?:^|;\s*)university_id=([^;]+)/.exec(cookie)?.[1] ??
-      '2598';
     return fetchAssignments(
-      async (url) => {
-        const response = await this.#transport.request({
-          method: 'GET',
-          url,
-          body: null,
-          headers: await this.sessions.headers(environment),
-        });
-        await this.sessions.captureResponse(environment, response);
-        if (response.status === 401 || response.status === 403)
-          throw new AssignmentAuthError();
-        if (response.status < 200 || response.status >= 300) {
-          throw new Error(`雨课堂作业请求失败（HTTP ${response.status}）。`);
-        }
-        return response.body;
-      },
-      universityId,
+      (url) => this.assignmentJson(environment, url),
+      await this.assignmentUniversity(environment),
       this.#now,
     );
+  }
+
+  async getAssignmentDetail(
+    environment: BrowserEnvironment,
+    assignment: Assignment,
+  ): Promise<AssignmentDetail> {
+    if (environment !== BrowserEnvironment.Pro)
+      throw new Error('详情仅支持荷塘雨课堂。');
+    return fetchAssignmentDetail(
+      (url) => this.assignmentJson(environment, url),
+      assignment,
+      await this.assignmentUniversity(environment),
+      this.#now,
+      async () => {
+        const sessionHeaders = await this.sessions.headers(environment);
+        const csrf = /(?:^|;\s*)csrftoken=([^;]+)/.exec(
+          sessionHeaders.cookie ?? '',
+        )?.[1];
+        // This web login handoff uses CSRF + the browser cookie session, unlike
+        // the h5 classroom APIs. Copying their x-client/Bearer headers fails.
+        const headers: Record<string, string> = {
+          'content-type': 'application/json;charset=UTF-8',
+          xtbz: 'ykt',
+          'xt-agent': 'web',
+          'classroom-id': assignment.classroomId,
+          'university-id': '0',
+          'uv-id': '0',
+          origin: 'https://pro.yuketang.cn',
+          referer: `https://pro.yuketang.cn/v2/web/trans/${encodeURIComponent(assignment.classroomId)}/${encodeURIComponent(assignment.leafTypeId!)}?status=4&isFrom=2`,
+        };
+        if (sessionHeaders.cookie) headers.cookie = sessionHeaders.cookie;
+        if (csrf) headers['x-csrftoken'] = csrf;
+        const response = await this.#transport.request({
+          method: 'POST',
+          url: 'https://pro.yuketang.cn/v/exam/gen_token',
+          headers,
+          body: JSON.stringify({
+            exam_id: assignment.leafTypeId,
+            classroom_id: assignment.classroomId,
+          }),
+        });
+        if (response.status !== 200) throw new AssignmentAuthError();
+        return openExamReviewSession(
+          this.#transport,
+          response.body,
+          assignment.leafTypeId!,
+        );
+      },
+    );
+  }
+
+  private async assignmentUniversity(
+    environment: BrowserEnvironment,
+  ): Promise<string> {
+    const headers = await this.sessions.headers(environment);
+    const cookie = headers.cookie ?? '';
+    return (
+      /(?:^|;\s*)uv_id=([^;]+)/.exec(cookie)?.[1] ??
+      /(?:^|;\s*)university_id=([^;]+)/.exec(cookie)?.[1] ??
+      '2598'
+    );
+  }
+
+  private async assignmentJson(
+    environment: BrowserEnvironment,
+    url: string,
+  ): Promise<unknown> {
+    const response = await this.#transport.request({
+      method: 'GET',
+      url,
+      body: null,
+      headers: await this.sessions.headers(environment),
+    });
+    await this.sessions.captureResponse(environment, response);
+    if (response.status === 401 || response.status === 403)
+      throw new AssignmentAuthError();
+    if (response.status < 200 || response.status >= 300)
+      throw new Error(`雨课堂作业请求失败（HTTP ${response.status}）。`);
+    return response.body;
   }
 
   async listLessons(

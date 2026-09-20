@@ -9,10 +9,12 @@ export interface AssignmentQuestionStatus {
   readonly answered: boolean | null;
 }
 
-/** Read-only learning-log metadata; no question text or answer content crosses IPC. */
+/** Read-only learning-log metadata; question bodies are fetched separately on demand. */
 export interface Assignment {
   readonly id: string;
   readonly classroomId: string;
+  readonly leafTypeId?: string;
+  readonly skuId?: string;
   readonly courseName: string;
   readonly title: string;
   readonly kind: 'homework' | 'exam';

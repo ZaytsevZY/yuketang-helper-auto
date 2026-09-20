@@ -1,3 +1,4 @@
+import type { AssignmentDetail } from './assignment-detail.js';
 import type { AssignmentSnapshot } from './assignments.js';
 import type {
   AnswerInput,
@@ -54,8 +55,17 @@ export interface YuketangFacade {
   refreshUser(environment: BrowserEnvironment): Promise<UserProfile>;
   listLogs(limit?: number): Promise<readonly AppLogEntry[]>;
   listLessons(): Promise<readonly Lesson[]>;
-  listAssignments(environment: BrowserEnvironment): Promise<AssignmentSnapshot>;
+  /** Reuse this app session's collection unless an explicit refresh is requested. */
+  listAssignments(
+    environment: BrowserEnvironment,
+    refresh?: boolean,
+  ): Promise<AssignmentSnapshot>;
   refreshLessons(environment: BrowserEnvironment): Promise<readonly Lesson[]>;
+  getAssignmentDetail(
+    environment: BrowserEnvironment,
+    id: string,
+    refresh?: boolean,
+  ): Promise<AssignmentDetail>;
   connectLesson(
     environment: BrowserEnvironment,
     id: string,

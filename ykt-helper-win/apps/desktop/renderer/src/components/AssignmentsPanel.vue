@@ -1,29 +1,42 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue';
-import {
-  BrowserEnvironment,
-  type Assignment,
-  type AssignmentSnapshot,
-} from '@ykt/contracts';
+import { computed, onUnmounted, ref, toRefs, watch } from 'vue';
+import AssignmentDetail from './AssignmentDetail.vue';
+import type { AssignmentAiDraft } from '../assignment-ai';
+import { assignmentCollection } from '../assignment-collection';
+import { BrowserEnvironment, type Assignment } from '@ykt/contracts';
 import {
   assignmentStatusLabel,
   matchesAssignmentStatus,
 } from '../assignment-status';
 
 const props = defineProps<{ environment: BrowserEnvironment }>();
-const snapshot = ref<AssignmentSnapshot | null>(null);
-const loading = ref(false);
-const error = ref('');
+const emit = defineEmits<{ explain: [draft: AssignmentAiDraft] }>();
+const { snapshot, loading, error } = toRefs(assignmentCollection.state);
+const selected = ref<Assignment | null>(null);
+watch(
+  () => props.environment,
+  () => {
+    selected.value = null;
+  },
+);
+function updateAssignment(item: Assignment) {
+  if (snapshot.value)
+    snapshot.value = {
+      ...snapshot.value,
+      assignments: snapshot.value.assignments.map((current) =>
+        current.id === item.id ? item : current,
+      ),
+    };
+  if (selected.value?.id === item.id) selected.value = item;
+}
 const search = ref('');
 const kind = ref('all');
 const status = ref('all');
 const now = ref(Date.now());
-let version = 0;
 const clock = setInterval(() => {
   now.value = Date.now();
 }, 30_000);
 onUnmounted(() => {
-  version++;
   clearInterval(clock);
 });
 
@@ -49,34 +62,9 @@ const unfinished = computed(
     ).length,
 );
 
-watch(
-  () => props.environment,
-  () => {
-    version++;
-    snapshot.value = null;
-    error.value = '';
-    loading.value = false;
-    if (supported.value) void refresh();
-  },
-  { immediate: true },
-);
-
 async function refresh(): Promise<void> {
-  // 请求复用内嵌网页的登录会话，界面无需展示会话实现细节。
-  if (!supported.value || loading.value) return;
-  const request = ++version;
-  loading.value = true;
-  error.value = '';
-  try {
-    const result = await window.yuketang.listAssignments(props.environment);
-    if (request === version) snapshot.value = result;
-  } catch (cause) {
-    if (request === version)
-      error.value =
-        cause instanceof Error ? cause.message : '作业读取失败，请重试。';
-  } finally {
-    if (request === version) loading.value = false;
-  }
+  if (!supported.value) return;
+  await assignmentCollection.refresh();
 }
 
 async function open(url?: string): Promise<void> {
@@ -115,7 +103,14 @@ function remaining(item: Assignment): string {
 </script>
 
 <template>
-  <div class="assignments-panel" :aria-busy="loading">
+  <AssignmentDetail
+    v-if="selected && supported"
+    :assignment="selected"
+    @back="selected = null"
+    @updated="updateAssignment"
+    @explain="emit('explain', $event)"
+  />
+  <div v-else class="assignments-panel" :aria-busy="loading">
     <div class="heading">
       <div>
         <h2>作业 / 考试</h2>
@@ -200,7 +195,14 @@ function remaining(item: Assignment): string {
             item.kind === 'exam' ? '考试' : '作业'
           }}</span>
         </div>
-        <h3>{{ item.title }}</h3>
+        <h3>
+          <button
+            class="title-link"
+            @click="item.leafTypeId ? (selected = item) : open(item.url)"
+          >
+            {{ item.title }}
+          </button>
+        </h3>
         <div class="card-top">
           <span class="badge" :class="item.graded ? 'answered' : item.status">{{
             assignmentStatusLabel(item)
@@ -246,6 +248,13 @@ function remaining(item: Assignment): string {
           </ol>
         </details>
         <p v-if="item.statusMessage" class="muted">{{ item.statusMessage }}</p>
+        <button
+          v-if="item.leafTypeId"
+          class="open-link"
+          @click="selected = item"
+        >
+          查看详情
+        </button>
         <button class="open-link" @click="open(item.url)">在官网查看 ↗</button>
       </article>
     </template>
@@ -397,6 +406,13 @@ summary {
   padding: 4px 6px;
   background: #f1f3f4;
   border-radius: 4px;
+}
+.title-link {
+  border: 0;
+  padding: 0;
+  text-align: left;
+  font-weight: 600;
+  background: none;
 }
 .open-link {
   margin-top: 10px;

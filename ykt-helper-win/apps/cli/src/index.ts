@@ -9,6 +9,8 @@ import {
 } from '@ykt/contracts';
 
 import { DesktopCliError, requestDesktop } from './rpc-client.js';
+import { AssignmentReadError } from '@ykt/backend';
+import { executeAssignments } from './assignments.js';
 
 interface ParsedArgs {
   readonly positionals: readonly string[];
@@ -21,7 +23,14 @@ const usage = `Usage:
   ykt settings update --from -
   ykt settings reset
   ykt user get --environment <standard|pro|changjiang> [--refresh]
-  ykt assignment list [--environment pro]
+  ykt assignment list [--environment pro] [--refresh]
+  ykt assignment detail <id> [--environment pro] [--refresh]
+  ykt assignment question <id> --index <number> [--refresh]
+  ykt assignment answer <id> --index <number> [--refresh]
+  ykt homework|exam list [--search <text>] [--status <status>] [--graded] [--refresh]
+  ykt homework|exam detail|question|answer <id> [--index <number>] [--refresh]
+  Assignment commands: [--headless --session-file <path|->] [--cache-dir <path>]
+  Assignment list filters: [--kind <homework|exam>] [--search <text>] [--status <status>] [--graded]
   ykt lesson list [--environment <standard|pro|changjiang|all>] [--refresh]
   ykt lesson connect <lesson-id> --environment <standard|pro|changjiang>
   ykt presentation list --lesson <lesson-id>
@@ -61,7 +70,9 @@ const usage = `Usage:
 
 Conventions:
   '-' reads text/JSON from stdin (prompts, translations, API keys, answer JSON).
-  All successful results are written as JSON to stdout. The desktop app must be running.`;
+  All successful results are written as JSON to stdout.
+  Assignment/homework/exam --headless runs in Node without Desktop or a browser.
+  Other commands require the desktop app to be running.`;
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -111,12 +122,8 @@ async function execute(args: ParsedArgs): Promise<JsonValue> {
     );
   }
 
-  if (group === 'assignment' && action === 'list') {
-    return requestDesktop(
-      CliRpcMethod.AssignmentList,
-      json({ environment: option(args, 'environment') ?? 'pro' }),
-    );
-  }
+  if (group === 'assignment' || group === 'homework' || group === 'exam')
+    return executeAssignments(args);
 
   if (group === 'lesson') {
     if (action === 'list') {
@@ -613,7 +620,9 @@ class CliUsageError extends Error {
 
 main().catch((error: unknown) => {
   const payload =
-    error instanceof DesktopCliError || error instanceof CliUsageError
+    error instanceof DesktopCliError ||
+    error instanceof CliUsageError ||
+    error instanceof AssignmentReadError
       ? {
           code: error.code,
           message: error.message,

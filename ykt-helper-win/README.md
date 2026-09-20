@@ -41,6 +41,10 @@ node node_modules/electron/install.js
 
 顶部新增“作业”栏。切换到**荷塘雨课堂**，在内嵌网页完成登录，再点击刷新，可查看课程作业、考试、截止时间、剩余时间和逐题作答状态；支持按课程或标题搜索、类型与状态筛选，并可直接打开对应的学生端作业或考试页面。
 
+每次启动软件会尝试收集一次，结果保留在本次应用会话中。刷新首页、全局刷新、切换标签或重新进入作业页都不会重新收集；点击作业页“刷新”才重新读取。未登录时的启动失败也不会自动重试，登录或切换账号后请手动刷新。刷新失败时，作业页保留上次结果并显示错误。
+
+课程日志最多 4 路并发，同一课程的分页按顺序读取；后续作业/考试状态最多 4 路并发。进行中的重复请求会合并，登录失效时停止分派新请求并等待已发出的请求结束。每轮实际收集会记录触发方式、耗时、条目数或错误，便于在应用日志中排查。
+
 接口依据 [OneTHU PR #28](https://github.com/smartThise/OneTHU/pull/28)（`b9b82ef`，含 R16b）的雨课堂协议实现，复用 Electron 持久登录会话，不需要复制 Cookie 或另行扫码。当前仅支持 PR 验证过的 `pro.yuketang.cn`；标准版和长江版会提示切换。
 
 - 学习日志 `type=19/20` 分别对应作业与考试，`content.score_d` 按毫秒解释；已截止和无截止时间的条目也会保留。不限制未来 30 天。
@@ -50,11 +54,15 @@ node node_modules/electron/install.js
 - 新增“已批改”标签与筛选。作业按题读取 `user.status` 和 `user.my_score`：3 或 -1（含字符串 `"-1.00"`）表示待批改，4 或有效非负分数提供已批改证据；相关已作答题目中仍有待批改项时不判为已批改。缺少判定字段保持未知。
 - 考试已交卷且 `score_finish !== false`、`score` 与 `total_score` 均为有效非负数时显示“已批改”和分数（含零分）；未出分、缺考或作废时不展示分数。封面请求在有 `sku_id` 时一并传递。
 - 课程列表 `role=6` 标记“旁听”；正式选课及未知角色不标记。
-- 学习日志按每页 200 条读取，最多 50 页，达到上限会提示；作答状态请求并发上限为 4。结果仅保留在当前页面内存中。
+- 学习日志按每页 200 条读取，最多 50 页，达到上限会提示；作答状态请求并发上限为 4。结果保留在当前应用会话内存中。
 
-CLI 同样通过 Facade 只读获取：`npm run cli -- assignment list`（默认 `pro`）。
+CLI 同样通过 Facade 读取本次会话结果：`npm run cli -- assignment list`（默认 `pro`）；显式重新收集使用 `npm run cli -- assignment list --refresh`。
+
+点击作业标题或“查看详情”可阅读题干、选项、作答、附件名称、分数及教师评语，支持加密字体、离线公式和图片回退。符合条件的作业可打开官方作答窗口，关闭后更新当前条目；详情刷新不重新收集全部课程。已交卷、已出分且开放查看的考试可读取详情与已发布参考答案，其余考试保留封面。CLI 使用 `assignment detail <id>`，单题读取使用 `assignment question <id> --index <题号>`。协议及功能边界见 [作业详情说明](docs/assignment-detail.md)。
 
 ## CLI 调用
+
+作业/考试命令现支持 **不运行 Desktop 的独立模式**：追加 `--headless --session-file <path|->`，由纯 Node 会话读取真实接口。支持 `assignment|homework|exam` 的 `list`、`detail`、`question`、`answer`，列表筛选、按原题号提取及跨进程详情缓存。会话格式、命令及权限边界见[独立 CLI 说明](docs/cli-assignments.md)。
 
 桌面程序运行后，可通过本机 Named Pipe 调用同一个 Backend Runtime。CLI 与 GUI
 共用同一个 `YuketangFacade`，界面上的所有功能都有对应命令：
@@ -127,8 +135,9 @@ CLI 的 stdout 只输出 JSON；诊断和用法信息写入 stderr。`slide read
 
 `browser`、`layout`、`network`、`presentation export`、`slide download` 以及
 `ai ask --capture-page` 依赖正在运行的桌面进程；未运行时返回 `NOT_IMPLEMENTED`
-（管道无法连接时为 `DESKTOP_UNAVAILABLE`）。CLI 不会直接读取 Cookie、凭据文件或
-SQLite，也不会自行启动 headless 登录会话。运行 `npm run cli -- help` 可查看完整命令。
+（管道无法连接时为 `DESKTOP_UNAVAILABLE`）。Desktop 模式不直接读取凭据文件或 SQLite；
+作业/考试的 `--headless` 模式只读取显式指定的会话文件，不启动浏览器登录，也不读取 Desktop Cookie 数据库。
+运行 `npm run cli -- help` 可查看完整命令。
 
 ## 当前边界
 
@@ -140,6 +149,8 @@ SQLite，也不会自行启动 headless 登录会话。运行 `npm run cli -- he
 - `apps/cli`：调用 Backend Runtime 的 JSON 命令行入口。
 
 `npm run boundaries` 会检查内部包依赖方向，并阻止 Renderer 导入 Backend、Routing、Storage、Electron 或 Node 内置模块。
+
+[字体与加密内容规范](docs/font-policy.md) 约束新增接口的字体绑定、加载检测、缓存、失败降级及 AI/复制/导出路径。`npm run font-policy` 已接入 lint，防止把 `inherit` 等全局关键字混入字体列表。作业详情已接入字体渲染；字体显示正常仍不代表原始字符已还原。
 
 ## 桌面网页容器
 

@@ -1,0 +1,6 @@
+/* Shared body/fallback stack. Encrypted content must prepend its own URL-bound
+ * family to this stack inside a scoped renderer; see docs/font-policy.md. */
+:root {
+  --ykt-font-body:
+    'Microsoft YaHei UI', 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif;
+}

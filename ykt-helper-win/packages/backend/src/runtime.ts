@@ -3,6 +3,7 @@ import {
   DefaultAppSettings,
   YuketangError,
   type AssignmentSnapshot,
+  type AssignmentDetail,
   type AiProfileView,
   type AnswerInput,
   type AnswerProposal,
@@ -61,6 +62,14 @@ import { systemClock } from './workflows/lesson-state-machine.js';
 const VERSION = '2.0.0';
 
 class BaselineFacade implements YuketangFacade {
+  readonly #assignmentCache = new Map<
+    BrowserEnvironment,
+    Promise<AssignmentSnapshot>
+  >();
+  readonly #assignmentInFlight = new Map<
+    BrowserEnvironment,
+    Promise<AssignmentSnapshot>
+  >();
   constructor(
     private readonly status: () => RuntimeStatus,
     private readonly routing: RoutingService,
@@ -231,8 +240,104 @@ class BaselineFacade implements YuketangFacade {
     return this.storage.listLogs(limit);
   }
 
+  readonly #assignmentEpoch = new Map<BrowserEnvironment, number>();
+  readonly #assignmentScopes = new Map<BrowserEnvironment, string>();
+  readonly #assignmentDetails = new Map<
+    string,
+    { detail: AssignmentDetail; expiresAt: number }
+  >();
+  readonly #assignmentDetailsInFlight = new Map<
+    string,
+    Promise<AssignmentDetail>
+  >();
+
+  private clearAssignmentDetails(environment: BrowserEnvironment): void {
+    for (const key of this.#assignmentDetails.keys()) {
+      if (key.startsWith(`${environment}:`))
+        this.#assignmentDetails.delete(key);
+    }
+  }
+
+  private async assignmentScope(
+    environment: BrowserEnvironment,
+  ): Promise<string> {
+    const scope = await this.activeClient!.sessions.cacheScope(environment);
+    if (this.#assignmentScopes.get(environment) !== scope) {
+      this.#assignmentScopes.set(environment, scope);
+      this.#assignmentCache.delete(environment);
+      this.#assignmentInFlight.delete(environment);
+      this.clearAssignmentDetails(environment);
+      this.#assignmentEpoch.set(
+        environment,
+        (this.#assignmentEpoch.get(environment) ?? 0) + 1,
+      );
+    }
+    return scope;
+  }
+
+  async getAssignmentDetail(
+    environment: BrowserEnvironment,
+    id: string,
+    refresh = false,
+  ): Promise<AssignmentDetail> {
+    const snapshot = await this.listAssignments(environment);
+    const assignment = snapshot.assignments.find((item) => item.id === id);
+    if (!assignment) throw new Error('作业不存在，请刷新作业列表。');
+    const scope = this.#assignmentScopes.get(environment);
+    const epoch = this.#assignmentEpoch.get(environment);
+    const key = `${environment}:${scope}:${epoch}:${id}`;
+    const pending = this.#assignmentDetailsInFlight.get(key);
+    if (pending) return pending;
+    const cached = this.#assignmentDetails.get(key);
+    this.#assignmentDetails.delete(key);
+    if (!refresh && cached && cached.expiresAt > Date.now()) {
+      this.#assignmentDetails.set(key, cached); // LRU touch, without extending freshness.
+      return cached.detail;
+    }
+    const request = (async () => {
+      const detail = await this.activeClient!.getAssignmentDetail(
+        environment,
+        assignment,
+      );
+      // A login change during a slow request must not return the previous user's paper.
+      if ((await this.assignmentScope(environment)) !== scope)
+        throw new Error('登录状态已变化，请重新打开作业详情。');
+      // A newer full scan supersedes older detail reads; never repopulate its cache.
+      if (
+        this.#assignmentEpoch.get(environment) === epoch &&
+        !this.#assignmentInFlight.has(environment)
+      ) {
+        this.#assignmentDetails.set(key, {
+          detail,
+          expiresAt: Date.now() + 30 * 60_000,
+        });
+        while (this.#assignmentDetails.size > 80)
+          this.#assignmentDetails.delete(
+            this.#assignmentDetails.keys().next().value!,
+          );
+        const latest = this.#assignmentCache.get(environment);
+        if (latest)
+          this.#assignmentCache.set(
+            environment,
+            latest.then((current) => ({
+              ...current,
+              assignments: current.assignments.map((item) =>
+                item.id === id ? detail.assignment : item,
+              ),
+            })),
+          );
+      }
+      return detail;
+    })();
+    this.#assignmentDetailsInFlight.set(key, request);
+    const done = () => this.#assignmentDetailsInFlight.delete(key);
+    void request.then(done, done);
+    return request;
+  }
+
   async listAssignments(
     environment: BrowserEnvironment,
+    refresh = false,
   ): Promise<AssignmentSnapshot> {
     if (!this.activeClient) {
       throw new YuketangError({
@@ -240,7 +345,72 @@ class BaselineFacade implements YuketangFacade {
         message: 'The active network client is not configured.',
       });
     }
-    return this.activeClient.listAssignments(environment);
+    const scope = await this.assignmentScope(environment);
+    const pending = this.#assignmentInFlight.get(environment);
+    if (pending) return pending;
+    const cached = this.#assignmentCache.get(environment);
+    if (!refresh && cached) return cached;
+    // Retain settled failures too: homepage reloads must not retry an expired
+    // login. Only the assignment page's explicit refresh starts another attempt.
+    this.#assignmentEpoch.set(
+      environment,
+      (this.#assignmentEpoch.get(environment) ?? 0) + 1,
+    );
+    this.clearAssignmentDetails(environment);
+    const request = this.collectAssignments(environment, refresh).then(
+      async (snapshot) => {
+        if ((await this.assignmentScope(environment)) !== scope)
+          throw new Error('登录状态已变化，请刷新作业列表。');
+        return snapshot;
+      },
+    );
+    this.#assignmentCache.set(environment, request);
+    this.#assignmentInFlight.set(environment, request);
+    const complete = () => {
+      if (this.#assignmentInFlight.get(environment) === request)
+        this.#assignmentInFlight.delete(environment);
+    };
+    void request.then(complete, complete);
+    return request;
+  }
+
+  private async collectAssignments(
+    environment: BrowserEnvironment,
+    refresh: boolean,
+  ): Promise<AssignmentSnapshot> {
+    const startedAt = Date.now();
+    const details = { environment, trigger: refresh ? 'manual' : 'startup' };
+    try {
+      const result = await this.activeClient!.listAssignments(environment);
+      await this.storage
+        .appendLog({
+          level: result.warnings.length ? 'warn' : 'info',
+          scope: 'assignments',
+          message: '作业 / 考试收集完成。',
+          details: {
+            ...details,
+            durationMs: Date.now() - startedAt,
+            assignmentCount: result.assignments.length,
+            warningCount: result.warnings.length,
+          },
+        })
+        .catch(() => undefined);
+      return result;
+    } catch (error) {
+      await this.storage
+        .appendLog({
+          level: 'error',
+          scope: 'assignments',
+          message: '作业 / 考试收集失败。',
+          details: {
+            ...details,
+            durationMs: Date.now() - startedAt,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          },
+        })
+        .catch(() => undefined);
+      throw error;
+    }
   }
 
   async listLessons(): Promise<readonly Lesson[]> {

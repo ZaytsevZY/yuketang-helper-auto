@@ -28,6 +28,7 @@ import {
 } from '@ykt/contracts';
 
 import AssignmentsPanel from './AssignmentsPanel.vue';
+import type { AssignmentAiDraft } from '../assignment-ai';
 import ClassroomSimulator from './ClassroomSimulator.vue';
 import ProblemPicker from './ProblemPicker.vue';
 import { enterActiveLessons } from '../auto-join';
@@ -193,6 +194,19 @@ const aiProposal = ref<AnswerProposal>();
 const appliedProposalId = ref('');
 const aiCustomPrompt = ref('');
 const aiChatDraft = ref('');
+const assignmentAiContext = ref<(AssignmentAiDraft & { id: string }) | null>(
+  null,
+);
+function explainAssignment(draft: AssignmentAiDraft): void {
+  assignmentAiContext.value = {
+    ...draft,
+    id: `assignment:${crypto.randomUUID()}`,
+  };
+  aiCustomPrompt.value = draft.text;
+  aiChatDraft.value = '';
+  aiProposal.value = undefined;
+  emit('selectPage', 'ai');
+}
 const aiChatSessions = reactive(new Map<string, AiChatSession>());
 const aiSlideSelection = ref<string[]>([]);
 const logs = ref<readonly LogRow[]>([]);
@@ -246,6 +260,7 @@ const selectedSlide = computed(() =>
 );
 
 const selectedAiImages = computed(() => {
+  if (assignmentAiContext.value) return [];
   const chosen = new Set(aiSlideSelection.value);
   const selected = presentations.value
     .flatMap((presentation) => presentation.slides)
@@ -273,7 +288,10 @@ const selectedAiImageSlides = computed(() => {
 });
 
 const currentAiContextId = computed(
-  () => selectedProblemId.value || aiSlideContextId.value,
+  () =>
+    assignmentAiContext.value?.id ||
+    selectedProblemId.value ||
+    aiSlideContextId.value,
 );
 
 const currentAiSession = computed(() =>
@@ -284,6 +302,7 @@ const currentAiSession = computed(() =>
 
 const hasSlideQuestionContext = computed(
   () =>
+    !assignmentAiContext.value &&
     !selectedProblem.value &&
     Boolean(aiSlideContextId.value) &&
     selectedAiImages.value.length > 0,
@@ -297,6 +316,7 @@ const aiRequestPending = computed(() =>
 
 const captureCurrentBrowserPage = computed(
   () =>
+    !assignmentAiContext.value &&
     selectedAiImages.value.length === 0 &&
     (settings.value?.aiCaptureCurrentPage ?? true),
 );
@@ -416,6 +436,7 @@ onUnmounted(() => {
 watch(
   () => props.environment,
   async () => {
+    assignmentAiContext.value = null;
     selectedLessonId.value = '';
     collectingLessonId.value = '';
     aiSlideContextId.value = '';
@@ -426,13 +447,18 @@ watch(
 );
 
 watch(selectedProblemId, (id) => {
+  assignmentAiContext.value = null;
   if (id) aiSlideContextId.value = '';
   resetAnswer();
 });
 watch(
   () => props.page,
   (page) => {
-    if (page === 'ai' && settings.value?.aiAnalyzeLatestOnOpen) {
+    if (
+      page === 'ai' &&
+      !assignmentAiContext.value &&
+      settings.value?.aiAnalyzeLatestOnOpen
+    ) {
       void analyzeLatestProblemOnOpen();
     }
   },
@@ -745,6 +771,7 @@ function clearAiSlideSelection(): void {
 }
 
 function openAiForSelectedSlides(): void {
+  assignmentAiContext.value = null;
   if (!aiSlideSelection.value.length && selectedSlideId.value) {
     aiSlideSelection.value = [selectedSlideId.value];
   }
@@ -785,8 +812,10 @@ async function translateOcrText(): Promise<void> {
 }
 
 async function analyzeProblem(auto: boolean): Promise<void> {
-  const problem = selectedProblem.value;
-  const contextId = problem?.id ?? aiSlideContextId.value;
+  if (auto && assignmentAiContext.value) return;
+  const problem = assignmentAiContext.value ? undefined : selectedProblem.value;
+  const contextId =
+    assignmentAiContext.value?.id ?? problem?.id ?? aiSlideContextId.value;
   if (!contextId) return;
   const customPrompt = auto ? '' : aiCustomPrompt.value.trim();
   if (!problem && !customPrompt) {
@@ -814,7 +843,7 @@ async function analyzeLatestProblemOnOpen(): Promise<void> {
 }
 
 async function sendAiFollowUp(): Promise<void> {
-  const problem = selectedProblem.value;
+  const problem = assignmentAiContext.value ? undefined : selectedProblem.value;
   const session = currentAiSession.value;
   const prompt = aiChatDraft.value.trim();
   if (!session || !prompt || aiRequestPending.value) return;
@@ -823,7 +852,7 @@ async function sendAiFollowUp(): Promise<void> {
 }
 
 async function retryAiRequest(): Promise<void> {
-  const problem = selectedProblem.value;
+  const problem = assignmentAiContext.value ? undefined : selectedProblem.value;
   const session = currentAiSession.value;
   if (!session) return;
   await requestAiProposal(
@@ -841,7 +870,7 @@ function startNewAiChat(): void {
   aiChatSessions.delete(contextId);
   aiProposal.value = undefined;
   appliedProposalId.value = '';
-  aiCustomPrompt.value = '';
+  aiCustomPrompt.value = assignmentAiContext.value?.text ?? '';
   aiChatDraft.value = '';
 }
 
@@ -1818,7 +1847,10 @@ function clamp(value: number, min: number, max: number): number {
         </section>
 
         <section v-else-if="page === 'assignments'" class="panel-page">
-          <AssignmentsPanel :environment="environment" />
+          <AssignmentsPanel
+            :environment="environment"
+            @explain="explainAssignment"
+          />
         </section>
 
         <section v-else-if="page === 'problems'" class="panel-page">
@@ -1962,14 +1994,16 @@ function clamp(value: number, min: number, max: number): number {
             <h2>AI 分析</h2>
             <span class="count-badge">
               {{
-                captureCurrentBrowserPage
-                  ? '当前网页'
-                  : `${aiContextImageCount} 图`
+                assignmentAiContext
+                  ? '文本试用'
+                  : captureCurrentBrowserPage
+                    ? '当前网页'
+                    : `${aiContextImageCount} 图`
               }}
             </span>
           </div>
 
-          <div class="field-label">
+          <div v-if="!assignmentAiContext" class="field-label">
             <span>{{
               hasSlideQuestionContext ? '课堂题目（可选）' : '当前题目'
             }}</span>
@@ -1980,9 +2014,14 @@ function clamp(value: number, min: number, max: number): number {
             />
           </div>
 
-          <template v-if="selectedProblem || hasSlideQuestionContext">
+          <template
+            v-if="
+              assignmentAiContext || selectedProblem || hasSlideQuestionContext
+            "
+          >
             <div class="problem-context compact-context">
-              <p v-if="selectedProblem">
+              <p v-if="assignmentAiContext">{{ assignmentAiContext.title }}</p>
+              <p v-else-if="selectedProblem">
                 {{ selectedProblem.prompt || '题干主要位于课件图片中。' }}
               </p>
               <p v-else>课件图片问答</p>
@@ -2003,7 +2042,27 @@ function clamp(value: number, min: number, max: number): number {
               </small>
             </div>
 
-            <div v-if="aiSlideSelection.length" class="selected-source-row">
+            <div v-if="assignmentAiContext" class="selected-source-row">
+              <span>{{
+                assignmentAiContext.hasEncryptedText
+                  ? '含未解码字符，请检查文本'
+                  : '已提取文本，可编辑后发送'
+              }}</span>
+              <button
+                type="button"
+                class="quiet-button"
+                @click="
+                  assignmentAiContext = null;
+                  aiCustomPrompt = '';
+                "
+              >
+                返回课堂 AI
+              </button>
+            </div>
+            <div
+              v-if="!assignmentAiContext && aiSlideSelection.length"
+              class="selected-source-row"
+            >
               <span>已选课件页：{{ aiSlideSelection.length }}</span>
               <button
                 type="button"
@@ -2029,10 +2088,16 @@ function clamp(value: number, min: number, max: number): number {
 
             <template v-if="!currentAiSession">
               <label class="field-label">
-                {{ hasSlideQuestionContext ? '你的问题' : '补充要求（可选）' }}
+                {{
+                  assignmentAiContext
+                    ? '提取文本（可编辑）'
+                    : hasSlideQuestionContext
+                      ? '你的问题'
+                      : '补充要求（可选）'
+                }}
                 <textarea
                   v-model="aiCustomPrompt"
-                  rows="3"
+                  :rows="assignmentAiContext ? 16 : 3"
                   :placeholder="
                     hasSlideQuestionContext
                       ? '例如：请解释这一页中的公式和推导过程。'
@@ -2045,12 +2110,20 @@ function clamp(value: number, min: number, max: number): number {
                 type="button"
                 class="primary-button full-width"
                 :disabled="
-                  hasSlideQuestionContext &&
-                  (!aiCustomPrompt.trim() || !selectedAiImages.length)
+                  assignmentAiContext
+                    ? !aiCustomPrompt.trim()
+                    : hasSlideQuestionContext &&
+                      (!aiCustomPrompt.trim() || !selectedAiImages.length)
                 "
                 @click="analyzeProblem(false)"
               >
-                {{ hasSlideQuestionContext ? '发送问题' : '发送题目' }}
+                {{
+                  assignmentAiContext
+                    ? '发送解释请求'
+                    : hasSlideQuestionContext
+                      ? '发送问题'
+                      : '发送题目'
+                }}
               </button>
             </template>
 
@@ -2210,11 +2283,13 @@ function clamp(value: number, min: number, max: number): number {
             </div>
             <p class="honest-note">
               {{
-                hasSlideQuestionContext
-                  ? '课件问答仅发送所选页面和你的问题，不会提交课堂答案。'
-                  : agentAutoSubmitEnabled
-                    ? '自动提交已启用。新题会由 Agent 分析、校验并直接提交。'
-                    : '手动生成的建议仍需在“题目”页校验并确认。'
+                assignmentAiContext
+                  ? '发送前可检查并修改上方提取文本。'
+                  : hasSlideQuestionContext
+                    ? '课件问答仅发送所选页面和你的问题，不会提交课堂答案。'
+                    : agentAutoSubmitEnabled
+                      ? '自动提交已启用。新题会由 Agent 分析、校验并直接提交。'
+                      : '手动生成的建议仍需在“题目”页校验并确认。'
               }}
             </p>
           </template>

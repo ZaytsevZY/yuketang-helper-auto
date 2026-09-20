@@ -154,6 +154,7 @@ async function dispatch(
       return facade.getClassroomSimulation();
     case CliRpcMethod.UserGet:
     case CliRpcMethod.AssignmentList:
+    case CliRpcMethod.AssignmentDetail:
     case CliRpcMethod.LessonList:
     case CliRpcMethod.LessonConnect:
     case CliRpcMethod.PresentationList:
@@ -198,9 +199,20 @@ async function dispatch(
         ? facade.refreshUser(environment)
         : facade.getUser(environment);
     }
+    case CliRpcMethod.AssignmentDetail:
+      return facade.getAssignmentDetail(
+        environmentValue(input.environment ?? 'pro'),
+        stringValue(input.id, 'assignment id'),
+        input.refresh === undefined
+          ? false
+          : booleanValue(input.refresh, 'refresh'),
+      );
     case CliRpcMethod.AssignmentList:
       return facade.listAssignments(
         environmentValue(input.environment ?? 'pro'),
+        input.refresh === undefined
+          ? false
+          : booleanValue(input.refresh, 'refresh'),
       );
     case CliRpcMethod.LessonList:
       return listLessons(context, input);
