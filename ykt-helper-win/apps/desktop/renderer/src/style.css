@@ -1,8 +1,9 @@
+@import './fonts.css';
+
 :root {
   color: #202824;
   background: #f7f8f7;
-  font-family:
-    'Microsoft YaHei UI', 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--ykt-font-body);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --surface: #fff;

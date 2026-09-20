@@ -145,6 +145,8 @@ SQLite，也不会自行启动 headless 登录会话。运行 `npm run cli -- he
 
 `npm run boundaries` 会检查内部包依赖方向，并阻止 Renderer 导入 Backend、Routing、Storage、Electron 或 Node 内置模块。
 
+[字体与加密内容规范](docs/font-policy.md) 约束新增接口的字体绑定、加载检测、缓存、失败降级及 AI/复制/导出路径。`npm run font-policy` 已接入 lint，防止把 `inherit` 等全局关键字混入字体列表。当前尚未实现加密题干渲染；普通文本采集不等于加密文本还原。
+
 ## 桌面网页容器
 
 - 支持雨课堂、荷塘雨课堂和长江雨课堂入口切换。

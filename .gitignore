@@ -27,3 +27,6 @@ dist-ssr
 
 # Temporary files
 temp/
+
+# docs
+ykt-helper-win/docs

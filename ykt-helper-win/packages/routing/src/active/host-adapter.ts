@@ -173,6 +173,9 @@ function parseProblem(
   if (!id) return null;
   const options =
     array(problem.options ?? problem.answers)?.map(optionText) ?? [];
+  // Plain-text protocol only. Encrypted content needs its original markers and
+  // URL-bound font metadata; rendering a font does not decode prompt/options for
+  // AI or text export. See docs/font-policy.md before extending this adapter.
   return {
     id,
     lessonId,
