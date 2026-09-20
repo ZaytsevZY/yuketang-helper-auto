@@ -49,10 +49,12 @@ async function flush() {
   await new Promise((resolve) => setTimeout(resolve, 0));
   await nextTick();
 }
-function mount() {
+function mount(onExplain = vi.fn()) {
   const host = document.createElement('div');
   document.body.append(host);
-  app = createApp({ render: () => h(AssignmentDetailView, { assignment }) });
+  app = createApp({
+    render: () => h(AssignmentDetailView, { assignment, onExplain }),
+  });
   app.mount(host);
   return host;
 }
@@ -75,4 +77,80 @@ it('uses cached reads on entry/remount and forces the explicit refresh without d
   mount();
   await flush();
   expect(get).toHaveBeenLastCalledWith(BrowserEnvironment.Pro, 'exam', false);
+});
+
+it('offers trial AI extraction only for loaded questions and emits an editable draft', async () => {
+  const onExplain = vi.fn();
+  const get = vi.fn(async () => detail);
+  window.yuketang = { getAssignmentDetail: get } as unknown as DesktopApi;
+  let host = mount(onExplain);
+  await flush();
+  expect(host.textContent).not.toContain('AI解释');
+  app!.unmount();
+  get.mockResolvedValue({
+    ...detail,
+    mode: 'exam-review',
+    problems: [
+      {
+        id: '1',
+        index: 1,
+        type: 1,
+        typeText: '单选题',
+        score: 10,
+        bodyHtml: '<p>测试题干</p>',
+        options: [],
+        answerHtml: 'A',
+        attachments: [],
+        status: 'graded',
+        myScore: 10,
+        remarkHtml: '',
+        comments: [],
+        externalUrl: null,
+        maxRetry: 0,
+        remainingRetries: null,
+        allowResults: [],
+      },
+    ],
+  });
+  const data = await get();
+  get.mockResolvedValue({
+    ...data,
+    problems: [
+      ...data.problems,
+      {
+        ...data.problems[0]!,
+        id: '2',
+        index: 2,
+        bodyHtml: '<p>另一题专属内容</p>',
+      },
+    ],
+  });
+  host = mount(onExplain);
+  await flush();
+  expect(host.querySelector('.actions')?.textContent).not.toContain('AI解释');
+  expect(
+    [...host.querySelectorAll('button')].filter((b) =>
+      b.textContent?.includes('AI解释'),
+    ),
+  ).toHaveLength(2);
+  const button = [...host.querySelectorAll('button')].find((b) =>
+    b.textContent?.includes('AI解释'),
+  )!;
+  expect(button).toBeDefined();
+  expect(onExplain).not.toHaveBeenCalled();
+  button.click();
+  expect(onExplain.mock.calls[0]![0].text).not.toContain('另一题专属内容');
+  expect(onExplain).toHaveBeenCalledWith(
+    expect.objectContaining({
+      title: 'Exam · 第 1 题',
+      text: expect.stringContaining('测试题干'),
+      hasEncryptedText: false,
+    }),
+  );
+  host
+    .querySelector<HTMLButtonElement>('[aria-label="AI解释第 2 题（试用）"]')!
+    .click();
+  expect(onExplain.mock.calls[1]![0].title).toBe('Exam · 第 2 题');
+  expect(onExplain.mock.calls[1]![0].text).toContain('另一题专属内容');
+  expect(onExplain.mock.calls[1]![0].text).not.toContain('测试题干');
 });

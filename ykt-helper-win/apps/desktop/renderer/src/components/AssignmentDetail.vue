@@ -9,9 +9,14 @@ import {
 import { assignmentStatusLabel } from '../assignment-status';
 import { detailBodyHtml } from '../assignment-body';
 import AssignmentBody from './AssignmentBody.vue';
+import { assignmentAiDraft, type AssignmentAiDraft } from '../assignment-ai';
 
 const props = defineProps<{ assignment: Assignment }>();
-const emit = defineEmits<{ back: []; updated: [assignment: Assignment] }>();
+const emit = defineEmits<{
+  back: [];
+  updated: [assignment: Assignment];
+  explain: [draft: AssignmentAiDraft];
+}>();
 const detail = ref<AssignmentDetail | null>(null);
 const loading = ref(false),
   answering = ref(false),
@@ -22,7 +27,16 @@ const timer = setInterval(() => {
 }, 1000);
 let generation = 0;
 const current = computed(() => detail.value?.assignment ?? props.assignment);
-const html = computed(() => (detail.value ? detailBodyHtml(detail.value) : ''));
+const questionBodies = computed(
+  () =>
+    detail.value?.problems.map((problem) =>
+      detailBodyHtml({
+        ...detail.value!,
+        descriptionHtml: '',
+        problems: [problem],
+      }),
+    ) ?? [],
+);
 const canAnswer = computed(
   () =>
     !loading.value &&
@@ -33,6 +47,11 @@ const canAnswer = computed(
 function accept(value: AssignmentDetail) {
   detail.value = value;
   emit('updated', value.assignment);
+}
+function explain(position: number) {
+  if (!detail.value || loading.value) return;
+  const draft = assignmentAiDraft(detail.value, position);
+  if (draft) emit('explain', draft);
 }
 async function refresh(force = false) {
   const seq = ++generation;
@@ -151,12 +170,31 @@ function time(value: number) {
       >
         暂无题目内容。
       </p>
-      <AssignmentBody
-        v-else
-        :key="detail.fetchedAt"
-        :html="html"
-        :font-url="detail.fontUrl"
-      />
+      <template v-else>
+        <AssignmentBody
+          v-if="detail.descriptionHtml"
+          :key="`description:${detail.fetchedAt}`"
+          :html="detail.descriptionHtml"
+          :font-url="detail.fontUrl"
+        />
+        <section
+          v-for="(problem, position) in detail.problems"
+          :key="`${detail.fetchedAt}:${position}:${problem.id}`"
+          class="question"
+        >
+          <AssignmentBody
+            :html="questionBodies[position]!"
+            :font-url="detail.fontUrl"
+          />
+          <button
+            :disabled="loading || answering"
+            :aria-label="`AI解释第 ${problem.index} 题（试用）`"
+            @click="explain(position)"
+          >
+            AI解释（试用）
+          </button>
+        </section>
+      </template>
     </template>
   </div>
 </template>
@@ -165,6 +203,12 @@ function time(value: number) {
 .assignment-detail {
   font-size: 13px;
   line-height: 1.6;
+}
+.question {
+  margin-bottom: 16px;
+}
+.question > button {
+  margin-top: 6px;
 }
 h2 {
   font-size: 18px;

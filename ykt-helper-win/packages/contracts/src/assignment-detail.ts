@@ -12,7 +12,7 @@ export interface AssignmentProblemDetail {
   readonly type: number;
   readonly typeText: string;
   readonly score: number | null;
-  /** Untrusted source HTML, possibly substituted Unicode. Never AI/plaintext input. */
+  /** Untrusted source HTML, possibly substituted Unicode. Never treat as decoded plaintext; trial extraction must retain its provenance. */
   readonly bodyHtml: string;
   readonly options: readonly { label: string; html: string }[];
   readonly answerHtml: string;

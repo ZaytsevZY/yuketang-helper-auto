@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, toRefs, watch } from 'vue';
 import AssignmentDetail from './AssignmentDetail.vue';
+import type { AssignmentAiDraft } from '../assignment-ai';
 import { assignmentCollection } from '../assignment-collection';
 import { BrowserEnvironment, type Assignment } from '@ykt/contracts';
 import {
@@ -9,6 +10,7 @@ import {
 } from '../assignment-status';
 
 const props = defineProps<{ environment: BrowserEnvironment }>();
+const emit = defineEmits<{ explain: [draft: AssignmentAiDraft] }>();
 const { snapshot, loading, error } = toRefs(assignmentCollection.state);
 const selected = ref<Assignment | null>(null);
 watch(
@@ -106,6 +108,7 @@ function remaining(item: Assignment): string {
     :assignment="selected"
     @back="selected = null"
     @updated="updateAssignment"
+    @explain="emit('explain', $event)"
   />
   <div v-else class="assignments-panel" :aria-busy="loading">
     <div class="heading">

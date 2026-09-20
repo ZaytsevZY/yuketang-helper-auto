@@ -1,4 +1,4 @@
-import { effectScope, nextTick } from 'vue';
+import { effectScope, nextTick, reactive } from 'vue';
 import type * as Vue from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -181,17 +181,16 @@ function setupPanel(settings: Record<string, boolean>) {
   vi.stubGlobal('window', { yuketang: api });
   const scope = effectScope();
   scopes.push(scope);
+  const emit = vi.fn();
+  const props = reactive({
+    page: 'settings',
+    environment: BrowserEnvironment.Standard,
+    runtime: undefined,
+    browserUrl: undefined,
+    collapsed: false,
+  });
   const panel = scope.run(() =>
-    (AssistantPanel as any).setup(
-      {
-        page: 'settings',
-        environment: BrowserEnvironment.Standard,
-        runtime: undefined,
-        browserUrl: undefined,
-        collapsed: false,
-      },
-      { expose: vi.fn(), emit: vi.fn() },
-    ),
+    (AssistantPanel as any).setup(props, { expose: vi.fn(), emit }),
   );
   panel.applySettings({
     ...DefaultAppSettings,
@@ -202,5 +201,50 @@ function setupPanel(settings: Record<string, boolean>) {
   });
   panel.problems.value = [problem];
   panel.selectedLessonId.value = problem.lessonId;
-  return { panel, api, problem };
+  return { panel, api, problem, emit, props };
 }
+
+it('prefills assignment extraction in AI without auto-send or leaking classroom/image context', async () => {
+  const { panel, api, problem, emit, props } = setupPanel({
+    aiAnalyzeLatestOnOpen: true,
+    aiCaptureCurrentPage: true,
+    llmManagedSubmit: true,
+  });
+  panel.selectedProblemId.value = problem.id;
+  await nextTick();
+  const draft = {
+    title: '复习试卷',
+    text: '请解释：未解码字符𛈒',
+    hasEncryptedText: true,
+  };
+  panel.explainAssignment(draft);
+  props.page = 'ai';
+  await nextTick();
+  expect(emit).toHaveBeenCalledWith('selectPage', 'ai');
+  expect(panel.aiCustomPrompt.value).toBe(draft.text);
+  expect(api.generateAnswerProposal).not.toHaveBeenCalled();
+  panel.aiCustomPrompt.value = '已检查并修改的题干';
+  await panel.analyzeProblem(false);
+  expect(api.generateAnswerProposal).toHaveBeenCalledWith(
+    expect.objectContaining({
+      customPrompt: '已检查并修改的题干',
+      captureCurrentPage: false,
+      imageUrls: [],
+      contextId: expect.stringMatching(/^assignment:/),
+    }),
+  );
+  expect(api.generateAnswerProposal.mock.calls[0]![0]).not.toHaveProperty(
+    'problemId',
+  );
+  expect(api.submitAnswer).not.toHaveBeenCalled();
+  panel.aiChatDraft.value = '再解释一下';
+  await panel.sendAiFollowUp();
+  expect(api.generateAnswerProposal).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      customPrompt: '再解释一下',
+      captureCurrentPage: false,
+    }),
+  );
+  panel.startNewAiChat();
+  expect(panel.aiCustomPrompt.value).toBe(draft.text);
+});
