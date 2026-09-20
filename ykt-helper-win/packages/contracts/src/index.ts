@@ -11,3 +11,4 @@ export * from './cli.js';
 export * from './settings-patch.js';
 export * from './assignments.js';
 export * from './web-probe.js';
+export * from './assignment-detail.js';

@@ -1,3 +1,4 @@
+import type { AssignmentDetail } from './assignment-detail.js';
 import type { AssignmentSnapshot } from './assignments.js';
 import type {
   AnswerInput,
@@ -60,6 +61,11 @@ export interface YuketangFacade {
     refresh?: boolean,
   ): Promise<AssignmentSnapshot>;
   refreshLessons(environment: BrowserEnvironment): Promise<readonly Lesson[]>;
+  getAssignmentDetail(
+    environment: BrowserEnvironment,
+    id: string,
+    refresh?: boolean,
+  ): Promise<AssignmentDetail>;
   connectLesson(
     environment: BrowserEnvironment,
     id: string,

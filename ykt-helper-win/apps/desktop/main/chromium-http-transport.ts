@@ -18,6 +18,7 @@ export class ChromiumHttpTransport implements ActiveHttpTransport {
       method: request.method,
       headers,
       credentials: 'include',
+      redirect: request.redirect ?? 'follow',
     };
     if (request.body !== null) init.body = request.body;
     const response = await this.session.fetch(request.url, init);

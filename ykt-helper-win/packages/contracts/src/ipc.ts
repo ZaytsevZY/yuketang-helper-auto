@@ -1,3 +1,4 @@
+import type { AssignmentDetail, AssignmentAsset } from './assignment-detail.js';
 import type {
   WebProbeReport,
   WebProbeEvidence,
@@ -60,6 +61,10 @@ export const IpcChannel = {
   RefreshLessons: 'backend:refresh-lessons',
   ListLessons: 'backend:list-lessons',
   ListAssignments: 'backend:list-assignments',
+  GetAssignmentDetail: 'backend:get-assignment-detail',
+  GetAssignmentAsset: 'media:get-assignment-asset',
+  OpenAssignmentAnswer: 'browser:open-assignment-answer',
+  OpenAssignmentLink: 'browser:open-assignment-link',
   ConnectLesson: 'backend:connect-lesson',
   ListPresentations: 'backend:list-presentations',
   ListProblems: 'backend:list-problems',
@@ -134,6 +139,18 @@ export interface DesktopApi {
     environment: BrowserEnvironment,
     refresh?: boolean,
   ): Promise<AssignmentSnapshot>;
+  getAssignmentDetail(
+    environment: BrowserEnvironment,
+    id: string,
+    refresh?: boolean,
+  ): Promise<AssignmentDetail>;
+  getAssignmentAsset(
+    url: string,
+    kind: 'font' | 'image',
+    force?: boolean,
+  ): Promise<AssignmentAsset>;
+  openAssignmentAnswer(id: string): Promise<AssignmentDetail>;
+  openAssignmentLink(url: string): Promise<void>;
   connectLesson(environment: BrowserEnvironment, id: string): Promise<void>;
   listPresentations(lessonId: string): Promise<readonly Presentation[]>;
   listProblems(lessonId: string): Promise<readonly ProblemContext[]>;

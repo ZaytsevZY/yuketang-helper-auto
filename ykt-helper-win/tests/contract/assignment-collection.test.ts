@@ -36,8 +36,7 @@ describe('assignment collection lifetime', () => {
     const first = facade.listAssignments(BrowserEnvironment.Pro);
     const remount = facade.listAssignments(BrowserEnvironment.Pro);
     const refresh = facade.listAssignments(BrowserEnvironment.Pro, true);
-    await Promise.resolve();
-    expect(collect).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(collect).toHaveBeenCalledTimes(1));
     finish(snapshot);
     expect(await Promise.all([first, remount, refresh])).toEqual([
       snapshot,
@@ -49,7 +48,7 @@ describe('assignment collection lifetime', () => {
     );
     expect(collect).toHaveBeenCalledTimes(1);
     const next = facade.listAssignments(BrowserEnvironment.Pro, true);
-    await Promise.resolve();
+    await vi.waitFor(() => expect(collect).toHaveBeenCalledTimes(2));
     finish({ ...snapshot, fetchedAt: 200 });
     expect((await next).fetchedAt).toBe(200);
     expect(collect).toHaveBeenCalledTimes(2);

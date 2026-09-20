@@ -1,3 +1,4 @@
+import type { AssignmentDetail, AssignmentAsset } from '@ykt/contracts';
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   IpcChannel,
@@ -122,6 +123,31 @@ const api: DesktopApi = Object.freeze({
       environment,
       refresh,
     ) as Promise<AssignmentSnapshot>,
+  getAssignmentDetail: (
+    environment: BrowserEnvironment,
+    id: string,
+    refresh = false,
+  ) =>
+    ipcRenderer.invoke(
+      IpcChannel.GetAssignmentDetail,
+      environment,
+      id,
+      refresh,
+    ) as Promise<AssignmentDetail>,
+  getAssignmentAsset: (url: string, kind: 'font' | 'image', force = false) =>
+    ipcRenderer.invoke(
+      IpcChannel.GetAssignmentAsset,
+      url,
+      kind,
+      force,
+    ) as Promise<AssignmentAsset>,
+  openAssignmentAnswer: (id: string) =>
+    ipcRenderer.invoke(
+      IpcChannel.OpenAssignmentAnswer,
+      id,
+    ) as Promise<AssignmentDetail>,
+  openAssignmentLink: (url: string) =>
+    ipcRenderer.invoke(IpcChannel.OpenAssignmentLink, url) as Promise<void>,
   listLessons: () =>
     ipcRenderer.invoke(IpcChannel.ListLessons) as Promise<readonly Lesson[]>,
   connectLesson: (environment: BrowserEnvironment, id: string) =>

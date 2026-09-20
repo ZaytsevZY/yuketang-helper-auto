@@ -1,3 +1,5 @@
+import { AssignmentAssets } from './assignment-assets.js';
+import { openAssignmentAnswerWindow } from './assignment-answer-window.js';
 import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -54,6 +56,8 @@ import { NetworkLabController } from './network-lab-controller.js';
 import { createNetworkRecorderForDesktop } from './network-recorder-factory.js';
 import { isSourceModuleId, sourceModulePath } from './source-modules.js';
 
+let assignmentAssets: AssignmentAssets | undefined;
+let assignmentAnswerPending = false;
 let runtime: BackendRuntime | undefined;
 let mainWindow: BrowserWindow | undefined;
 let browserController: BrowserController | undefined;
@@ -259,6 +263,87 @@ function registerIpc(): void {
         throw new Error('Invalid browser environment.');
       }
       return getRuntime().facade.refreshLessons(environment);
+    },
+  );
+  ipcMain.handle(
+    IpcChannel.GetAssignmentDetail,
+    async (
+      event,
+      environment: unknown,
+      id: unknown,
+      refresh: unknown = false,
+    ) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (
+        !isBrowserEnvironment(environment) ||
+        typeof id !== 'string' ||
+        !id ||
+        id.length > 512 ||
+        typeof refresh !== 'boolean'
+      )
+        throw new Error('Invalid assignment.');
+      return getRuntime().facade.getAssignmentDetail(environment, id, refresh);
+    },
+  );
+  ipcMain.handle(
+    IpcChannel.GetAssignmentAsset,
+    async (event, url: unknown, kind: unknown, force: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (
+        typeof url !== 'string' ||
+        url.length > 8192 ||
+        (kind !== 'font' && kind !== 'image') ||
+        typeof force !== 'boolean'
+      )
+        throw new Error('Invalid assignment resource.');
+      if (!assignmentAssets) throw new Error('资源服务尚未就绪。');
+      return assignmentAssets.get(url, kind, force);
+    },
+  );
+  ipcMain.handle(
+    IpcChannel.OpenAssignmentLink,
+    async (event, value: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (typeof value !== 'string' || value.length > 8192)
+        throw new Error('Invalid link.');
+      const url = new URL(value);
+      if (url.protocol !== 'https:' || url.username || url.password)
+        throw new Error('仅支持 HTTPS 链接。');
+      if (
+        url.hostname === 'yuketang.cn' ||
+        url.hostname.endsWith('.yuketang.cn')
+      )
+        await getBrowserController().navigate(url.href);
+      else await shell.openExternal(url.href);
+    },
+  );
+  ipcMain.handle(
+    IpcChannel.OpenAssignmentAnswer,
+    async (event, id: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (typeof id !== 'string' || !id || id.length > 512)
+        throw new Error('Invalid assignment.');
+      if (assignmentAnswerPending) throw new Error('请先关闭当前作答窗口。');
+      assignmentAnswerPending = true;
+      try {
+        const detail = await getRuntime().facade.getAssignmentDetail(
+          BrowserEnvironment.Pro,
+          id,
+          true,
+        );
+        await openAssignmentAnswerWindow(
+          mainWindow!,
+          getBrowserController().webContents.session,
+          detail,
+        );
+        return await getRuntime().facade.getAssignmentDetail(
+          BrowserEnvironment.Pro,
+          id,
+          true,
+        );
+      } finally {
+        assignmentAnswerPending = false;
+      }
     },
   );
   ipcMain.handle(
@@ -882,6 +967,26 @@ async function createWindow(): Promise<void> {
       }
     },
   });
+  assignmentAssets = new AssignmentAssets(
+    (url, init) => nextBrowserController.webContents.session.fetch(url, init),
+    resourceCache,
+    async () => {
+      const cookies =
+        await nextBrowserController.webContents.session.cookies.get({
+          url: 'https://pro.yuketang.cn/',
+        });
+      return (
+        'pro:' +
+        cookies
+          .filter((c) =>
+            ['sessionid', 'user_id', 'university_id', 'uv_id'].includes(c.name),
+          )
+          .map((c) => `${c.name}=${c.value}`)
+          .sort()
+          .join(';')
+      );
+    },
+  );
   runtime = nextRuntime;
   await nextRuntime.start();
   windowResources.cliServer = new DesktopCliServer(

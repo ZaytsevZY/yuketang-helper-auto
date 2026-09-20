@@ -21,6 +21,7 @@ export class FetchHttpTransport implements ActiveHttpTransport {
         method: request.method,
         headers: request.headers,
         body: request.body,
+        redirect: request.redirect ?? 'follow',
       });
       const text = await response.text();
       const result = {

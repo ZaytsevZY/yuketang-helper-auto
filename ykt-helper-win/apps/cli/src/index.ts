@@ -22,6 +22,7 @@ const usage = `Usage:
   ykt settings reset
   ykt user get --environment <standard|pro|changjiang> [--refresh]
   ykt assignment list [--environment pro] [--refresh]
+  ykt assignment detail <id> [--environment pro] [--refresh]
   ykt lesson list [--environment <standard|pro|changjiang|all>] [--refresh]
   ykt lesson connect <lesson-id> --environment <standard|pro|changjiang>
   ykt presentation list --lesson <lesson-id>
@@ -111,6 +112,16 @@ async function execute(args: ParsedArgs): Promise<JsonValue> {
     );
   }
 
+  if (group === 'assignment' && action === 'detail' && id) {
+    return requestDesktop(
+      CliRpcMethod.AssignmentDetail,
+      json({
+        id,
+        environment: option(args, 'environment') ?? 'pro',
+        refresh: args.options.has('refresh'),
+      }),
+    );
+  }
   if (group === 'assignment' && action === 'list') {
     return requestDesktop(
       CliRpcMethod.AssignmentList,

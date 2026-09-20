@@ -7,6 +7,7 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
+      'apps/desktop/renderer/src/vendor/**',
       '**/node_modules/**',
       'desktop/.electron-cache/**',
       'desktop/cli/**',

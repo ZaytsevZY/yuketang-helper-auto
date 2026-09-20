@@ -1,4 +1,5 @@
 import type { BrowserEnvironment } from '@ykt/contracts';
+import { createHash } from 'node:crypto';
 
 import { hostAdapterFor } from './host-adapter.js';
 import type {
@@ -20,6 +21,28 @@ export class SessionManager {
     private readonly source: SessionCredentialSource,
     private readonly now: () => number = Date.now,
   ) {}
+
+  /** Local credential lookup only; keep secrets out of cache keys and Renderer. */
+  async cacheScope(environment: BrowserEnvironment): Promise<string> {
+    const credentials = await this.source.load(environment);
+    const cookies = credentials.cookieHeader
+      .split(';')
+      .map((value) => value.trim())
+      .filter((value) => /^(?:sessionid|sessionid_sign|user_id)=/.test(value))
+      .sort();
+    return createHash('sha256')
+      .update(
+        JSON.stringify([
+          credentials.userId,
+          cookies,
+          // Cookie sessions remain stable across classroom bearer/CSRF rotations.
+          cookies.some((value) => value.startsWith('sessionid='))
+            ? null
+            : credentials.bearerToken,
+        ]),
+      )
+      .digest('hex');
+  }
 
   async headers(
     environment: BrowserEnvironment,

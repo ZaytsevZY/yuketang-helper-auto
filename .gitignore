@@ -29,4 +29,6 @@ dist-ssr
 temp/
 
 # docs
-ykt-helper-win/docs
+ykt-helper-win/docs/*
+!ykt-helper-win/docs/font-policy.md
+!ykt-helper-win/docs/assignment-detail.md

@@ -98,6 +98,8 @@ export async function fetchAssignments(
               assignment: {
                 id: key,
                 classroomId,
+                leafTypeId,
+                skuId: id(content.sku_id),
                 courseName,
                 title:
                   id(activity.title) ||
@@ -224,7 +226,7 @@ async function mapConcurrent<T, R>(
   return results;
 }
 
-function parseExamProgress(
+export function parseExamProgress(
   data: JsonRecord,
 ): Pick<
   Assignment,
@@ -307,7 +309,7 @@ function nonnegativeNumber(value: unknown): number | null {
     : null;
 }
 
-function parseProgress(
+export function parseProgress(
   data: JsonRecord,
 ): Pick<
   Assignment,
@@ -317,14 +319,11 @@ function parseProgress(
   | 'questions'
   | 'statusMessage'
   | 'graded'
+  | 'score'
+  | 'totalScore'
 > {
   const raw = Array.isArray(data.problems) ? data.problems : [];
-  const aggregate =
-    typeof data.answer_count === 'number' &&
-    Number.isInteger(data.answer_count) &&
-    data.answer_count >= 0
-      ? data.answer_count
-      : null;
+  const aggregate = nonnegativeInteger(numericScore(data.answer_count));
   if (!raw.length && aggregate === null)
     throw new Error('Empty exercise status');
   const questions: AssignmentQuestionStatus[] = raw.map((value, index) => {
@@ -336,7 +335,12 @@ function parseProgress(
       id: id(problem?.problem_id) || id(problem?.id) || String(index + 1),
       index: index + 1,
       // Missing user data is not evidence that the question was left blank.
-      answered: !user ? null : hasAnswer(content),
+      answered: !user
+        ? null
+        : user.status === 3 ||
+          user.status === 4 ||
+          hasAnswer(content) ||
+          (Array.isArray(answer?.attachment) && answer.attachment.length > 0),
     };
   });
   const answered = questions.filter(
@@ -355,9 +359,36 @@ function parseProgress(
         : allKnown || aggregate === 0
           ? 'unanswered'
           : 'unknown';
+  const scored =
+    raw.length > 0 &&
+    raw.every((value) => {
+      const user = record(record(value)?.user);
+      return (
+        user?.status !== 3 &&
+        numericScore(user?.my_score) !== null &&
+        numericScore(record(record(value)?.content)?.score) !== null
+      );
+    });
+  const graded = homeworkGraded(raw, aggregate, answered);
   return {
     status,
-    graded: homeworkGraded(raw, aggregate, answered),
+    score:
+      graded === true && scored
+        ? raw.reduce<number>(
+            (sum, value) =>
+              sum + numericScore(record(record(value)?.user)?.my_score)!,
+            0,
+          )
+        : null,
+    totalScore:
+      graded === true && scored
+        ? raw.reduce<number>(
+            (sum, value) =>
+              sum + numericScore(record(record(value)?.content)?.score)!,
+            0,
+          )
+        : null,
+    graded,
     answeredCount: count,
     totalCount: questions.length || null,
     questions,
@@ -375,7 +406,15 @@ function homeworkGraded(
   const relevant = problems.filter(
     (value) =>
       (aggregate ?? 0) > 0 ||
-      hasAnswer(record(record(record(value)?.user)?.my_answer)?.content),
+      [3, 4].includes(record(record(value)?.user)?.status as number) ||
+      hasAnswer(record(record(record(value)?.user)?.my_answer)?.content) ||
+      (Array.isArray(
+        record(record(record(value)?.user)?.my_answer)?.attachment,
+      ) &&
+        (
+          record(record(record(value)?.user)?.my_answer)
+            ?.attachment as unknown[]
+        ).length > 0),
   );
   if (!relevant.length) return null;
   let allGraded = true;
@@ -407,7 +446,7 @@ export class AssignmentAuthError extends Error {
   }
 }
 
-function dataOf(value: unknown): JsonRecord {
+export function dataOf(value: unknown): JsonRecord {
   const body = record(value);
   if (!body) throw new Error('雨课堂返回非 JSON，请重新登录后重试。');
   for (const field of ['errcode', 'error_code', 'code']) {
@@ -443,4 +482,10 @@ function deadline(value: unknown): number | null {
     !Number.isNaN(new Date(value).getTime())
     ? value
     : null;
+}
+
+function numericScore(value: unknown): number | null {
+  return nonnegativeNumber(
+    typeof value === 'string' && value.trim() ? Number(value) : value,
+  );
 }

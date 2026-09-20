@@ -58,6 +58,8 @@ node node_modules/electron/install.js
 
 CLI 同样通过 Facade 读取本次会话结果：`npm run cli -- assignment list`（默认 `pro`）；显式重新收集使用 `npm run cli -- assignment list --refresh`。
 
+点击作业标题或“查看详情”可阅读题干、选项、作答、附件名称、分数及教师评语，支持加密字体、离线公式和图片回退。符合条件的作业可打开官方作答窗口，关闭后更新当前条目；详情刷新不重新收集全部课程。考试展示封面状态，题目继续在官网阅读。CLI 使用 `assignment detail <id>`。协议及功能边界见 [作业详情说明](docs/assignment-detail.md)。
+
 ## CLI 调用
 
 桌面程序运行后，可通过本机 Named Pipe 调用同一个 Backend Runtime。CLI 与 GUI
@@ -145,7 +147,7 @@ SQLite，也不会自行启动 headless 登录会话。运行 `npm run cli -- he
 
 `npm run boundaries` 会检查内部包依赖方向，并阻止 Renderer 导入 Backend、Routing、Storage、Electron 或 Node 内置模块。
 
-[字体与加密内容规范](docs/font-policy.md) 约束新增接口的字体绑定、加载检测、缓存、失败降级及 AI/复制/导出路径。`npm run font-policy` 已接入 lint，防止把 `inherit` 等全局关键字混入字体列表。当前尚未实现加密题干渲染；普通文本采集不等于加密文本还原。
+[字体与加密内容规范](docs/font-policy.md) 约束新增接口的字体绑定、加载检测、缓存、失败降级及 AI/复制/导出路径。`npm run font-policy` 已接入 lint，防止把 `inherit` 等全局关键字混入字体列表。作业详情已接入字体渲染；字体显示正常仍不代表原始字符已还原。
 
 ## 桌面网页容器
 
