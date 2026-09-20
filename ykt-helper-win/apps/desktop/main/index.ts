@@ -48,6 +48,8 @@ import {
   writePresentationPdf,
   writeSlideFile,
 } from './media-export.js';
+import { WebProbeController } from './web-probe-controller.js';
+import { webProbePage, analyzeInWorker } from './electron-web-probe.js';
 import { NetworkLabController } from './network-lab-controller.js';
 import { createNetworkRecorderForDesktop } from './network-recorder-factory.js';
 import { isSourceModuleId, sourceModulePath } from './source-modules.js';
@@ -56,6 +58,7 @@ let runtime: BackendRuntime | undefined;
 let mainWindow: BrowserWindow | undefined;
 let browserController: BrowserController | undefined;
 let networkLabController: NetworkLabController | undefined;
+let webProbeController: WebProbeController | undefined;
 let cliServer: DesktopCliServer | undefined;
 let serviceCleanupPromise: Promise<void> | undefined;
 let quitAfterCleanup = false;
@@ -258,6 +261,15 @@ function registerIpc(): void {
       return getRuntime().facade.refreshLessons(environment);
     },
   );
+  ipcMain.handle(
+    IpcChannel.ListAssignments,
+    async (event, environment: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (!isBrowserEnvironment(environment))
+        throw new Error('Invalid browser environment.');
+      return getRuntime().facade.listAssignments(environment);
+    },
+  );
   ipcMain.handle(IpcChannel.ListLessons, async (event) => {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
     return getRuntime().facade.listLessons();
@@ -384,6 +396,44 @@ function registerIpc(): void {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
     if (!isWebAreaBounds(bounds)) throw new Error('Invalid web area bounds.');
     getBrowserController().setWebAreaBounds(bounds);
+  });
+  ipcMain.handle(IpcChannel.GetWebProbeReport, (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    return getWebProbeController().snapshot();
+  });
+  ipcMain.handle(IpcChannel.ScanWebPage, (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    return getWebProbeController().scan();
+  });
+  ipcMain.handle(IpcChannel.AnalyzeWebAsset, (event, url: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    return getWebProbeController().analyzeAsset(url);
+  });
+  ipcMain.handle(IpcChannel.SearchWebSources, (event, query: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    return getWebProbeController().search(query);
+  });
+  ipcMain.handle(IpcChannel.ProbeWebGet, (event, request: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    return getWebProbeController().probe(request);
+  });
+  ipcMain.handle(IpcChannel.CancelWebProbe, (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    getWebProbeController().cancel();
+  });
+  ipcMain.handle(IpcChannel.ExportWebProbe, async (event) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (!mainWindow) throw new Error('Desktop window is not ready.');
+    const report = getWebProbeController().snapshot();
+    if (!report) throw new Error('请先分析当前页面');
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: '导出 Web 探测报告',
+      defaultPath: `yuketang-web-probe-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    await writeFile(result.filePath, JSON.stringify(report, null, 2), 'utf8');
+    return { filePath: result.filePath };
   });
   ipcMain.handle(IpcChannel.GetNetworkSnapshot, (event) => {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
@@ -674,6 +724,11 @@ function getRuntime(): BackendRuntime {
   return runtime;
 }
 
+function getWebProbeController(): WebProbeController {
+  if (!webProbeController) throw new Error('Web probe is not ready.');
+  return webProbeController;
+}
+
 function getNetworkLabController(): NetworkLabController {
   if (!networkLabController) throw new Error('Network lab is not ready.');
   return networkLabController;
@@ -749,11 +804,20 @@ async function createWindow(): Promise<void> {
     nextNetworkLabController.attach(contents);
   });
   networkLabController = nextNetworkLabController;
+  const nextWebProbeController = new WebProbeController(
+    () => webProbePage(nextBrowserController.webContents),
+    () => nextNetworkLabController.recorder.entries,
+    analyzeInWorker,
+  );
+  webProbeController = nextWebProbeController;
   const windowResources: { cliServer?: DesktopCliServer } = {};
   let disposed = false;
   window.on('close', () => {
     if (disposed) return;
     disposed = true;
+    nextWebProbeController.cancel();
+    if (webProbeController === nextWebProbeController)
+      webProbeController = undefined;
     nextNetworkLabController.destroy();
     nextBrowserController.destroy();
     void cleanupServices();

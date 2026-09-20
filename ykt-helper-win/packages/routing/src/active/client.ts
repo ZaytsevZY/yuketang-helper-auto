@@ -1,4 +1,9 @@
-import type { BrowserEnvironment, Presentation } from '@ykt/contracts';
+import {
+  BrowserEnvironment,
+  type AssignmentSnapshot,
+  type Presentation,
+} from '@ykt/contracts';
+import { AssignmentAuthError, fetchAssignments } from './assignments.js';
 
 import type { NetworkRecorder } from '../recorder.js';
 import type {
@@ -65,6 +70,39 @@ export class YuketangActiveClient {
       body: null,
     });
     return adapter.parseUser(response.body);
+  }
+
+  async listAssignments(
+    environment: BrowserEnvironment,
+  ): Promise<AssignmentSnapshot> {
+    if (environment !== BrowserEnvironment.Pro) {
+      throw new Error('作业接口目前仅支持荷塘雨课堂，请切换到荷塘雨课堂。');
+    }
+    const headers = await this.sessions.headers(environment);
+    const cookie = headers.cookie ?? '';
+    const universityId =
+      /(?:^|;\s*)uv_id=([^;]+)/.exec(cookie)?.[1] ??
+      /(?:^|;\s*)university_id=([^;]+)/.exec(cookie)?.[1] ??
+      '2598';
+    return fetchAssignments(
+      async (url) => {
+        const response = await this.#transport.request({
+          method: 'GET',
+          url,
+          body: null,
+          headers: await this.sessions.headers(environment),
+        });
+        await this.sessions.captureResponse(environment, response);
+        if (response.status === 401 || response.status === 403)
+          throw new AssignmentAuthError();
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`雨课堂作业请求失败（HTTP ${response.status}）。`);
+        }
+        return response.body;
+      },
+      universityId,
+      this.#now,
+    );
   }
 
   async listLessons(

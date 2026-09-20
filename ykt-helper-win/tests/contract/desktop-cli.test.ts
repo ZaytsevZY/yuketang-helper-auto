@@ -26,6 +26,31 @@ afterEach(async () => {
 });
 
 describe('desktop-attached CLI', () => {
+  it('reads assignments through the shared facade and validates the environment', async () => {
+    const listAssignments = vi.fn(async () => ({
+      environment: 'pro',
+      fetchedAt: 123,
+      assignments: [],
+      warnings: [],
+    }));
+    const handler = createDesktopCliHandler({
+      facade: { listAssignments } as unknown as YuketangFacade,
+      openLesson: async () => {},
+      prepareImage: async (url) => url,
+    });
+    expect(await handler(CliRpcMethod.AssignmentList)).toMatchObject({
+      environment: 'pro',
+      assignments: [],
+    });
+    expect(listAssignments).toHaveBeenCalledWith(BrowserEnvironment.Pro);
+    await expect(
+      handler(CliRpcMethod.AssignmentList, {
+        environment: 'https://evil.example',
+      }),
+    ).rejects.toThrow();
+    expect(listAssignments).toHaveBeenCalledTimes(1);
+  });
+
   it('uses a platform-appropriate local endpoint', () => {
     if (process.platform === 'win32') {
       expect(DesktopCliPipePath).toBe(

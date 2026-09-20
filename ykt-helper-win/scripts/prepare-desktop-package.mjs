@@ -31,6 +31,12 @@ await Promise.all([
   mkdir(join(packageRoot, 'main'), { recursive: true }).then(() =>
     copyFile(mainBundlePath, join(packageRoot, 'main', 'index.cjs')),
   ),
+  mkdir(join(packageRoot, 'main'), { recursive: true }).then(() =>
+    copyFile(
+      join(root, 'apps', 'desktop', 'dist', 'main', 'web-probe-worker.cjs'),
+      join(packageRoot, 'main', 'web-probe-worker.cjs'),
+    ),
+  ),
   cp(
     join(root, 'apps', 'desktop', 'dist', 'preload'),
     join(packageRoot, 'preload'),

@@ -37,6 +37,23 @@ node node_modules/electron/install.js
 
 `Cannot find native binding` 的 npm optional-dependencies 提示不一定是真正原因；Windows 应用控制阻止加载也可能产生该提示（[Electron #52481](https://github.com/electron/electron/issues/52481)）。请根据内层 `cause` 排查，不要直接删除项目锁文件或关闭系统安全策略。下载失败时可使用本文末尾的 Electron 镜像配置后重试安装命令。
 
+## 作业 / 考试
+
+顶部新增“作业”栏。切换到**荷塘雨课堂**，在内嵌网页完成登录，再点击刷新，可查看课程作业、考试、截止时间、剩余时间和逐题作答状态；支持按课程或标题搜索、类型与状态筛选，并可直接打开对应的学生端作业或考试页面。
+
+接口依据 [OneTHU PR #28](https://github.com/smartThise/OneTHU/pull/28)（`b9b82ef`，含 R16b）的雨课堂协议实现，复用 Electron 持久登录会话，不需要复制 Cookie 或另行扫码。当前仅支持 PR 验证过的 `pro.yuketang.cn`；标准版和长江版会提示切换。
+
+- 学习日志 `type=19/20` 分别对应作业与考试，`content.score_d` 按毫秒解释；已截止和无截止时间的条目也会保留。不限制未来 30 天。
+- 逐题读取 `problems[].user.my_answer.content`，仅向界面传递是否作答，不传递题干或答案。区分未作答、部分作答、全部已答和未知；`answer_count` 只有总数时不会推断每题已答，也不会把有作答记录标成最终交卷。
+- 考试使用 `/v/exam/cover?exam_id=…&classroom_id=…`，`result.status=4/5` 显示“已交卷”，6 显示“缺考”；`face_auth_status.monitor_status=2` 优先显示“已作废”。已交卷考试通过 `problem_count - result.unfinished_count` 展示作答总数，不生成逐题明细。无权限、缺少字段或未识别状态仍显示未知，可在官网确认。课程读取失败会显示部分结果警告；登录失效会提示重新登录。刷新失败时保留并标明旧结果。
+- “在官网查看”使用学生端 `/ai-workspace/lms-graph/{classroom_id}/exercise/{leaf_id}?is_chapter=1`（作业）或 `quiz/{leaf_id}?is_chapter=1`（考试）；缺少 `leaf_id` 时回退课程学习日志页。不会使用教师端 `/subject` 路由。
+- 新增“已批改”标签与筛选。作业按题读取 `user.status` 和 `user.my_score`：3 或 -1（含字符串 `"-1.00"`）表示待批改，4 或有效非负分数提供已批改证据；相关已作答题目中仍有待批改项时不判为已批改。缺少判定字段保持未知。
+- 考试已交卷且 `score_finish !== false`、`score` 与 `total_score` 均为有效非负数时显示“已批改”和分数（含零分）；未出分、缺考或作废时不展示分数。封面请求在有 `sku_id` 时一并传递。
+- 课程列表 `role=6` 标记“旁听”；正式选课及未知角色不标记。
+- 学习日志按每页 200 条读取，最多 50 页，达到上限会提示；作答状态请求并发上限为 4。结果仅保留在当前页面内存中。
+
+CLI 同样通过 Facade 只读获取：`npm run cli -- assignment list`（默认 `pro`）。
+
 ## CLI 调用
 
 桌面程序运行后，可通过本机 Named Pipe 调用同一个 Backend Runtime。CLI 与 GUI
@@ -135,6 +152,8 @@ SQLite，也不会自行启动 headless 登录会话。运行 `npm run cli -- he
 架构决策记录位于 [`docs/adr`](docs/adr)。
 
 ## 网络实验室
+
+「Web 探测」支持从当前页面发现 bundle、还原路由和接口候选、跟进懒加载脚本、搜索源码、复用登录态手动 GET 探测及导出报告。操作流程与解析边界见 [Web 探测说明](docs/web-probe.md)。
 
 底部网络实验室默认通过 Electron `webRequest` 捕获 HTTP 元数据。课堂收集器通过 CDP 旁路读取官方页面必要的课件响应和 WebSocket 帧，但不会把原始正文写入持久化存储；开启“深度捕获”后才会将受限、脱敏的正文和帧显示在实验室中。打开远程页面 DevTools 会占用或断开 CDP，界面会显示对应状态。
 

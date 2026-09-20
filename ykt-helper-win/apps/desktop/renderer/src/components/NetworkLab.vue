@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WebProbePanel from './WebProbePanel.vue';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type {
   DomainNetworkEntry,
@@ -9,6 +10,7 @@ import type {
 
 type EntryFilter = 'all' | NetworkEntry['kind'];
 
+const labMode = ref<'traffic' | 'web'>('traffic');
 const entries = ref<NetworkEntry[]>([]);
 const captureState = ref<NetworkCaptureState>({
   recorderMode: 'safe',
@@ -161,6 +163,17 @@ function shortUrl(value: string): string {
   <section class="network-lab" :class="{ collapsed }">
     <header class="lab-toolbar">
       <strong>网络实验室</strong>
+      <div v-if="!collapsed" class="filters" aria-label="实验室视图">
+        <button
+          :class="{ active: labMode === 'traffic' }"
+          @click="labMode = 'traffic'"
+        >
+          网络记录
+        </button>
+        <button :class="{ active: labMode === 'web' }" @click="labMode = 'web'">
+          Web 探测
+        </button>
+      </div>
       <span
         v-if="captureState.recorderMode === 'development'"
         class="development-warning"
@@ -168,7 +181,11 @@ function shortUrl(value: string): string {
       >
         DEBUG · 未脱敏
       </span>
-      <div v-if="!collapsed" class="filters" aria-label="记录类型">
+      <div
+        v-if="!collapsed && labMode === 'traffic'"
+        class="filters"
+        aria-label="记录类型"
+      >
         <button
           v-for="item in ['all', 'http', 'websocket', 'domain'] as const"
           :key="item"
@@ -186,14 +203,14 @@ function shortUrl(value: string): string {
         </button>
       </div>
       <input
-        v-if="!collapsed"
+        v-if="!collapsed && labMode === 'traffic'"
         v-model="search"
         class="search"
         type="search"
         placeholder="搜索 URL / payload"
       />
       <label
-        v-if="!collapsed"
+        v-if="!collapsed && labMode === 'traffic'"
         class="deep-toggle"
         :title="captureState.deepCaptureError ?? '捕获响应正文和 WebSocket 帧'"
       >
@@ -205,13 +222,25 @@ function shortUrl(value: string): string {
         />
         深度捕获
       </label>
-      <button v-if="!collapsed" type="button" @click="togglePaused">
+      <button
+        v-if="!collapsed && labMode === 'traffic'"
+        type="button"
+        @click="togglePaused"
+      >
         {{ captureState.paused ? '继续' : '暂停' }}
       </button>
-      <button v-if="!collapsed" type="button" @click="clearEntries">
+      <button
+        v-if="!collapsed && labMode === 'traffic'"
+        type="button"
+        @click="clearEntries"
+      >
         清空
       </button>
-      <button v-if="!collapsed" type="button" @click="exportFixture">
+      <button
+        v-if="!collapsed && labMode === 'traffic'"
+        type="button"
+        @click="exportFixture"
+      >
         导出
       </button>
       <span class="lab-count">
@@ -230,7 +259,8 @@ function shortUrl(value: string): string {
       </button>
     </header>
 
-    <div v-if="!collapsed" class="lab-body">
+    <WebProbePanel v-show="!collapsed && labMode === 'web'" />
+    <div v-if="!collapsed && labMode === 'traffic'" class="lab-body">
       <div class="entry-list">
         <button
           v-for="entry in filteredEntries"
@@ -280,7 +310,11 @@ function shortUrl(value: string): string {
     </div>
 
     <p
-      v-if="!collapsed && (captureState.deepCaptureError || message)"
+      v-if="
+        !collapsed &&
+        labMode === 'traffic' &&
+        (captureState.deepCaptureError || message)
+      "
       class="lab-message"
     >
       {{ message || captureState.deepCaptureError }}

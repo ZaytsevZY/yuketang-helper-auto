@@ -16,6 +16,7 @@
     "@ykt/contracts": "2.0.0",
     "@ykt/routing": "2.0.0",
     "@ykt/storage": "2.0.0",
+    "acorn": "^8.18.0",
     "electron-squirrel-startup": "^1.0.1",
     "vue": "^3.5.20"
   },

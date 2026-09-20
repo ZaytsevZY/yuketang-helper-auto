@@ -2,6 +2,7 @@ import {
   ErrorCode,
   DefaultAppSettings,
   YuketangError,
+  type AssignmentSnapshot,
   type AiProfileView,
   type AnswerInput,
   type AnswerProposal,
@@ -68,6 +69,7 @@ class BaselineFacade implements YuketangFacade {
     private readonly activeLessons: ActiveLessonService | undefined,
     private readonly storage: AppDataStore,
     private readonly ai: AiService,
+    private readonly activeClient: YuketangActiveClient | undefined,
   ) {}
 
   async getStatus(): Promise<RuntimeStatus> {
@@ -227,6 +229,18 @@ class BaselineFacade implements YuketangFacade {
 
   async listLogs(limit?: number): Promise<readonly AppLogEntry[]> {
     return this.storage.listLogs(limit);
+  }
+
+  async listAssignments(
+    environment: BrowserEnvironment,
+  ): Promise<AssignmentSnapshot> {
+    if (!this.activeClient) {
+      throw new YuketangError({
+        code: ErrorCode.NotImplemented,
+        message: 'The active network client is not configured.',
+      });
+    }
+    return this.activeClient.listAssignments(environment);
   }
 
   async listLessons(): Promise<readonly Lesson[]> {
@@ -436,6 +450,7 @@ export class BackendRuntime {
       this.activeLessons,
       this.dataStore,
       ai,
+      options.activeClient,
     );
   }
 
@@ -482,6 +497,7 @@ export class BackendRuntime {
         ...(this.activeLessons
           ? [
               'active-client',
+              'assignments',
               'lesson-websocket',
               'answer-submission',
               'classroom-simulator',
