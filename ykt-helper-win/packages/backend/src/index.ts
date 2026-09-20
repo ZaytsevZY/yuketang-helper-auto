@@ -7,6 +7,7 @@ export * from './repositories/lesson-repository.js';
 export * from './runtime.js';
 export * from './services/active-lesson-service.js';
 export * from './services/answer-service.js';
+export * from './services/headless-assignments.js';
 export * from './services/problem-service.js';
 export * from './workflows/fixture-replay.js';
 export * from './workflows/lesson-state-machine.js';

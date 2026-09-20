@@ -11,6 +11,7 @@
     "start": "node dist/ykt-cli.cjs"
   },
   "dependencies": {
+    "@ykt/backend": "2.0.0",
     "@ykt/contracts": "2.0.0"
   },
   "devDependencies": {

@@ -58,9 +58,11 @@ node node_modules/electron/install.js
 
 CLI 同样通过 Facade 读取本次会话结果：`npm run cli -- assignment list`（默认 `pro`）；显式重新收集使用 `npm run cli -- assignment list --refresh`。
 
-点击作业标题或“查看详情”可阅读题干、选项、作答、附件名称、分数及教师评语，支持加密字体、离线公式和图片回退。符合条件的作业可打开官方作答窗口，关闭后更新当前条目；详情刷新不重新收集全部课程。考试展示封面状态，题目继续在官网阅读。CLI 使用 `assignment detail <id>`。协议及功能边界见 [作业详情说明](docs/assignment-detail.md)。
+点击作业标题或“查看详情”可阅读题干、选项、作答、附件名称、分数及教师评语，支持加密字体、离线公式和图片回退。符合条件的作业可打开官方作答窗口，关闭后更新当前条目；详情刷新不重新收集全部课程。已交卷、已出分且开放查看的考试可读取详情与已发布参考答案，其余考试保留封面。CLI 使用 `assignment detail <id>`，单题读取使用 `assignment question <id> --index <题号>`。协议及功能边界见 [作业详情说明](docs/assignment-detail.md)。
 
 ## CLI 调用
+
+作业/考试命令现支持 **不运行 Desktop 的独立模式**：追加 `--headless --session-file <path|->`，由纯 Node 会话读取真实接口。支持 `assignment|homework|exam` 的 `list`、`detail`、`question`、`answer`，列表筛选、按原题号提取及跨进程详情缓存。会话格式、命令及权限边界见[独立 CLI 说明](docs/cli-assignments.md)。
 
 桌面程序运行后，可通过本机 Named Pipe 调用同一个 Backend Runtime。CLI 与 GUI
 共用同一个 `YuketangFacade`，界面上的所有功能都有对应命令：
@@ -133,8 +135,9 @@ CLI 的 stdout 只输出 JSON；诊断和用法信息写入 stderr。`slide read
 
 `browser`、`layout`、`network`、`presentation export`、`slide download` 以及
 `ai ask --capture-page` 依赖正在运行的桌面进程；未运行时返回 `NOT_IMPLEMENTED`
-（管道无法连接时为 `DESKTOP_UNAVAILABLE`）。CLI 不会直接读取 Cookie、凭据文件或
-SQLite，也不会自行启动 headless 登录会话。运行 `npm run cli -- help` 可查看完整命令。
+（管道无法连接时为 `DESKTOP_UNAVAILABLE`）。Desktop 模式不直接读取凭据文件或 SQLite；
+作业/考试的 `--headless` 模式只读取显式指定的会话文件，不启动浏览器登录，也不读取 Desktop Cookie 数据库。
+运行 `npm run cli -- help` 可查看完整命令。
 
 ## 当前边界
 
