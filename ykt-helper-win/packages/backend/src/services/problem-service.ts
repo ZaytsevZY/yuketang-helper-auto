@@ -33,11 +33,7 @@ export class ProblemService {
   }
 
   validateAnswer(input: AnswerInput): ValidationResult {
-    return this.answers.validate(
-      this.getProblem(input.problemId),
-      input.answer,
-      input.forceRetry === true,
-    );
+    return this.validateAnswerFormat(input);
   }
 
   validateAnswerFormat(input: AnswerInput): ValidationResult {

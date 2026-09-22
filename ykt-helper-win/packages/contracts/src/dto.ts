@@ -90,6 +90,7 @@ export interface ValidationResult {
 export interface SubmissionResult {
   problemId: string;
   status: 'submitted' | 'rejected';
+  route: 'answer' | 'retry';
   submittedAt: string;
   proposalOutcome?: AnswerProposalOutcome;
 }

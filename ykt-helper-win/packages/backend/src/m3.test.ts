@@ -171,19 +171,33 @@ describe('M3 backend core', () => {
       'A',
       'C',
     ]);
-    expect(service.validate(context, 'b')).toEqual({
+    expect(service.validateFormat(context, 'b')).toEqual({
       valid: true,
       issues: [],
       normalizedAnswer: ['B'],
     });
-    expect(service.validate(context, 'A C').issues).toContain(
+    expect(service.validateFormat(context, 'A C').issues).toContain(
       'exactly one option is required',
     );
     expect(
-      service.validate({ ...context, type: ProblemType.Subjective }, [
+      service.validateFormat({ ...context, type: ProblemType.Subjective }, [
         'not-subjective',
       ]).valid,
     ).toBe(false);
+
+    expect(
+      parseManualAnswer(
+        ProblemType.Subjective,
+        JSON.stringify({
+          content: '  answer text  ',
+          pics: [{ pic: 'ignored' }],
+          videos: ['ignored'],
+        }),
+      ),
+    ).toEqual({ content: 'answer text', pics: [] });
+    expect(
+      parseManualAnswer(ProblemType.Subjective, '  plain answer  '),
+    ).toEqual({ content: 'plain answer', pics: [] });
   });
 
   it('builds normal and retry payload times using the legacy rules', () => {
@@ -208,6 +222,25 @@ describe('M3 backend core', () => {
     ).toMatchObject({
       route: 'retry',
       payload: { problems: [{ dt: 3000, problemType: 1 }] },
+    });
+
+    expect(
+      planSubmission({
+        problem: { ...problem, type: ProblemType.Subjective },
+        answer: { content: 'answer text', pics: [] },
+        now: 1500,
+        startTime: 1000,
+        endTime: 2000,
+      }),
+    ).toMatchObject({
+      route: 'answer',
+      payload: {
+        result: {
+          content: 'answer text',
+          pics: [{ pic: '' }],
+          videos: [],
+        },
+      },
     });
   });
 });

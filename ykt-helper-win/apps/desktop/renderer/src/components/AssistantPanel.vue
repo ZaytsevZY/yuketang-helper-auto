@@ -24,7 +24,6 @@ import {
   type RuntimeStatus,
   type SourceModuleId,
   type UserProfile,
-  type ValidationResult,
 } from '@ykt/contracts';
 
 import AssignmentsPanel from './AssignmentsPanel.vue';
@@ -214,7 +213,6 @@ const noticeToasts = ref<readonly NoticeToast[]>([]);
 const entries = ref<NetworkEntry[]>([]);
 const collectingLessonId = ref('');
 const answerDraft = ref('');
-const validation = ref<ValidationResult>();
 const submissionMessage = ref('');
 const confirmed = ref(false);
 const ocrText = ref('');
@@ -261,6 +259,13 @@ const selectedSlide = computed(() =>
 
 const selectedAiImages = computed(() => {
   if (assignmentAiContext.value) return [];
+  const problem = selectedProblem.value;
+  if (problem) {
+    const problemImage = presentations.value
+      .find((presentation) => presentation.id === problem.presentationId)
+      ?.slides.find((slide) => slide.id === problem.slideId)?.imageUrl;
+    return problemImage ? [problemImage] : [];
+  }
   const chosen = new Set(aiSlideSelection.value);
   const selected = presentations.value
     .flatMap((presentation) => presentation.slides)
@@ -269,13 +274,7 @@ const selectedAiImages = computed(() => {
   if (selected.length || (settings.value?.aiCaptureCurrentPage ?? true)) {
     return selected;
   }
-  const problem = selectedProblem.value;
-  const problemImage = presentations.value
-    .flatMap((presentation) => presentation.slides)
-    .find((slide) => slide.id === problem?.slideId)?.imageUrl;
-  const fallback = settings.value?.aiSlidePickPriority
-    ? problemImage || selectedSlide.value?.imageUrl
-    : selectedSlide.value?.imageUrl || problemImage;
+  const fallback = selectedSlide.value?.imageUrl;
   return fallback ? [fallback] : [];
 });
 
@@ -317,6 +316,7 @@ const aiRequestPending = computed(() =>
 const captureCurrentBrowserPage = computed(
   () =>
     !assignmentAiContext.value &&
+    !selectedProblem.value &&
     selectedAiImages.value.length === 0 &&
     (settings.value?.aiCaptureCurrentPage ?? true),
 );
@@ -351,8 +351,17 @@ const selectedLetters = computed(() =>
 );
 
 const canSubmit = computed(
-  () => validation.value?.valid === true && confirmed.value && !busy.value,
+  () => answerDraft.value.trim().length > 0 && confirmed.value && !busy.value,
 );
+
+const isRetrySubmission = computed(() => {
+  const problem = selectedProblem.value;
+  return Boolean(
+    problem &&
+    (problem.status === 'expired' ||
+      (problem.deadlineAt !== null && Date.now() >= problem.deadlineAt)),
+  );
+});
 
 const agentAutoSubmitEnabled = computed(
   () =>
@@ -464,7 +473,6 @@ watch(
   },
 );
 watch(answerDraft, () => {
-  validation.value = undefined;
   confirmed.value = false;
   submissionMessage.value = '';
 });
@@ -643,25 +651,23 @@ function openProblemSlide(): void {
   emit('selectPage', 'courseware');
 }
 
-async function validateAnswer(): Promise<void> {
+function openAiForProblem(): void {
   const problem = selectedProblem.value;
   if (!problem) return;
-  await run('validate', async () => {
-    validation.value = await window.yuketang.validateAnswer({
-      problemId: problem.id,
-      answer: answerDraft.value,
-    });
-    confirmed.value = false;
-  });
+  assignmentAiContext.value = null;
+  aiSlideSelection.value = [];
+  aiSlideContextId.value = '';
+  emit('selectPage', 'ai');
 }
 
-async function submitAnswer(): Promise<void> {
+async function submitAnswer(forceRetry = false): Promise<void> {
   const problem = selectedProblem.value;
   if (!problem || !canSubmit.value) return;
   await run('submit', async () => {
     const result = await window.yuketang.submitAnswer({
       problemId: problem.id,
       answer: answerDraft.value,
+      ...(forceRetry ? { forceRetry: true } : {}),
       ...(appliedProposalId.value
         ? {
             proposalId: appliedProposalId.value,
@@ -669,11 +675,12 @@ async function submitAnswer(): Promise<void> {
           }
         : {}),
     });
+    const action = result.route === 'retry' ? '补交' : '提交';
     submissionMessage.value = result.proposalOutcome
       ? result.proposalOutcome.changed
-        ? `已于 ${formatTime(result.submittedAt)} 提交，并记录对 AI 建议的修改`
-        : `已于 ${formatTime(result.submittedAt)} 按 AI 建议提交`
-      : `已于 ${formatTime(result.submittedAt)} 提交`;
+        ? `已于 ${formatTime(result.submittedAt)} ${action}，并记录对 AI 建议的修改`
+        : `已于 ${formatTime(result.submittedAt)} 按 AI 建议${action}`
+      : `已于 ${formatTime(result.submittedAt)} ${action}`;
     appliedProposalId.value = '';
     confirmed.value = false;
     await loadLessonData();
@@ -687,7 +694,6 @@ function resetAnswer(): void {
     : Array.isArray(result)
       ? result.join('')
       : (result as { content: string }).content;
-  validation.value = undefined;
   aiProposal.value = latestSessionProposal(currentAiSession.value);
   aiChatDraft.value = '';
   appliedProposalId.value = '';
@@ -935,15 +941,21 @@ async function requestAiProposal(
   }
   let proposal: AnswerProposal;
   try {
-    const includeInitialContext = retry || session.messages.length === 2;
-    const imageUrls = includeInitialContext ? [...session.imageUrls] : [];
+    const includeInitialContext =
+      Boolean(problem) || retry || session.messages.length === 2;
+    const imageUrls = problem
+      ? [...selectedAiImages.value]
+      : includeInitialContext
+        ? [...session.imageUrls]
+        : [];
     proposal = await window.yuketang.generateAnswerProposal({
       ...(session.problemId
         ? { problemId: session.problemId }
         : { contextId: session.contextId }),
       imageUrls,
       ...(imageUrls.length ? { imageSource: 'slide' as const } : {}),
-      captureCurrentPage: includeInitialContext && session.captureCurrentPage,
+      captureCurrentPage:
+        !problem && includeInitialContext && session.captureCurrentPage,
       customPrompt: prompt,
       sessionId: session.id,
       retry,
@@ -1011,26 +1023,9 @@ async function applyAutomaticProposal(
     return;
   }
 
-  const proposalValidation = await window.yuketang.validateAnswer({
-    problemId: problem.id,
-    answer: proposal.answer,
-    proposalId: proposal.id,
-    confirmedBy: 'agent',
-  });
   if (selectedProblemId.value === problem.id) {
     answerDraft.value = answerValueToDraft(proposal.answer, problem.type);
     appliedProposalId.value = proposal.id;
-    validation.value = proposalValidation;
-  }
-  if (!proposalValidation.valid) {
-    infoMessage.value = `Agent 未提交：${proposalValidation.issues.join('；')}`;
-    await emitLocalNotice(
-      'auto-answer-failed',
-      problem,
-      'Agent 未提交答案',
-      infoMessage.value,
-    );
-    return;
   }
 
   if (!agentAutoSubmitEnabled.value) {
@@ -1088,7 +1083,7 @@ function lastAssistantIndex(messages: readonly AiChatMessage[]): number {
   return -1;
 }
 
-async function useProposal(): Promise<void> {
+function useProposal(): void {
   const problem = selectedProblem.value;
   const answer = aiProposal.value?.answer;
   if (!problem || !answer) return;
@@ -1096,7 +1091,6 @@ async function useProposal(): Promise<void> {
   appliedProposalId.value = aiProposal.value?.id ?? '';
   confirmed.value = false;
   emit('selectPage', 'problems');
-  await validateAnswer();
 }
 
 function answerValueToDraft(
@@ -1887,9 +1881,7 @@ function clamp(value: number, min: number, max: number): number {
               <button type="button" @click="openProblemSlide">
                 查看所在课件页
               </button>
-              <button type="button" @click="emit('selectPage', 'ai')">
-                AI 分析
-              </button>
+              <button type="button" @click="openAiForProblem">AI 分析</button>
             </div>
 
             <div v-if="selectedProblem.options.length" class="option-list">
@@ -1917,35 +1909,14 @@ function clamp(value: number, min: number, max: number): number {
                 :placeholder="
                   selectedProblem.type === ProblemType.FillBlank
                     ? '每行一个填空答案'
-                    : '例如 A、AC，或输入文字答案'
+                    : selectedProblem.type === ProblemType.Subjective
+                      ? '直接输入答案正文，或输入包含 content 的 JSON'
+                      : '例如 A、AC，或输入文字答案'
                 "
               />
             </label>
 
-            <button
-              type="button"
-              class="secondary-button full-width"
-              :disabled="!answerDraft.trim() || busy === 'validate'"
-              @click="validateAnswer"
-            >
-              {{ busy === 'validate' ? '正在校验' : '校验答案' }}
-            </button>
-
-            <div
-              v-if="validation"
-              class="validation-result"
-              :class="validation.valid ? 'valid' : 'invalid'"
-            >
-              <strong>{{
-                validation.valid ? '校验通过' : '校验未通过'
-              }}</strong>
-              <p v-if="validation.issues.length">
-                {{ validation.issues.join('；') }}
-              </p>
-              <p v-else>答案格式与当前题目状态均可提交。</p>
-            </div>
-
-            <div v-if="validation?.valid" class="submit-control">
+            <div class="submit-control">
               <label>
                 <input v-model="confirmed" type="checkbox" />
                 我已核对题目与答案，确认提交到雨课堂
@@ -1954,9 +1925,24 @@ function clamp(value: number, min: number, max: number): number {
                 type="button"
                 class="primary-button full-width"
                 :disabled="!canSubmit"
-                @click="submitAnswer"
+                @click="submitAnswer()"
               >
-                {{ busy === 'submit' ? '正在提交' : '确认提交' }}
+                {{
+                  busy === 'submit'
+                    ? '正在提交'
+                    : isRetrySubmission
+                      ? '确认补交'
+                      : '确认提交'
+                }}
+              </button>
+              <button
+                v-if="!isRetrySubmission"
+                type="button"
+                class="secondary-button full-width"
+                :disabled="!canSubmit"
+                @click="submitAnswer(true)"
+              >
+                强制补交
               </button>
             </div>
             <p v-if="submissionMessage" class="inline-success">
@@ -2288,8 +2274,8 @@ function clamp(value: number, min: number, max: number): number {
                   : hasSlideQuestionContext
                     ? '课件问答仅发送所选页面和你的问题，不会提交课堂答案。'
                     : agentAutoSubmitEnabled
-                      ? '自动提交已启用。新题会由 Agent 分析、校验并直接提交。'
-                      : '手动生成的建议仍需在“题目”页校验并确认。'
+                      ? '自动提交已启用。新题会由 Agent 分析并直接提交。'
+                      : '手动生成的建议仍需在“题目”页确认后提交。'
               }}
             </p>
           </template>
@@ -2950,8 +2936,7 @@ function clamp(value: number, min: number, max: number): number {
                 <span>
                   <strong>默认采集当前网页</strong>
                   <small
-                    >未手工选择课件图片时，截取当前 Chromium
-                    标签页作为分析上下文。</small
+                    >仅在从“课件”页提问且未选择缩略图时，截取当前课件页作为分析上下文。</small
                   >
                 </span>
                 <input
@@ -3217,7 +3202,7 @@ function clamp(value: number, min: number, max: number): number {
               <strong>Backend</strong><span>形成课堂、课件和题目上下文</span>
             </li>
             <li>
-              <strong>Vue GUI</strong><span>展示来源，收集输入并请求校验</span>
+              <strong>Vue GUI</strong><span>展示来源，收集输入并请求提交</span>
             </li>
             <li>
               <strong>显式确认</strong

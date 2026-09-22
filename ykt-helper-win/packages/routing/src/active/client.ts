@@ -236,6 +236,8 @@ export class YuketangActiveClient {
       },
       lessonId,
     );
+    if (plan.route === 'retry')
+      assertRetryAccepted(response.body, plan.payload);
     return response.body;
   }
 
@@ -317,6 +319,36 @@ export class YuketangActiveClient {
   get usesBrowserCollection(): boolean {
     return this.#browserCollector !== undefined;
   }
+}
+
+function assertRetryAccepted(body: unknown, payload: unknown): void {
+  const expectedIds = retryProblemIds(payload);
+  const data =
+    typeof body === 'object' && body !== null
+      ? (body as Record<string, unknown>).data
+      : null;
+  const success =
+    typeof data === 'object' && data !== null
+      ? (data as Record<string, unknown>).success
+      : null;
+  const successIds = Array.isArray(success) ? success.map(String) : [];
+  if (
+    expectedIds.length === 0 ||
+    expectedIds.some((id) => !successIds.includes(id))
+  ) {
+    throw new Error('雨课堂服务端未确认补交成功。');
+  }
+}
+
+function retryProblemIds(payload: unknown): readonly string[] {
+  if (typeof payload !== 'object' || payload === null) return [];
+  const problems = (payload as Record<string, unknown>).problems;
+  if (!Array.isArray(problems)) return [];
+  return problems.flatMap((problem) => {
+    if (typeof problem !== 'object' || problem === null) return [];
+    const id = (problem as Record<string, unknown>).problemId;
+    return typeof id === 'string' || typeof id === 'number' ? [String(id)] : [];
+  });
 }
 
 function assertSuccess(response: ActiveHttpResponse): void {

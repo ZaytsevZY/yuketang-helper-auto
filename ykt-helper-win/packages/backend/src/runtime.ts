@@ -508,10 +508,8 @@ class BaselineFacade implements YuketangFacade {
           }
           const result = await this.activeLessons!.submitAnswer(input);
           if (!proposal || result.status !== 'submitted') return result;
-          const submittedAnswer = this.problems.validateAnswer({
-            ...input,
-            forceRetry: true,
-          }).normalizedAnswer;
+          const submittedAnswer =
+            this.problems.validateAnswerFormat(input).normalizedAnswer;
           if (!submittedAnswer) return result;
           return {
             ...result,

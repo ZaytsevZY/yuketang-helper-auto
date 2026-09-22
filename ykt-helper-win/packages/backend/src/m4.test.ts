@@ -41,6 +41,40 @@ class DynamicCredentialsSource implements SessionCredentialSource {
 }
 
 describe('M4 backend active client', () => {
+  it('rejects a retry that the server does not list as successful', async () => {
+    const transport = new QueueTransport([
+      response({ data: { lessonToken: 'lesson-token' } }),
+      response({ code: 0, data: { success: [] } }),
+    ]);
+    const activeClient = new YuketangActiveClient({
+      credentials: {
+        load: async () => ({
+          cookieHeader: 'session=abc',
+          bearerToken: 'token',
+          userId: '42',
+        }),
+      },
+      transport,
+    });
+    await activeClient.checkin(BrowserEnvironment.Standard, '7');
+
+    await expect(
+      activeClient.submit(BrowserEnvironment.Standard, '7', {
+        route: 'retry',
+        payload: {
+          problems: [
+            {
+              problemId: '1780101775700205450',
+              problemType: 1,
+              dt: 1,
+              result: ['A'],
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow('雨课堂服务端未确认补交成功');
+  });
+
   it('lists, connects, loads a problem and submits through mocked transports', async () => {
     const transport = new QueueTransport([
       response({
@@ -159,9 +193,12 @@ describe('M4 backend active client', () => {
       await runtime.facade.submitAnswer({
         problemId: '13',
         answer: 'A',
-        forceRetry: true,
       }),
-    ).toMatchObject({ problemId: '13', status: 'submitted' });
+    ).toMatchObject({
+      problemId: '13',
+      status: 'submitted',
+      route: 'retry',
+    });
     expect(transport.requests[4]).toMatchObject({
       method: 'POST',
       url: 'https://www.yuketang.cn/api/v3/lesson/problem/retry',
@@ -360,14 +397,12 @@ describe('M4 backend active client', () => {
       forceRetry: true,
     });
     expect(result).toMatchObject({ problemId: '11', status: 'submitted' });
-    // First attempt used /answer (deadline not crossed, but forceRetry only
-    // affects the second planSubmission call)
+    // An explicit retry uses /retry immediately and remains on /retry after
+    // refreshing an expired lesson token.
     expect(transport.requests[3]).toMatchObject({
       method: 'POST',
-      url: 'https://www.yuketang.cn/api/v3/lesson/problem/answer',
+      url: 'https://www.yuketang.cn/api/v3/lesson/problem/retry',
     });
-    // After re-checkin, planSubmission is recalculated with forceRetry=true
-    // → route switches to /retry
     expect(transport.requests[5]).toMatchObject({
       method: 'POST',
       url: 'https://www.yuketang.cn/api/v3/lesson/problem/retry',
@@ -757,7 +792,7 @@ describe('M4 backend active client', () => {
       JSON.stringify({
         eventId: 'publish-problem-11',
         op: 'probleminfo',
-        problemid: '11',  // This should be found first
+        problemid: '11', // This should be found first
         quiz: { id: 'quiz-1', title: '测试题组' },
       }),
     );
@@ -849,7 +884,9 @@ describe('M4 backend active client', () => {
       transport,
       browserCollector: collector,
       socketFactory: () => {
-        throw new Error('Deferred publish test must not create a classroom socket.');
+        throw new Error(
+          'Deferred publish test must not create a classroom socket.',
+        );
       },
     });
     const runtime = createBackendRuntime({
@@ -886,7 +923,9 @@ describe('M4 backend active client', () => {
     // No problem-start notice yet — problem is not loaded.
     // The assessment-publish notice is emitted immediately by handleMessage.
     expect(notices).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ kind: 'problem-start' })]),
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'problem-start' }),
+      ]),
     );
 
     // Now the browser loads the presentation with the actual problem data
