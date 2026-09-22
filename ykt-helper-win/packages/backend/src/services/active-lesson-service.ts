@@ -172,7 +172,7 @@ export class ActiveLessonService {
 
   async submitAnswer(input: AnswerInput): Promise<SubmissionResult> {
     const problem = this.#problems.getProblem(input.problemId);
-    const validation = this.#problems.validateAnswer(input);
+    const validation = this.#problems.validateAnswerFormat(input);
     if (!validation.valid || !validation.normalizedAnswer) {
       throw new YuketangError({
         code: ErrorCode.InvalidArgument,
@@ -186,7 +186,7 @@ export class ActiveLessonService {
         message: 'Lesson is not connected.',
       });
     }
-    await this.#submitWithTokenRefresh(
+    const route = await this.#submitWithTokenRefresh(
       environment,
       problem,
       validation.normalizedAnswer,
@@ -198,6 +198,7 @@ export class ActiveLessonService {
     return {
       problemId: problem.id,
       status: 'submitted',
+      route,
       submittedAt: new Date(this.clock.now()).toISOString(),
     };
   }
@@ -208,20 +209,18 @@ export class ActiveLessonService {
     answer: AnswerValue,
     forceRetry: boolean,
     retried = false,
-  ): Promise<void> {
-    // forceRetry only applies to the retry attempt; the first attempt
-    // always uses the deadline-based route from planSubmission.
+  ): Promise<'answer' | 'retry'> {
     const plan = planSubmission({
       problem,
       answer,
       now: this.clock.now(),
       startTime: problem.unlockedAt,
       endTime: problem.deadlineAt,
-      ...(retried && forceRetry ? { forceRetry: true } : {}),
+      ...(forceRetry ? { forceRetry: true } : {}),
     });
     try {
       await this.client.submit(environment, problem.lessonId, plan);
-      return;
+      return plan.route;
     } catch (error) {
       if (retried || !this.#isTokenExpiredError(error)) {
         throw error;

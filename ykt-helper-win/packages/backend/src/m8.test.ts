@@ -203,7 +203,7 @@ describe('M8 LLM workflow', () => {
     await runtime.stop();
   });
 
-  it('keeps a structurally valid AI proposal ready while submission is locked', async () => {
+  it('keeps answer parsing independent from locally inferred problem status', async () => {
     const lessons = new InMemoryLessonRepository();
     const session = lessons.upsertLesson({
       id: 'lesson-locked',
@@ -269,9 +269,9 @@ describe('M8 LLM workflow', () => {
         answer: 'B',
       }),
     ).toMatchObject({
-      valid: false,
+      valid: true,
       normalizedAnswer: ['B'],
-      issues: ['problem is locked'],
+      issues: [],
     });
 
     await runtime.stop();

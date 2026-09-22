@@ -2,7 +2,6 @@ import {
   ProblemType,
   type AnswerValue,
   type Problem,
-  type ProblemContext,
   type SubjectiveAnswer,
   type ValidationResult,
 } from '@ykt/contracts';
@@ -13,8 +12,17 @@ export interface AnswerPayload {
   problemId: string;
   problemType: number;
   dt: number;
-  result: AnswerValue;
+  result: SubmissionAnswerValue;
 }
+
+export interface SubjectiveSubmissionAnswer {
+  content: string;
+  pics: readonly { pic: string }[];
+  videos: readonly never[];
+}
+
+export type SubmissionAnswerValue =
+  readonly string[] | SubjectiveSubmissionAnswer;
 
 export type SubmissionPlan =
   | { route: 'answer'; payload: AnswerPayload }
@@ -45,28 +53,6 @@ export class AnswerService {
       normalizedAnswer: answer,
     };
   }
-
-  validate(
-    problem: ProblemContext,
-    input: string | AnswerValue,
-    allowExpired = false,
-  ): ValidationResult {
-    const format = this.validateFormat(problem, input);
-    const issues: string[] = [];
-
-    if (problem.status === 'locked') issues.push('problem is locked');
-    if (problem.status === 'expired' && !allowExpired)
-      issues.push('problem deadline has passed');
-    if (problem.status === 'answered')
-      issues.push('problem is already answered');
-    issues.push(...format.issues);
-
-    return {
-      valid: issues.length === 0,
-      issues,
-      normalizedAnswer: format.normalizedAnswer,
-    };
-  }
 }
 
 export function parseManualAnswer(
@@ -92,7 +78,7 @@ export function parseManualAnswer(
       .filter(Boolean);
   }
   if (type === ProblemType.Subjective) {
-    return { content: content.trim(), pics: [] };
+    return { content: subjectiveContent(content), pics: [] };
   }
   return null;
 }
@@ -108,7 +94,7 @@ export function planSubmission(input: SubmissionPlanInput): SubmissionPlan {
   const base = {
     problemId: input.problem.id,
     problemType: legacyType,
-    result: input.answer,
+    result: submissionAnswer(input.answer),
   };
 
   if (!retry) {
@@ -123,6 +109,35 @@ export function planSubmission(input: SubmissionPlanInput): SubmissionPlan {
         ? Math.max(0, input.endTime - Math.max(offset, 5_000))
         : Math.max(0, input.now - offset);
   return { route: 'retry', payload: { problems: [{ ...base, dt }] } };
+}
+
+function subjectiveContent(input: string): string {
+  const content = input.trim();
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      !Array.isArray(parsed) &&
+      typeof (parsed as Record<string, unknown>).content === 'string'
+    ) {
+      return ((parsed as Record<string, unknown>).content as string).trim();
+    }
+  } catch {
+    // Plain text is the primary manual-input path.
+  }
+  return content;
+}
+
+function submissionAnswer(answer: AnswerValue): SubmissionAnswerValue {
+  if (isStringArrayAnswer(answer)) return answer;
+  return {
+    content: answer.content,
+    pics: answer.pics.length
+      ? answer.pics.map((pic) => ({ pic }))
+      : [{ pic: '' }],
+    videos: [],
+  };
 }
 
 function normalizeAnswer(

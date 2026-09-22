@@ -38,7 +38,7 @@ describe('LLM automation settings', () => {
     await vi.runAllTimersAsync();
 
     expect(api.generateAnswerProposal).toHaveBeenCalledOnce();
-    expect(api.validateAnswer).toHaveBeenCalledOnce();
+    expect(api.validateAnswer).not.toHaveBeenCalled();
     expect(api.submitAnswer).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         problemId: problem.id,
@@ -88,6 +88,47 @@ describe('LLM automation settings', () => {
     expect(panel.selectedProblemId.value).toBe(latest.id);
     expect(api.generateAnswerProposal).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ problemId: latest.id }),
+    );
+  });
+
+  it('always sends the problem slide from the problem-page AI entry', async () => {
+    const { panel, api, problem, emit } = setupPanel({
+      aiCaptureCurrentPage: true,
+    });
+    const imageUrl = 'https://example.test/problem-slide.png';
+    panel.presentations.value = [
+      {
+        id: problem.presentationId,
+        lessonId: problem.lessonId,
+        title: '题目课件',
+        width: 1920,
+        height: 1080,
+        slides: [
+          {
+            id: problem.slideId,
+            index: 0,
+            title: '题目页',
+            imageUrl,
+            problem,
+          },
+        ],
+      },
+    ];
+    panel.selectedProblemId.value = problem.id;
+    panel.aiSlideSelection.value = ['unrelated-slide'];
+    await nextTick();
+
+    panel.openAiForProblem();
+    await panel.analyzeProblem(false);
+
+    expect(emit).toHaveBeenCalledWith('selectPage', 'ai');
+    expect(api.generateAnswerProposal).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        problemId: problem.id,
+        imageUrls: [imageUrl],
+        imageSource: 'slide',
+        captureCurrentPage: false,
+      }),
     );
   });
 
@@ -173,6 +214,7 @@ function setupPanel(settings: Record<string, boolean>) {
     submitAnswer: vi.fn(async () => ({
       problemId: problem.id,
       status: 'submitted',
+      route: 'answer',
       submittedAt: new Date().toISOString(),
     })),
     listProblems: vi.fn(async () => [problem]),
