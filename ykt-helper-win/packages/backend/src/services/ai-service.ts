@@ -195,43 +195,65 @@ export class AiService {
     let turn: LlmTurn | undefined;
     const warnings: string[] = [];
     try {
+      // Reserve the turn before any async preparation, including OCR.
+      turn = this.#sessions.begin({
+        sessionId,
+        problemId: problem.id,
+        initialMessages: customQuestion
+          ? slideQuestionMessages(images, input.customPrompt ?? '')
+          : answerMessages(problem, images, input.customPrompt ?? '', []),
+        userMessage: input.customPrompt ?? '',
+        retry: input.retry === true,
+      });
       profile = await this.activeProfile();
-      model = images.length
-        ? profile.visionModel || profile.model
-        : profile.model;
+      this.#sessions.assertCurrent(turn);
       const recognized: string[] = [];
-      if (!customQuestion) {
+      const refreshContext =
+        images.length > 0 && (turn.isNewSession || input.retry === true);
+      if (!customQuestion && refreshContext) {
         for (const [index, imageUrl] of images.entries()) {
           try {
-            const result = await this.recognizeSlide({ imageUrl });
+            const result = await this.recognizeSlideWithProfile(
+              { imageUrl },
+              profile,
+              turn.signal,
+            );
+            this.#sessions.assertCurrent(turn);
             if (!result.text)
               throw new Error('未识别到文字，请检查图片是否包含题目。');
             recognized.push(`图片 ${index + 1} OCR：\n${result.text}`);
             contextSources.push(`ocr:${index + 1}`);
           } catch (error) {
+            // Cancellation must not fall back to another vision request.
+            this.#sessions.assertCurrent(turn);
             warnings.push(
               `题目图片 ${index + 1} OCR 失败（${error instanceof Error ? error.message : String(error)}），已尝试由视觉模型直接读取原图。`,
             );
           }
         }
       }
-      turn = this.#sessions.begin({
-        sessionId,
-        problemId: problem.id,
-        initialMessages: customQuestion
-          ? slideQuestionMessages(images, input.customPrompt ?? '')
-          : answerMessages(
-              problem,
-              images,
-              input.customPrompt ?? '',
-              recognized,
-            ),
-        userMessage: input.customPrompt ?? '',
-        retry: input.retry === true,
-      });
+      if (refreshContext) {
+        turn = this.#sessions.replaceInitialMessages(
+          turn,
+          customQuestion
+            ? slideQuestionMessages(images, turn.initialUserMessage)
+            : answerMessages(
+                problem,
+                images,
+                turn.initialUserMessage,
+                recognized,
+              ),
+        );
+      }
+      // Follow-ups retain images in the conversation even without new imageUrls.
+      model = hasImageMessages(turn.messages)
+        ? profile.visionModel || profile.model
+        : profile.model;
+      const apiKey = await this.requireCredential(profile.id);
+      this.#sessions.assertCurrent(turn);
       const rawText = await this.provider(profile.providerId).complete({
         baseUrl: profile.baseUrl,
-        apiKey: await this.requireCredential(profile.id),
+        apiKey,
         model,
         messages: turn.messages,
         signal: turn.signal,
@@ -239,7 +261,9 @@ export class AiService {
           ? {}
           : { temperature: profile.temperature }),
       });
-      this.#sessions.complete(turn, rawText);
+      if (!this.#sessions.complete(turn, rawText)) {
+        throw new Error('此请求已取消或被较新的请求替代。');
+      }
       if (customQuestion) {
         const answer = rawText.trim();
         return this.saveProposal({
@@ -353,12 +377,22 @@ export class AiService {
     input: RecognizeSlideInput,
   ): Promise<GeneratedTextResult> {
     const profile = await this.activeProfile();
+    return this.recognizeSlideWithProfile(input, profile);
+  }
+
+  private async recognizeSlideWithProfile(
+    input: RecognizeSlideInput,
+    profile: AiProfileConfig,
+    signal?: AbortSignal,
+  ): Promise<GeneratedTextResult> {
     const apiKey = await this.requireCredential(profile.id);
+    signal?.throwIfAborted();
     const model = profile.ocrModel || profile.visionModel || profile.model;
     const text = await this.provider(profile.providerId).complete({
       baseUrl: profile.baseUrl,
       apiKey,
       model,
+      ...(signal ? { signal } : {}),
       messages: [
         {
           role: 'system',
@@ -771,6 +805,16 @@ function slideQuestionMessages(
     },
     { role: 'user', content },
   ];
+}
+
+function hasImageMessages(messages: readonly unknown[]): boolean {
+  return messages.some((message) => {
+    const content = asRecord(message)?.content;
+    return (
+      Array.isArray(content) &&
+      content.some((part) => asRecord(part)?.type === 'image_url')
+    );
+  });
 }
 
 function answerMessages(

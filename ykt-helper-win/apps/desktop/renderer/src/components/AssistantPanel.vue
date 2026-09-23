@@ -271,7 +271,7 @@ const selectedAiImages = computed(() => {
     .flatMap((presentation) => presentation.slides)
     .filter((slide) => chosen.has(slide.id) && slide.imageUrl)
     .map((slide) => slide.imageUrl!);
-  if (selected.length) {
+  if (selected.length || (settings.value?.aiCaptureCurrentPage ?? true)) {
     return selected;
   }
   const fallback = selectedSlide.value?.imageUrl;
