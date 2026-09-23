@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 interface SessionState {
   readonly problemId: string;
   readonly messages: unknown[];
+  readonly initialUserMessage: string;
+  initialMessageCount: number;
   requestVersion: number;
   activeRequest: AbortController | undefined;
 }
@@ -20,6 +22,8 @@ export interface LlmTurn {
   readonly requestVersion: number;
   readonly messages: readonly unknown[];
   readonly signal: AbortSignal;
+  readonly isNewSession: boolean;
+  readonly initialUserMessage: string;
 }
 
 export class LlmSessionManager {
@@ -30,10 +34,13 @@ export class LlmSessionManager {
     if (sessionId.length > 128) throw new Error('AI 会话 ID 过长。');
 
     let session = this.#sessions.get(sessionId);
+    const isNewSession = !session;
     if (!session) {
       session = {
         problemId: input.problemId,
         messages: [...input.initialMessages],
+        initialUserMessage: input.userMessage,
+        initialMessageCount: input.initialMessages.length,
         requestVersion: 0,
         activeRequest: undefined,
       };
@@ -62,12 +69,38 @@ export class LlmSessionManager {
       requestVersion: session.requestVersion,
       messages: [...session.messages],
       signal: controller.signal,
+      isNewSession,
+      initialUserMessage: session.initialUserMessage,
     };
+  }
+
+  assertCurrent(turn: LlmTurn): void {
+    const session = this.#sessions.get(turn.sessionId);
+    if (
+      turn.signal.aborted ||
+      session?.requestVersion !== turn.requestVersion ||
+      session.activeRequest?.signal !== turn.signal
+    ) {
+      throw new Error('此请求已取消或被较新的请求替代。');
+    }
+  }
+
+  replaceInitialMessages(turn: LlmTurn, messages: readonly unknown[]): LlmTurn {
+    this.assertCurrent(turn);
+    const session = this.#sessions.get(turn.sessionId)!;
+    session.messages.splice(0, session.initialMessageCount, ...messages);
+    session.initialMessageCount = messages.length;
+    return { ...turn, messages: [...session.messages] };
   }
 
   complete(turn: LlmTurn, content: string): boolean {
     const session = this.#sessions.get(turn.sessionId);
-    if (!session || session.requestVersion !== turn.requestVersion)
+    if (
+      !session ||
+      session.requestVersion !== turn.requestVersion ||
+      turn.signal.aborted ||
+      session.activeRequest?.signal !== turn.signal
+    )
       return false;
     session.activeRequest = undefined;
     session.messages.push({ role: 'assistant', content });
@@ -77,6 +110,7 @@ export class LlmSessionManager {
   fail(turn: LlmTurn): void {
     const session = this.#sessions.get(turn.sessionId);
     if (session?.requestVersion === turn.requestVersion) {
+      session.activeRequest?.abort();
       session.activeRequest = undefined;
     }
   }

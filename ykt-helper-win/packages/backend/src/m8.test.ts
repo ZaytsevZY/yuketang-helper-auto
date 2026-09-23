@@ -261,7 +261,7 @@ describe('M8 LLM workflow', () => {
       answer: ['B'],
       failureReason: null,
       validationIssues: [],
-      contextSources: ['problem:problem-locked', 'browser-page:1'],
+      contextSources: ['problem:problem-locked', 'browser-page:1', 'ocr:1'],
     });
     expect(
       await runtime.facade.validateAnswer({
