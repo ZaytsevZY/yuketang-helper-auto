@@ -29,7 +29,7 @@
 
 ## 简介
 
-> Latest Version：2.0.0-preview 20260906
+> Latest Release：2.0.0-preview 20260906
 
 [雨课堂助手](https://github.com/hotwords123/yuketang-helper.git)的最新修改版本，为您的雨课堂学习提供各类模型服务。在阅读[证书](LICENSE)（MIT LICENSE）后，你可以自由对本项目进行使用或开发。
 
@@ -77,20 +77,22 @@ npm start
 
 ## 功能
 
-1. **习题提醒** :bell: 
+1. **信息提醒** :bell: 
 - 在发布新题目，考试开始，课程开始/结束等雨课堂事件发生事进行提醒
-- 支持自定义提醒方式：弹窗，声音和通知，复原软件提醒体验
+- 支持自定义提醒方式：弹窗，声音和通知
+- 支持统计用户在雨课堂上的课程、作业和考试
 - 支持自动进入正在上课的课堂
 
 2. **查看课件和幻灯片** :receipt: 
-- 支持在课程开始后查看课件/习题表，包括已经结束的课程
+- 支持在课程开始后提前查看课件/习题表，包括已经结束的课程
 - 支持对课件进行批量化管理和PDF/图片格式下载
 - 对课件进行了特殊缓存，能够缓解切换课件卡顿问题
 
 3. **AI辅助学习** :robot: 
 - 支持对课件内容进行文字识别、自定义语言翻译
-- 支持对课件内容进行AI提问
+- 支持对课件内容进行AI提问和多轮对话
 - 支持对课堂习题内容进行提问和AI答题（有风险）
+- 支持对作业和已结束的考试进行逐题AI解答
 - 支持在一定时间内补交习题
 
 4. **模拟和开发** :gear:
@@ -104,21 +106,57 @@ npm start
 ykt-cli 目前支持的常用命令如下：
 
 ```
-  ykt status
-  ykt settings get
-  ykt user get --environment <standard|pro|changjiang> [--refresh]
-  ykt lesson list [--environment <standard|pro|changjiang|all>] [--refresh]
-  ykt lesson connect <lesson-id> --environment <standard|pro|changjiang>
-  ykt presentation list --lesson <lesson-id>
-  ykt slide get <slide-id> --lesson <lesson-id> [--presentation <id>]
-  ykt slide read <slide-id> --lesson <lesson-id> [--presentation <id>]
-  ykt problem list --lesson <lesson-id>
-  ykt problem get <problem-id>
-  ykt ai profile list
-  ykt answer propose <problem-id> [--prompt <text>]
-  ykt answer validate <problem-id> --from -
-  ykt answer submit <problem-id> --from - --commit [--proposal <id>] [--confirmed-by <user|agent>] [--force-retry]
-  ykt logs list [--limit <number>]
+# 你可以让 agent 将 ykt-cli 命令简写为 ykt []
+
+# 状态与设置
+npm run cli -- status
+npm run cli -- settings get
+'{ "autoAnswer": true }' | npm run cli -- settings update --from -
+npm run cli -- settings reset
+
+# 用户、课堂、课件、题目
+npm run cli -- user get --environment standard --refresh
+npm run cli -- lesson list --environment all --refresh
+npm run cli -- lesson connect <lesson-id> --environment standard
+npm run cli -- presentation list --lesson <lesson-id>
+npm run cli -- presentation export <presentation-id> --lesson <lesson-id> --out deck.pdf
+npm run cli -- slide get <slide-id> --lesson <lesson-id>
+npm run cli -- slide read <slide-id> --lesson <lesson-id>
+npm run cli -- slide download <slide-id> --lesson <lesson-id> --out slide.png
+npm run cli -- problem list --lesson <lesson-id>
+npm run cli -- problem get <problem-id>
+
+# AI Profile 与 AI 调用
+npm run cli -- ai profile list
+npm run cli -- ai profile connect --base-url https://ai.example.com --api-key -
+npm run cli -- ai profile assign <profile-id> --model gpt --vision-model gpt-vision `
+  --ocr-model ocr --translation-model translator --temperature null
+npm run cli -- ai profile select <profile-id>
+npm run cli -- ai profile refresh <profile-id>
+npm run cli -- ai profile delete <profile-id>
+npm run cli -- ai ask --prompt "解释这道题" --problem <problem-id>
+"解释当前页面" | npm run cli -- ai ask --prompt - --capture-page
+npm run cli -- ai translate --text "你好" --to English
+
+# 嵌入浏览器、面板布局、网络实验室
+npm run cli -- browser state
+npm run cli -- browser environment pro
+npm run cli -- browser open https://www.yuketang.cn/web
+npm run cli -- browser back
+npm run cli -- browser tab-new
+npm run cli -- layout --assistant collapsed --network-lab expanded
+npm run cli -- network snapshot
+npm run cli -- network pause
+npm run cli -- network deep-capture on
+npm run cli -- network export --out fixture.json
+
+# 课堂本地模拟
+npm run cli -- simulate state
+npm run cli -- simulate show-slide
+npm run cli -- logs list --limit 50
+
+# 在资源管理器中打开内置模块源码（与助手面板“源码”入口一致）
+npm run cli -- source open backend
 ```
 
 在源码构建版本中，推荐的使用方式形如：
@@ -135,7 +173,9 @@ ykt-cli 是适用于 agent 的超轻量工具，我们欢迎在 ykt-cli 中实�
 
 ## 推荐项目
 
-- 项目灵感来自于：[雨课堂助手](https://github.com/hotwords123/yuketang-helper.git)，本项目已兼容`ykt-helper v1.5.1`。
+- 对于THU同学，我们推荐[OneTHU](https://github.com/smartThise/OneTHU)，本项目的大部分功能已经在该项目中内置；本项目可能对非荷塘雨课堂的其他服务器缺少支持，欢迎PR
+
+- 项目灵感来自于：[雨课堂助手](https://github.com/hotwords123/yuketang-helper.git)，本项目兼容至`ykt-helper v1.5.1`。
 
 - 项目兼容：[清华大学荷塘雨课堂助手-AI版](https://github.com/DragonAura/THU-Yuketang-Helper-AI)，但是不建议同时使用2种AI答题。
 
