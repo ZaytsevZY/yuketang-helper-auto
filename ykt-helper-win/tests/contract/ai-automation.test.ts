@@ -27,6 +27,23 @@ afterEach(() => {
 });
 
 describe('LLM automation settings', () => {
+  it('labels the selected classroom with both its name and full id', async () => {
+    const { panel } = setupPanel({});
+    panel.lessons.value = [
+      {
+        id: '1785336445811421568',
+        title: '2026秋-深度学习-0',
+        status: 'active',
+      },
+    ];
+    panel.selectedLessonId.value = '1785336445811421568';
+    await nextTick();
+
+    expect(panel.selectedLessonLabel.value).toBe(
+      '2026秋-深度学习-0 · ID：1785336445811421568',
+    );
+  });
+
   it('runs the complete generation and managed submission flow', async () => {
     const { panel, api, problem } = setupPanel({
       llmAutoGenerate: true,

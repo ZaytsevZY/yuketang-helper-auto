@@ -88,6 +88,10 @@ function parseLessons(value: unknown): readonly ActiveLesson[] {
           lesson.title ??
             lesson.lessonName ??
             lesson.lesson_name ??
+            lesson.classroomName ??
+            lesson.classroom_name ??
+            lesson.courseName ??
+            lesson.course_name ??
             lesson.name,
         ),
         // This endpoint only returns classrooms that are currently in lesson.

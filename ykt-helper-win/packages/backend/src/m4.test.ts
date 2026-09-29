@@ -667,6 +667,60 @@ describe('M4 backend active client', () => {
     await runtime.stop();
   });
 
+  it('removes the previous browser collector when switching lessons', async () => {
+    const transport = new QueueTransport([
+      response({
+        data: {
+          onLessonClassrooms: [
+            { lessonId: 7, classroomName: 'Previous lesson' },
+            { lessonId: 8, classroomName: 'Current lesson' },
+          ],
+        },
+      }),
+    ]);
+    const collector = new BrowserLessonCollector();
+    const activeClient = new YuketangActiveClient({
+      credentials: {
+        load: async () => ({
+          cookieHeader: 'session=abc',
+          bearerToken: null,
+          userId: '42',
+        }),
+      },
+      transport,
+      browserCollector: collector,
+    });
+    const runtime = createBackendRuntime({ activeClient });
+    await runtime.start();
+
+    await runtime.facade.refreshLessons(BrowserEnvironment.Standard);
+    await runtime.facade.connectLesson(BrowserEnvironment.Standard, '7');
+    await runtime.facade.connectLesson(BrowserEnvironment.Standard, '8');
+    await collector.observeHttp({
+      url: 'https://www.yuketang.cn/api/v3/lesson/presentation/fetch?presentation_id=99',
+      statusCode: 200,
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          title: 'Current presentation',
+          slides: [{ id: 100, index: 1 }],
+        },
+      }),
+    });
+
+    expect(await runtime.facade.listPresentations('7')).toEqual([]);
+    expect(await runtime.facade.listPresentations('8')).toMatchObject([
+      {
+        id: '99',
+        lessonId: '8',
+        title: 'Current presentation',
+        slides: [{ id: '100' }],
+      },
+    ]);
+
+    await runtime.stop();
+  });
+
   it('collects slides from an ended classroom report without live ids', async () => {
     vi.useFakeTimers();
     try {

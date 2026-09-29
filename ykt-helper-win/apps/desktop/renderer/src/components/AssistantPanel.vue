@@ -241,6 +241,16 @@ const selectedLesson = computed(() =>
   lessons.value.find((lesson) => lesson.id === selectedLessonId.value),
 );
 
+function lessonDisplayName(lesson: Lesson): string {
+  return lesson.title.trim() || '未命名课堂';
+}
+
+const selectedLessonLabel = computed(() =>
+  selectedLesson.value
+    ? `${lessonDisplayName(selectedLesson.value)} · ID：${selectedLesson.value.id}`
+    : '未选择课堂',
+);
+
 const selectedProblem = computed(() =>
   problems.value.find((problem) => problem.id === selectedProblemId.value),
 );
@@ -582,6 +592,7 @@ async function connectLesson(): Promise<void> {
       props.environment,
       selectedLessonId.value,
     );
+    connectedLessonIds.clear();
     connectedLessonIds.add(selectedLessonId.value);
     collectingLessonId.value = selectedLessonId.value;
     infoMessage.value = '已打开官方课堂，正在收集题目与课件';
@@ -1732,7 +1743,7 @@ function clamp(value: number, min: number, max: number): number {
       <header class="panel-header">
         <div>
           <strong>助手面板</strong>
-          <span>{{ selectedLesson?.title || '未选择课堂' }}</span>
+          <span>{{ selectedLessonLabel }}</span>
         </div>
         <button type="button" class="quiet-button" @click="emit('toggle')">
           收起
@@ -1776,6 +1787,18 @@ function clamp(value: number, min: number, max: number): number {
               <dd>{{ environment }}</dd>
             </div>
             <div>
+              <dt>课堂名称</dt>
+              <dd>
+                {{
+                  selectedLesson ? lessonDisplayName(selectedLesson) : '未选择'
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>课堂 ID</dt>
+              <dd>{{ selectedLesson?.id || '未选择' }}</dd>
+            </div>
+            <div>
               <dt>状态</dt>
               <dd>
                 {{ runtime?.state === 'running' ? '后端运行中' : '连接中' }}
@@ -1801,8 +1824,8 @@ function clamp(value: number, min: number, max: number): number {
                 @change="setLesson(lesson.id)"
               />
               <span>
-                <strong>{{ lesson.title || `课堂 ${lesson.id}` }}</strong>
-                <small>{{ lesson.id }} · {{ lesson.status }}</small>
+                <strong>{{ lessonDisplayName(lesson) }}</strong>
+                <small>课堂 ID：{{ lesson.id }} · {{ lesson.status }}</small>
               </span>
             </label>
           </div>

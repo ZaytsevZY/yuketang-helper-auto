@@ -61,6 +61,28 @@ describe('M4 active routing', () => {
     ).toMatchObject([{ id: 'lesson-without-status', status: 'active' }]);
   });
 
+  it('uses classroom and course names from real on-lesson entries', () => {
+    expect(
+      hostAdapterFor(BrowserEnvironment.Pro).parseLessons({
+        data: {
+          onLessonClassrooms: [
+            {
+              lessonId: '1785336445811421568',
+              classroomName: '2026秋-深度学习-0',
+              courseName: '深度学习',
+            },
+          ],
+        },
+      }),
+    ).toMatchObject([
+      {
+        id: '1785336445811421568',
+        title: '2026秋-深度学习-0',
+        status: 'active',
+      },
+    ]);
+  });
+
   it('manages browser credentials, Set-Auth and lesson token expiry', async () => {
     let now = 1000;
     const savedTokens: (string | null)[] = [];

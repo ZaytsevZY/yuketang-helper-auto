@@ -57,6 +57,7 @@ export class ActiveLessonService {
     Map<string, Record<string, unknown>>
   >();
   readonly #pendingPublishes = new Map<string, Record<string, unknown>[]>();
+  readonly #connectedLessons = new Map<BrowserEnvironment, string>();
   #simulation: ClassroomSimulationState = {
     lessonId: simulationLessonId,
     status: 'upcoming',
@@ -152,12 +153,27 @@ export class ActiveLessonService {
       );
     }
     this.#environments.set(lessonId, connectedEnvironment);
+    const previousLessonId = this.#connectedLessons.get(connectedEnvironment);
+    if (previousLessonId && previousLessonId !== lessonId) {
+      this.client.closeLesson(previousLessonId);
+      await this.storage.appendLog({
+        level: 'info',
+        scope: 'lesson',
+        message: '已切换官方课堂采集器。',
+        details: {
+          environment: connectedEnvironment,
+          previousLessonId,
+          lessonId,
+        },
+      });
+    }
     this.client.connectLesson(
       connectedEnvironment,
       lessonId,
       (message) => this.handleMessage(lessonId, message),
       remote.presentationId,
     );
+    this.#connectedLessons.set(connectedEnvironment, lessonId);
     return connectedEnvironment;
   }
 
@@ -361,6 +377,7 @@ export class ActiveLessonService {
     this.#stopArchivedCollection();
     this.#pendingUnlocks.clear();
     this.#pendingPublishes.clear();
+    this.#connectedLessons.clear();
     this.client.close();
   }
 
