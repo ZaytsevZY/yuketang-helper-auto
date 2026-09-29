@@ -107,6 +107,38 @@ describe('M4 active routing', () => {
     expect(savedTokens).toEqual(['fresh-token', null]);
   });
 
+  it('adopts browser bearer rotations without reverting a newer Set-Auth token', async () => {
+    let browserToken: string | null = 'initial-token';
+    const sessions = new SessionManager({
+      load: async () => ({
+        cookieHeader: 'session=abc',
+        bearerToken: browserToken,
+        userId: '42',
+      }),
+      // Model the real browser/local-storage race: persisting Set-Auth can lag
+      // behind the next credential read.
+      saveBearerToken: async () => {},
+    });
+
+    expect(await sessions.headers(BrowserEnvironment.Standard)).toMatchObject({
+      authorization: 'Bearer initial-token',
+    });
+
+    browserToken = 'browser-rotated-token';
+    expect(await sessions.headers(BrowserEnvironment.Standard)).toMatchObject({
+      authorization: 'Bearer browser-rotated-token',
+    });
+
+    await sessions.captureResponse(BrowserEnvironment.Standard, {
+      status: 200,
+      headers: { 'Set-Auth': 'response-rotated-token' },
+      body: {},
+    });
+    expect(await sessions.headers(BrowserEnvironment.Standard)).toMatchObject({
+      authorization: 'Bearer response-rotated-token',
+    });
+  });
+
   it('reconnects while deduplicating messages across sockets', () => {
     const sockets: FakeSocket[] = [];
     let reconnect: (() => void) | undefined;

@@ -553,6 +553,7 @@ class BaselineFacade implements YuketangFacade {
       await this.storage.appendLog({ level: 'info', scope, message, details });
       return result;
     } catch (error) {
+      const diagnostic = loggableErrorDetails(error);
       await this.storage.appendLog({
         level: 'error',
         scope,
@@ -560,11 +561,25 @@ class BaselineFacade implements YuketangFacade {
         details: {
           ...details,
           error: error instanceof Error ? error.message : 'Unknown error',
+          ...(diagnostic ? { diagnostic } : {}),
         },
       });
       throw error;
     }
   }
+}
+
+function loggableErrorDetails(
+  error: unknown,
+): Record<string, string | readonly string[]> | null {
+  if (!(error instanceof YuketangError) || !error.details) return null;
+  const entries = Object.entries(error.details).filter(
+    (entry): entry is [string, string | readonly string[]] =>
+      typeof entry[1] === 'string' ||
+      (Array.isArray(entry[1]) &&
+        entry[1].every((value) => typeof value === 'string')),
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
 export interface BackendRuntimeOptions {

@@ -15,6 +15,7 @@ interface LessonTokenState extends CheckinResult {
 
 export class SessionManager {
   readonly #credentials = new Map<BrowserEnvironment, BrowserCredentials>();
+  readonly #loadedBearerTokens = new Map<BrowserEnvironment, string | null>();
   readonly #lessonTokens = new Map<string, LessonTokenState>();
 
   constructor(
@@ -50,9 +51,21 @@ export class SessionManager {
   ): Promise<Readonly<Record<string, string>>> {
     const loaded = await this.source.load(environment);
     const current = this.#credentials.get(environment);
+    const sourceWasLoaded = this.#loadedBearerTokens.has(environment);
+    const sourceTokenChanged =
+      sourceWasLoaded &&
+      this.#loadedBearerTokens.get(environment) !== loaded.bearerToken;
+    this.#loadedBearerTokens.set(environment, loaded.bearerToken);
     const credentials = {
       cookieHeader: loaded.cookieHeader,
-      bearerToken: current?.bearerToken ?? loaded.bearerToken,
+      // Browser navigation can rotate Authorization independently of requests
+      // issued by the helper. Adopt genuine source changes, while retaining a
+      // newer Set-Auth value until the credential source catches up.
+      bearerToken: sourceTokenChanged
+        ? loaded.bearerToken
+        : current
+          ? current.bearerToken
+          : loaded.bearerToken,
       userId: loaded.userId ?? current?.userId ?? null,
     };
     this.#credentials.set(environment, credentials);
@@ -136,6 +149,7 @@ export class SessionManager {
 
   clear(): void {
     this.#credentials.clear();
+    this.#loadedBearerTokens.clear();
     this.#lessonTokens.clear();
   }
 }

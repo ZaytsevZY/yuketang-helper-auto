@@ -314,6 +314,99 @@ describe('M4 backend active client', () => {
     await runtime.stop();
   });
 
+  it('logs both the rejected submit and a failed token refresh', async () => {
+    const transport = new QueueTransport([
+      response({
+        data: {
+          onLessonClassrooms: [
+            {
+              lessonId: 7,
+              classroomId: 8,
+              presentationId: 9,
+              title: 'Active lesson',
+              status: 1,
+            },
+          ],
+        },
+      }),
+      response({ data: { lessonToken: 'lesson-token' } }),
+      response({
+        data: {
+          id: 9,
+          title: 'Presentation',
+          slides: [
+            {
+              id: 10,
+              problem: {
+                problemId: 11,
+                problemType: 1,
+                content: 'Question',
+                options: ['One', 'Two'],
+              },
+            },
+          ],
+        },
+      }),
+      response({ code: 50004 }),
+      { status: 400, headers: {}, body: { code: 400 } },
+    ]);
+    const socket = new FakeSocket();
+    const activeClient = new YuketangActiveClient({
+      credentials: {
+        load: async () => ({
+          cookieHeader: 'session=abc',
+          bearerToken: 'token',
+          userId: '42',
+        }),
+      },
+      transport,
+      socketFactory: () => socket,
+    });
+    const runtime = createBackendRuntime({ activeClient });
+    await runtime.start();
+
+    await runtime.facade.refreshLessons(BrowserEnvironment.Standard);
+    await runtime.facade.connectLesson(BrowserEnvironment.Standard, '7');
+    socket.message(
+      JSON.stringify({
+        eventId: 'unlock-11',
+        op: 'unlockproblem',
+        problem: {
+          problemId: 11,
+          pres: 9,
+          slideId: 10,
+          dt: Date.now(),
+          limit: 0,
+        },
+      }),
+    );
+
+    await expect(
+      runtime.facade.submitAnswer({ problemId: '11', answer: 'B' }),
+    ).rejects.toThrow(/code 50004.*HTTP 400/);
+    expect(await runtime.facade.listLogs()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: 'error',
+          scope: 'answer',
+          details: expect.objectContaining({
+            diagnostic: expect.objectContaining({
+              failurePhase: 'lesson-token-refresh',
+              environment: BrowserEnvironment.Standard,
+              lessonId: '7',
+              submitError: 'Yuketang request failed with code 50004.',
+              refreshError: 'Yuketang request failed with HTTP 400.',
+              submissionRoute: 'answer',
+              refreshOperation: 'checkin',
+            }),
+          }),
+        }),
+      ]),
+    );
+
+    await runtime.stop();
+  });
+
   it('recalculates the submission route when retrying after re-checkin', async () => {
     const credentialsSource = new DynamicCredentialsSource(
       'initial-token',

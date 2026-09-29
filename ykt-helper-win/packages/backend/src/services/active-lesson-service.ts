@@ -225,15 +225,33 @@ export class ActiveLessonService {
       if (retried || !this.#isTokenExpiredError(error)) {
         throw error;
       }
-      const refreshed = await this.client.checkin(
-        environment,
-        problem.lessonId,
-        this.#remoteLessons.get(problem.lessonId)?.classroomId ?? undefined,
-      );
-      if (!refreshed.lessonToken) {
+      try {
+        const refreshed = await this.client.checkin(
+          environment,
+          problem.lessonId,
+          this.#remoteLessons.get(problem.lessonId)?.classroomId ?? undefined,
+        );
+        if (!refreshed.lessonToken) {
+          throw new YuketangError({
+            code: ErrorCode.NotAuthenticated,
+            message: 'Unable to refresh the lesson token.',
+          });
+        }
+      } catch (refreshError) {
+        const submitError = errorMessage(error);
+        const refreshErrorMessage = errorMessage(refreshError);
         throw new YuketangError({
-          code: ErrorCode.NotAuthenticated,
-          message: 'Unable to refresh the lesson token.',
+          code: ErrorCode.NetworkError,
+          message: `Answer submission failed (${submitError}); lesson token refresh failed (${refreshErrorMessage})`,
+          details: {
+            failurePhase: 'lesson-token-refresh',
+            environment,
+            lessonId: problem.lessonId,
+            submitError,
+            refreshError: refreshErrorMessage,
+            submissionRoute: plan.route,
+            refreshOperation: 'checkin',
+          },
         });
       }
       // Recalculate the plan with the current time after re-checkin,
@@ -805,6 +823,10 @@ export class ActiveLessonService {
     this.#noticeTimes.set(notice.dedupeKey, notice.occurredAt);
     this.onNotice(notice);
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function record(value: unknown): Record<string, unknown> | null {
