@@ -132,7 +132,10 @@ export interface DesktopApi {
   getUser(environment: BrowserEnvironment): Promise<UserProfile | null>;
   refreshUser(environment: BrowserEnvironment): Promise<UserProfile>;
   listLogs(limit?: number): Promise<readonly AppLogEntry[]>;
-  refreshLessons(environment: BrowserEnvironment): Promise<readonly Lesson[]>;
+  refreshLessons(
+    environment: BrowserEnvironment,
+    inspectCurrentPage?: boolean,
+  ): Promise<readonly Lesson[]>;
   listLessons(): Promise<readonly Lesson[]>;
   /** Reuse this app session's collection unless an explicit refresh is requested. */
   listAssignments(

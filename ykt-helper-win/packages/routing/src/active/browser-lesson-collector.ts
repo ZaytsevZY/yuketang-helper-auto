@@ -47,6 +47,7 @@ interface ArchivedReportState {
   environment: BrowserEnvironment;
   lessonId: string;
   lessonTitle: string;
+  titlePriority: number;
   slides: Map<string, Slide>;
   emitTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -245,6 +246,7 @@ export class BrowserLessonCollector {
         environment,
         lessonId,
         lessonTitle: '',
+        titlePriority: -1,
         slides: new Map(),
         emitTimer: null,
       };
@@ -253,13 +255,27 @@ export class BrowserLessonCollector {
 
     const value = parseJson(input.body);
     if (value === null) return;
-    report.lessonTitle = reportLessonTitle(value) || report.lessonTitle;
+    const root = record(value);
+    if (root?.code !== undefined && root.code !== 0) return;
+    const title = reportLessonTitle(value);
+    const priority = url.pathname.endsWith('/student/lesson-info')
+      ? 3
+      : url.pathname.endsWith('/replay')
+        ? 2
+        : 1;
+    if (title && priority >= report.titlePriority) {
+      report.lessonTitle = title;
+      report.titlePriority = priority;
+    }
     for (const candidate of reportSlides(value, lessonId)) {
       if (candidate.imageUrl) {
         report.slides.set(normalizeResourceUrl(candidate.imageUrl), candidate);
       }
     }
-    if (report.slides.size > 0) await this.emitArchivedPresentation(report);
+    // Metadata alone discovers a lesson; lazy or cached images need not emit
+    // any new Image response at all.
+    if (report.lessonTitle || report.slides.size > 0)
+      await this.emitArchivedPresentation(report);
   }
 
   private observeArchivedSlideImage(
@@ -303,7 +319,10 @@ export class BrowserLessonCollector {
       ),
     };
     const watch = this.#lessons.get(report.lessonId);
-    if (watch?.environment === report.environment) {
+    if (
+      this.#archivedListeners.size === 0 &&
+      watch?.environment === report.environment
+    ) {
       await watch.listener({ type: 'presentation', presentation });
       return;
     }
@@ -322,7 +341,9 @@ function isPresentationResponse(pathname: string): boolean {
 }
 
 export function isClassroomReportResponse(pathname: string): boolean {
-  return pathname.includes('/classroom-report/student/detail');
+  return /^\/api\/v3\/classroom-report\/(?:lesson\/basic-info|student\/(?:lesson-info|detail|review|ppt)|replay)\/?$/.test(
+    pathname,
+  );
 }
 
 export function isProblemSubmissionResponse(pathname: string): boolean {
@@ -418,15 +439,25 @@ function presentationIdFromResponse(value: unknown): string | null {
 function reportLessonTitle(value: unknown): string {
   const root = record(value);
   const data = record(root?.data) ?? record(root?.result) ?? root;
-  const lesson = record(data?.lesson) ?? record(data?.classroom);
-  return stringValue(
+  const lesson = record(data?.lesson);
+  const title = stringValue(
     lesson?.title ??
       lesson?.name ??
       lesson?.lesson_name ??
+      data?.lessonName ??
       data?.lesson_title ??
       data?.lesson_name ??
       data?.title,
   );
+  const course = stringValue(
+    data?.courseName ??
+      data?.classroomName ??
+      record(lesson?.course)?.name ??
+      record(lesson?.classroom)?.name,
+  );
+  return course && title && course !== title
+    ? `${course} · ${title}`
+    : title || course;
 }
 
 function reportSlides(value: unknown, lessonId: string): Slide[] {
@@ -453,7 +484,20 @@ function reportSlides(value: unknown, lessonId: string): Slide[] {
     source: Record<string, unknown> | null,
   ): void => {
     const url = safeUrl(imageUrl);
-    if (!url || !isSlideImageResponse(url)) return;
+    if (!url || url.protocol !== 'https:' || url.username || url.password)
+      return;
+    // Modern reports use signed, extensionless common_uploads covers. Only
+    // accept those on a structured slide record, never arbitrary nested URLs
+    // (avatars, attachments and student details are also in report responses).
+    const structuredCover =
+      source &&
+      (source.type === 'slide' ||
+        source.presentationId !== undefined ||
+        source.slideId !== undefined ||
+        source.slide_id !== undefined) &&
+      url.hostname.endsWith('.yuketang.cn') &&
+      url.pathname.startsWith('/common_uploads/');
+    if (!isSlideImageResponse(url) && !structuredCover) return;
     const key = normalizeResourceUrl(imageUrl);
     if (slides.has(key)) return;
     const fallbackIndex = slides.size;

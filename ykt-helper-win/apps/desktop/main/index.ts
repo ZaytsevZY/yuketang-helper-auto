@@ -20,6 +20,7 @@ import {
   BrowserEnvironment,
   IpcChannel,
   isBrowserEnvironment,
+  parseLessonPage,
   isWebAreaBounds,
   type AnswerInput,
   type ConnectAiProfileInput,
@@ -257,12 +258,27 @@ function registerIpc(): void {
   });
   ipcMain.handle(
     IpcChannel.RefreshLessons,
-    async (event, environment: unknown) => {
+    async (
+      event,
+      environment: unknown,
+      inspectCurrentPage: unknown = false,
+    ) => {
       assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
       if (!isBrowserEnvironment(environment)) {
         throw new Error('Invalid browser environment.');
       }
-      return getRuntime().facade.refreshLessons(environment);
+      if (typeof inspectCurrentPage !== 'boolean') {
+        throw new Error('Invalid current page option.');
+      }
+      const page = inspectCurrentPage
+        ? parseLessonPage(getBrowserController().getState().url)
+        : null;
+      return getRuntime().facade.refreshLessons(
+        environment,
+        page?.archived && page.environment === environment
+          ? page.lessonId
+          : undefined,
+      );
     },
   );
   ipcMain.handle(

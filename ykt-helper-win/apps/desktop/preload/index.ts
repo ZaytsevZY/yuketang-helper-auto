@@ -113,10 +113,15 @@ const api: DesktopApi = Object.freeze({
     ipcRenderer.invoke(IpcChannel.ListLogs, limit) as Promise<
       readonly AppLogEntry[]
     >,
-  refreshLessons: (environment: BrowserEnvironment) =>
-    ipcRenderer.invoke(IpcChannel.RefreshLessons, environment) as Promise<
-      readonly Lesson[]
-    >,
+  refreshLessons: (
+    environment: BrowserEnvironment,
+    inspectCurrentPage = false,
+  ) =>
+    ipcRenderer.invoke(
+      IpcChannel.RefreshLessons,
+      environment,
+      inspectCurrentPage,
+    ) as Promise<readonly Lesson[]>,
   listAssignments: (environment: BrowserEnvironment, refresh = false) =>
     ipcRenderer.invoke(
       IpcChannel.ListAssignments,

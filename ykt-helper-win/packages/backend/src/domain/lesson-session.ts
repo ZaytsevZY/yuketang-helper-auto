@@ -35,6 +35,14 @@ export class LessonSession {
     this.#lesson = { ...this.#lesson, status };
   }
 
+  updateLesson(lesson: Lesson): void {
+    this.#lesson = {
+      ...this.#lesson,
+      status: lesson.status,
+      title: lesson.title || this.#lesson.title,
+    };
+  }
+
   upsertPresentation(presentation: Presentation): void {
     this.presentations.set(presentation.id, presentation);
     for (const slide of presentation.slides) {

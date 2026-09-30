@@ -421,11 +421,16 @@ class BaselineFacade implements YuketangFacade {
 
   async refreshLessons(
     environment: BrowserEnvironment,
+    archivedLessonId?: string,
   ): Promise<readonly Lesson[]> {
     return this.withLog(
       'lesson',
       '课堂列表已刷新。',
-      () => this.requireActiveClient().refreshLessons(environment),
+      () =>
+        this.requireActiveClient().refreshLessons(
+          environment,
+          archivedLessonId,
+        ),
       { environment },
     );
   }

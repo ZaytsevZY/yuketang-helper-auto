@@ -201,6 +201,31 @@ export class YuketangActiveClient {
     return result;
   }
 
+  /** Explicit ended-page refresh only: no check-in or classroom socket. */
+  async collectArchivedReport(
+    environment: BrowserEnvironment,
+    lessonId: string,
+  ): Promise<void> {
+    if (!this.#browserCollector) throw new Error('课后报告需要桌面采集器。');
+    if (!/^\d+$/.test(lessonId)) throw new Error('无效的结课课堂 ID。');
+    const origin = new URL(hostAdapterFor(environment).onLessonUrl).origin;
+    for (const endpoint of ['student/lesson-info', 'student/review']) {
+      const url = `${origin}/api/v3/classroom-report/${endpoint}?lesson_id=${encodeURIComponent(lessonId)}`;
+      const response = await this.request(environment, {
+        method: 'GET',
+        url,
+        headers: {},
+        body: null,
+      });
+      await this.#browserCollector.observeHttp({
+        url,
+        statusCode: response.status,
+        body: JSON.stringify(response.body),
+        contextId: `refresh:${environment}:${lessonId}`,
+      });
+    }
+  }
+
   async fetchPresentation(
     environment: BrowserEnvironment,
     lessonId: string,

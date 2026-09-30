@@ -7,6 +7,75 @@ import { ElectronNetworkObserver } from '../../apps/desktop/main/electron-networ
 import { DevelopmentNetworkRecorder } from '../../apps/desktop/main/development-network-recorder.js';
 
 describe('Electron classroom network observer', () => {
+  it('collects report names and extensionless slides without deep capture', async () => {
+    const collector = new BrowserLessonCollector();
+    const received = vi.fn();
+    collector.onArchivedPresentation(received);
+    const contents = new FakeContents();
+    const observer = new ElectronNetworkObserver(
+      contents as never,
+      new NetworkRecorder(),
+      vi.fn(),
+      collector,
+      false,
+    );
+    await observer.start();
+    const responses = [
+      { endpoint: 'lesson-info', data: { lessonName: 'lec3-cnn-v3.6' } },
+      {
+        endpoint: 'review',
+        data: {
+          timelineList: [
+            {
+              id: 'slide-1',
+              type: 'slide',
+              cover:
+                'https://thu-pri-ups.yuketang.cn/common_uploads/test-slide',
+            },
+          ],
+          avatar: {
+            cover: 'https://thu-pri-ups.yuketang.cn/common_uploads/avatar',
+          },
+        },
+      },
+    ];
+    for (const { endpoint, data } of responses) {
+      const url = `https://pro.yuketang.cn/api/v3/classroom-report/student/${endpoint}?lesson_id=1785174499833394944`;
+      contents.debugger.responseBody = JSON.stringify({ code: 0, data });
+      contents.debugger.emit('message', {}, 'Network.requestWillBeSent', {
+        requestId: endpoint,
+        request: { method: 'GET', url },
+      });
+      contents.debugger.emit('message', {}, 'Network.responseReceived', {
+        requestId: endpoint,
+        type: 'XHR',
+        response: {
+          url,
+          status: 200,
+          mimeType: 'application/json',
+          headers: {},
+        },
+      });
+      contents.debugger.emit('message', {}, 'Network.loadingFinished', {
+        requestId: endpoint,
+        encodedDataLength: 100,
+      });
+      await vi.waitFor(() =>
+        expect(received).toHaveBeenCalledWith(
+          expect.objectContaining({
+            lessonTitle: 'lec3-cnn-v3.6',
+            presentation: expect.objectContaining({
+              slides:
+                endpoint === 'review'
+                  ? [expect.objectContaining({ id: 'slide-1' })]
+                  : [],
+            }),
+          }),
+        ),
+      );
+    }
+  });
+
   it('forwards successful browser answer responses without deep capture', async () => {
     const collector = new BrowserLessonCollector();
     const observations: unknown[] = [];

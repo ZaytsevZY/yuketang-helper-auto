@@ -6,6 +6,7 @@ import {
   ErrorCode,
   YuketangError,
   isBrowserEnvironment,
+  parseLessonPage,
   type AnswerInput,
   type BrowserState,
   type ClassroomSimulationAction,
@@ -382,9 +383,15 @@ async function listLessons(
   const environments = environmentList(input.environment);
   const lessons: unknown[] = [];
   const errors: unknown[] = [];
+  const page = context.desktop
+    ? parseLessonPage((await context.desktop.getBrowserState()).url)
+    : null;
   for (const environment of environments) {
     try {
-      const refreshed = await facade.refreshLessons(environment);
+      const refreshed =
+        page?.archived && page.environment === environment
+          ? await facade.refreshLessons(environment, page.lessonId)
+          : await facade.refreshLessons(environment);
       lessons.push(...refreshed.map((lesson) => ({ ...lesson, environment })));
     } catch (error: unknown) {
       errors.push({
