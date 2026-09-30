@@ -31,6 +31,7 @@ import type { AssignmentAiDraft } from '../assignment-ai';
 import ClassroomSimulator from './ClassroomSimulator.vue';
 import ProblemPicker from './ProblemPicker.vue';
 import { enterActiveLessons } from '../auto-join';
+import { chooseClassroom } from '../classroom-selection';
 import { renderSimpleMarkdown } from '../simple-markdown';
 
 type WorkspacePage =
@@ -535,10 +536,10 @@ async function loadWorkspace(): Promise<void> {
   if (lessonResult.status === 'fulfilled') {
     lessons.value = lessonResult.value;
     if (!selectedLessonId.value) {
-      selectedLessonId.value =
-        lessonResult.value.find((lesson) => lesson.status === 'active')?.id ??
-        lessonResult.value[0]?.id ??
-        '';
+      selectedLessonId.value = chooseClassroom(
+        lessonResult.value,
+        props.browserUrl,
+      );
     }
     if (selectedLessonId.value) {
       try {
@@ -558,17 +559,26 @@ async function loadWorkspace(): Promise<void> {
 
 async function refreshClassroom(): Promise<void> {
   await run('refresh', async () => {
-    const [nextUser] = await Promise.all([
-      window.yuketang.refreshUser(props.environment),
-      window.yuketang.refreshLessons(props.environment),
+    const environment = props.environment;
+    const browserUrl = props.browserUrl;
+    const [nextUser, nextLessons] = await Promise.all([
+      window.yuketang.refreshUser(environment),
+      window.yuketang.refreshLessons(environment, true),
     ]);
-    const nextLessons = await window.yuketang.listLessons();
+    if (props.environment !== environment || props.browserUrl !== browserUrl)
+      return;
     user.value = nextUser;
     lessons.value = nextLessons;
-    selectedLessonId.value =
-      nextLessons.find((lesson) => lesson.status === 'active')?.id ??
-      nextLessons[0]?.id ??
-      '';
+    selectedLessonId.value = chooseClassroom(
+      nextLessons,
+      browserUrl,
+      selectedLessonId.value,
+    );
+    if (selectedLessonId.value) await loadLessonData();
+    else {
+      presentations.value = [];
+      problems.value = [];
+    }
     const activeCount = nextLessons.filter(
       (lesson) => lesson.status === 'active',
     ).length;
@@ -578,7 +588,7 @@ async function refreshClassroom(): Promise<void> {
     infoMessage.value = activeCount
       ? `已找到 ${activeCount} 个进行中课堂`
       : endedCount
-        ? `当前没有进行中的课堂，已保留 ${endedCount} 个结课课堂`
+        ? `当前没有进行中的课堂，已发现 ${endedCount} 个结课课堂`
         : nextLessons.length
           ? `当前没有进行中的课堂，已找到 ${nextLessons.length} 个待开始课堂`
           : '尚未发现课堂';

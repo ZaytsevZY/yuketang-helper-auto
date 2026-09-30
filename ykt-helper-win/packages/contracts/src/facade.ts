@@ -60,7 +60,10 @@ export interface YuketangFacade {
     environment: BrowserEnvironment,
     refresh?: boolean,
   ): Promise<AssignmentSnapshot>;
-  refreshLessons(environment: BrowserEnvironment): Promise<readonly Lesson[]>;
+  refreshLessons(
+    environment: BrowserEnvironment,
+    archivedLessonId?: string,
+  ): Promise<readonly Lesson[]>;
   getAssignmentDetail(
     environment: BrowserEnvironment,
     id: string,

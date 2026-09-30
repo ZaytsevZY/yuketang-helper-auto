@@ -27,16 +27,9 @@ import {
   systemClock,
   type Clock,
 } from '../workflows/lesson-state-machine.js';
-import {
-  AnswerService,
-  planSubmission,
-} from './answer-service.js';
+import { AnswerService, planSubmission } from './answer-service.js';
 import { ProblemService } from './problem-service.js';
-import {
-  getRealtimeEvent,
-  findEntity,
-  firstText,
-} from './classroom-events.js';
+import { getRealtimeEvent, findEntity, firstText } from './classroom-events.js';
 
 const simulationLessonId = 'local-classroom-simulator';
 const noticeDedupeWindow = 60_000;
@@ -93,7 +86,10 @@ export class ActiveLessonService {
 
   async refreshLessons(
     environment: BrowserEnvironment,
+    archivedLessonId?: string,
   ): Promise<readonly Lesson[]> {
+    if (archivedLessonId)
+      await this.client.collectArchivedReport(environment, archivedLessonId);
     const lessons = await this.client.listLessons(environment);
     for (const lesson of lessons) {
       this.#remoteLessons.set(lesson.id, lesson);
@@ -386,10 +382,15 @@ export class ActiveLessonService {
   ): Promise<void> {
     this.repository.upsertLesson({
       id: observation.lessonId,
-      title: observation.lessonTitle || '已结束课堂',
+      title:
+        observation.lessonTitle ||
+        this.repository.getSession(observation.lessonId)?.lesson.title ||
+        '已结束课堂',
       status: 'ended',
     });
     this.#environments.set(observation.lessonId, observation.environment);
+    // A metadata-only response must not replace already collected slides.
+    if (observation.presentation.slides.length === 0) return;
     await this.applyPresentation(
       observation.environment,
       observation.lessonId,
@@ -639,12 +640,7 @@ export class ActiveLessonService {
     if (machine.session.lesson.status === 'ended') return;
 
     const problemId =
-      firstText(message, [
-        'problemId',
-        'problem_id',
-        'problemid',
-        'id',
-      ]) ||
+      firstText(message, ['problemId', 'problem_id', 'problemid', 'id']) ||
       firstText(findEntity(message), [
         'problemId',
         'problem_id',

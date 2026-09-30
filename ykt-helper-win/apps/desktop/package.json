@@ -18,7 +18,9 @@
     "@ykt/storage": "2.0.0",
     "acorn": "^8.18.0",
     "electron-squirrel-startup": "^1.0.1",
-    "vue": "^3.5.20"
+    "konva": "10.7.0",
+    "vue": "^3.5.20",
+    "vue-konva": "4.0.1"
   },
   "devDependencies": {
     "@types/electron-squirrel-startup": "^1.0.2",

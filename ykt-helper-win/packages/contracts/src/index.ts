@@ -1,4 +1,5 @@
 export * from './browser.js';
+export * from './lesson-page.js';
 export * from './dto.js';
 export * from './errors.js';
 export * from './events.js';

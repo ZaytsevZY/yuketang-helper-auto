@@ -17,7 +17,7 @@ export class InMemoryLessonRepository implements LessonRepository {
   upsertLesson(lesson: Lesson): LessonSession {
     const existing = this.#sessions.get(lesson.id);
     if (existing) {
-      existing.setLessonStatus(lesson.status);
+      existing.updateLesson(lesson);
       return existing;
     }
     const session = new LessonSession(lesson);
