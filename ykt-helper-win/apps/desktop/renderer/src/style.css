@@ -482,6 +482,16 @@ textarea:focus-visible {
   .runtime-state {
     min-width: 88px;
   }
+
+  .task-navigation {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .task-navigation button {
+    min-width: 0;
+    flex: 1;
+  }
 }
 
 @media (max-width: 680px) {

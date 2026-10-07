@@ -6,6 +6,10 @@ import type {
   WebProbeResponse,
 } from './web-probe.js';
 import type { AssignmentSnapshot } from './assignments.js';
+import type {
+  CourseProgressRangeMonths,
+  CourseProgressSnapshot,
+} from './course-progress.js';
 import type { BrowserEnvironment, BrowserState } from './browser.js';
 import type {
   AnswerInput,
@@ -61,6 +65,7 @@ export const IpcChannel = {
   RefreshLessons: 'backend:refresh-lessons',
   ListLessons: 'backend:list-lessons',
   ListAssignments: 'backend:list-assignments',
+  ListCourseProgress: 'backend:list-course-progress',
   GetAssignmentDetail: 'backend:get-assignment-detail',
   GetAssignmentAsset: 'media:get-assignment-asset',
   OpenAssignmentAnswer: 'browser:open-assignment-answer',
@@ -142,6 +147,11 @@ export interface DesktopApi {
     environment: BrowserEnvironment,
     refresh?: boolean,
   ): Promise<AssignmentSnapshot>;
+  listCourseProgress(
+    environment: BrowserEnvironment,
+    rangeMonths?: CourseProgressRangeMonths,
+    refresh?: boolean,
+  ): Promise<CourseProgressSnapshot>;
   getAssignmentDetail(
     environment: BrowserEnvironment,
     id: string,

@@ -5,9 +5,12 @@ import {
   type AssignmentSnapshot,
   type Assignment,
   type AssignmentDetail,
+  type CourseProgressSnapshot,
+  type CourseProgressRangeMonths,
   type Presentation,
 } from '@ykt/contracts';
 import { AssignmentAuthError, fetchAssignments } from './assignments.js';
+import { fetchCourseProgress } from './course-progress.js';
 
 import type { NetworkRecorder } from '../recorder.js';
 import type {
@@ -86,6 +89,19 @@ export class YuketangActiveClient {
       (url) => this.assignmentJson(environment, url),
       await this.assignmentUniversity(environment),
       this.#now,
+    );
+  }
+
+  async listCourseProgress(
+    environment: BrowserEnvironment,
+    rangeMonths: CourseProgressRangeMonths = 1,
+  ): Promise<CourseProgressSnapshot> {
+    if (environment !== BrowserEnvironment.Pro)
+      throw new Error('课程进度目前仅支持荷塘雨课堂。');
+    return fetchCourseProgress(
+      (url) => this.assignmentJson(environment, url),
+      this.#now,
+      rangeMonths,
     );
   }
 

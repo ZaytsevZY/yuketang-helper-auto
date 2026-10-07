@@ -20,6 +20,7 @@ import {
   BrowserEnvironment,
   IpcChannel,
   isBrowserEnvironment,
+  isCourseProgressRangeMonths,
   parseLessonPage,
   isWebAreaBounds,
   type AnswerInput,
@@ -371,6 +372,28 @@ function registerIpc(): void {
       if (refresh !== undefined && typeof refresh !== 'boolean')
         throw new Error('Invalid assignment refresh flag.');
       return getRuntime().facade.listAssignments(environment, refresh === true);
+    },
+  );
+  ipcMain.handle(
+    IpcChannel.ListCourseProgress,
+    async (
+      event,
+      environment: unknown,
+      rangeMonths: unknown,
+      refresh: unknown,
+    ) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (!isBrowserEnvironment(environment))
+        throw new Error('Invalid browser environment.');
+      if (!isCourseProgressRangeMonths(rangeMonths))
+        throw new Error('Invalid course progress time range.');
+      if (refresh !== undefined && typeof refresh !== 'boolean')
+        throw new Error('Invalid course progress refresh flag.');
+      return getRuntime().facade.listCourseProgress(
+        environment,
+        rangeMonths,
+        refresh === true,
+      );
     },
   );
   ipcMain.handle(IpcChannel.ListLessons, async (event) => {

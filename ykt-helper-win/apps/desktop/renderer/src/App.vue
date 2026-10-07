@@ -10,10 +10,12 @@ import {
 
 import AssistantPanel from './components/AssistantPanel.vue';
 import { assignmentCollection } from './assignment-collection';
+import { courseProgressCollection } from './course-progress-collection';
 import NetworkLab from './components/NetworkLab.vue';
 
 type WorkspacePage =
   | 'assignments'
+  | 'courses'
   | 'classroom'
   | 'problems'
   | 'ai'
@@ -26,6 +28,7 @@ type WorkspacePage =
 const pages: ReadonlyArray<{ id: WorkspacePage; label: string }> = [
   { id: 'classroom', label: '课堂' },
   { id: 'assignments', label: '作业' },
+  { id: 'courses', label: '课程' },
   { id: 'problems', label: '题目' },
   { id: 'ai', label: 'AI' },
   { id: 'courseware', label: '课件' },
@@ -78,7 +81,9 @@ function reportWebAreaBounds(): void {
 
 onMounted(async () => {
   // Startup collection is independent of browser navigation and global refresh.
-  void assignmentCollection.initialize();
+  void assignmentCollection
+    .initialize()
+    .then(() => courseProgressCollection.initialize());
   resizeObserver = new ResizeObserver(() => reportWebAreaBounds());
   if (webArea.value) resizeObserver.observe(webArea.value);
 

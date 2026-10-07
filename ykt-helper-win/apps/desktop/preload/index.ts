@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import {
   IpcChannel,
   type AssignmentSnapshot,
+  type CourseProgressSnapshot,
+  type CourseProgressRangeMonths,
   type AiProfileView,
   type AnswerInput,
   type AnswerProposal,
@@ -128,6 +130,17 @@ const api: DesktopApi = Object.freeze({
       environment,
       refresh,
     ) as Promise<AssignmentSnapshot>,
+  listCourseProgress: (
+    environment: BrowserEnvironment,
+    rangeMonths: CourseProgressRangeMonths = 1,
+    refresh = false,
+  ) =>
+    ipcRenderer.invoke(
+      IpcChannel.ListCourseProgress,
+      environment,
+      rangeMonths,
+      refresh,
+    ) as Promise<CourseProgressSnapshot>,
   getAssignmentDetail: (
     environment: BrowserEnvironment,
     id: string,

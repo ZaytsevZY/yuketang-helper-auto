@@ -3,6 +3,8 @@ import {
   DefaultAppSettings,
   YuketangError,
   type AssignmentSnapshot,
+  type CourseProgressSnapshot,
+  type CourseProgressRangeMonths,
   type AssignmentDetail,
   type AiProfileView,
   type AnswerInput,
@@ -62,6 +64,14 @@ import { systemClock } from './workflows/lesson-state-machine.js';
 const VERSION = '2.0.0';
 
 class BaselineFacade implements YuketangFacade {
+  readonly #courseProgressCache = new Map<
+    string,
+    { scope: string; request: Promise<CourseProgressSnapshot> }
+  >();
+  readonly #courseProgressInFlight = new Map<
+    string,
+    Promise<CourseProgressSnapshot>
+  >();
   readonly #assignmentCache = new Map<
     BrowserEnvironment,
     Promise<AssignmentSnapshot>
@@ -371,6 +381,84 @@ class BaselineFacade implements YuketangFacade {
         this.#assignmentInFlight.delete(environment);
     };
     void request.then(complete, complete);
+    return request;
+  }
+
+  async listCourseProgress(
+    environment: BrowserEnvironment,
+    rangeMonths: CourseProgressRangeMonths = 1,
+    refresh = false,
+  ): Promise<CourseProgressSnapshot> {
+    if (!this.activeClient) {
+      throw new YuketangError({
+        code: ErrorCode.NotImplemented,
+        message: 'The active network client is not configured.',
+      });
+    }
+    const scope = await this.activeClient.sessions.cacheScope(environment);
+    const cacheKey = `${environment}:${rangeMonths}`;
+    const cached = this.#courseProgressCache.get(cacheKey);
+    if (
+      cached?.scope === scope &&
+      (!refresh || this.#courseProgressInFlight.has(cacheKey))
+    )
+      return cached.request;
+    const startedAt = Date.now();
+    const request = this.activeClient
+      .listCourseProgress(environment, rangeMonths)
+      .then(
+        async (snapshot) => {
+          if (
+            (await this.activeClient!.sessions.cacheScope(environment)) !==
+            scope
+          )
+            throw new Error('登录状态已变化，请刷新课程进度。');
+          await this.storage
+            .appendLog({
+              level: snapshot.warnings.length ? 'warn' : 'info',
+              scope: 'course-progress',
+              message: '课程进度收集完成。',
+              details: {
+                environment,
+                rangeMonths,
+                trigger: refresh ? 'manual' : 'startup',
+                durationMs: Date.now() - startedAt,
+                scannedLessons: snapshot.scannedLessons,
+                attentionCount: snapshot.lessons.filter(
+                  (item) => item.attention.length,
+                ).length,
+                warningCount: snapshot.warnings.length,
+              },
+            })
+            .catch(() => undefined);
+          return snapshot;
+        },
+        async (error) => {
+          await this.storage
+            .appendLog({
+              level: 'error',
+              scope: 'course-progress',
+              message: '课程进度收集失败。',
+              details: {
+                environment,
+                rangeMonths,
+                trigger: refresh ? 'manual' : 'startup',
+                durationMs: Date.now() - startedAt,
+                error: error instanceof Error ? error.message : 'Unknown error',
+              },
+            })
+            .catch(() => undefined);
+          throw error;
+        },
+      );
+    this.#courseProgressCache.set(cacheKey, { scope, request });
+    this.#courseProgressInFlight.set(cacheKey, request);
+    void request
+      .finally(() => {
+        if (this.#courseProgressInFlight.get(cacheKey) === request)
+          this.#courseProgressInFlight.delete(cacheKey);
+      })
+      .catch(() => undefined);
     return request;
   }
 

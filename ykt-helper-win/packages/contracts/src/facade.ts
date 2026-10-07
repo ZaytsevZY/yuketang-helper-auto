@@ -1,6 +1,10 @@
 import type { AssignmentDetail } from './assignment-detail.js';
 import type { AssignmentSnapshot } from './assignments.js';
 import type {
+  CourseProgressRangeMonths,
+  CourseProgressSnapshot,
+} from './course-progress.js';
+import type {
   AnswerInput,
   Lesson,
   Presentation,
@@ -60,6 +64,11 @@ export interface YuketangFacade {
     environment: BrowserEnvironment,
     refresh?: boolean,
   ): Promise<AssignmentSnapshot>;
+  listCourseProgress(
+    environment: BrowserEnvironment,
+    rangeMonths?: CourseProgressRangeMonths,
+    refresh?: boolean,
+  ): Promise<CourseProgressSnapshot>;
   refreshLessons(
     environment: BrowserEnvironment,
     archivedLessonId?: string,
