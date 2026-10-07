@@ -39,6 +39,8 @@
 
 - 本项目不会线上存储用户的任何个人信息或其他敏感信息
 
+- 本项目对雨课堂/荷塘雨课堂进行持续支持，长江/黄河服务器诚邀社区支持
+
 ## Quick Start
 
 - 安装 [Node.js](https://nodejs.org/en) 24.x 和 npm 11.x。
@@ -51,22 +53,6 @@ npm run build
 npm start
 ```
 
-- 登录雨课堂
-
-![](./static/desktop/main.png)
-
-- 填入 API 并设置各功能的对应模型
-
-![](./static/desktop/set_model.png)
-
-- 连接需要 AI 辅助的课程
-
-![](./static/desktop/set_class.png)
-
-- 在其他页面选取 AI 辅助的功能
-
-![](./static/desktop/in_class.png)
-
 ## 源代码
 
 |文件夹|适用平台|状态|
@@ -75,7 +61,24 @@ npm start
 |`ykt-helper-win`|Windows/macOS 独立客户端|`2.0.0-preview`正在更新|
 |`ykt-helper-android`|Android 移动端|正在开发|
 
+
 ## 功能
+
+![](./static/desktop/7.png)
+
+![](./static/desktop/3.png)
+
+![](./static/desktop/1.png)
+
+![](./static/desktop/2.png)
+
+![](./static/desktop/4.png)
+
+![](./static/desktop/5.png)
+
+![](./static/desktop/6.png)
+
+![](./static/desktop/8.png)
 
 1. **信息提醒** :bell: 
 - 在发布新题目，考试开始，课程开始/结束等雨课堂事件发生事进行提醒
@@ -99,11 +102,11 @@ npm start
 - 支持模拟 Chrome 浏览器行为
 - 为开发者提供了模拟事件、网络实验室和诊断工具
 
-## 雨课堂 CLI
+## AI 辅助开发
 
-如果你有多余 token，需要使用 Codex/Claude Code 或者其他 agent 访问本项目，我们建议使用 ykt-cli。
+![](./static/desktop/9.png)
 
-ykt-cli 目前支持的常用命令如下：
+如果你有多余 token，需要使用 Codex/Claude Code 或者其他 agent 访问本项目，或者需要开发新功能，我们建议使用 ykt-cli。
 
 ```
 # 你可以让 agent 将 ykt-cli 命令简写为 ykt []
@@ -168,8 +171,6 @@ npm run cli -- slide read <slide-id> --lesson <lesson-id>
 npm run cli -- answer propose <problem-id>
 '["A"]' | npm run cli -- answer validate <problem-id> --from -
 ```
-
-ykt-cli 是适用于 agent 的超轻量工具，我们欢迎在 ykt-cli 中实现新功能。
 
 ## 推荐项目
 
