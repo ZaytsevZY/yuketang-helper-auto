@@ -61,9 +61,14 @@ function fixture() {
     },
   });
   const runtime = createBackendRuntime({ activeClient: client });
-  const observe = (lessonId: string, endpoint: string, data: unknown) =>
+  const observe = (
+    lessonId: string,
+    endpoint: string,
+    data: unknown,
+    environment = BrowserEnvironment.Pro,
+  ) =>
     collector.observeHttp({
-      url: `https://pro.yuketang.cn/api/v3/classroom-report/${endpoint}?lesson_id=${lessonId}`,
+      url: `https://${environment === BrowserEnvironment.Standard ? 'www' : 'pro'}.yuketang.cn/api/v3/classroom-report/${endpoint}?lesson_id=${lessonId}`,
       statusCode: 200,
       body: JSON.stringify({ code: 0, data }),
       contextId: 'same-browser-tab',
@@ -160,6 +165,50 @@ describe('ended classroom report discovery', () => {
       expect(
         f.requests.every((url) => url.endsWith('/classroom/on-lesson')),
       ).toBe(true);
+    } finally {
+      await f.runtime.stop();
+    }
+  });
+
+  it('collects standard student/ppt slides without collecting unrelated covers', async () => {
+    const f = fixture();
+    await f.runtime.start();
+    try {
+      const first =
+        'https://qn-scd1.yuketang.cn/175955141053901K6PPZMBAX40EJ1EYQYKE2PSW';
+      const second =
+        'https://qn-scd1.yuketang.cn/175955141633801K6PPZT0JZMKWGGEHF32Q3A99';
+      await f.observe(
+        currentId,
+        'student/ppt',
+        {
+          slideList: [
+            { id: 'slide-1', presentationId: 'deck-1', index: 1, cover: first },
+            {
+              id: 'slide-2',
+              presentationId: 'deck-1',
+              index: 2,
+              cover: second,
+            },
+          ],
+          presentation: {
+            presentationId: 'deck-2',
+            cover: 'https://qn-scd1.yuketang.cn/not-a-slide',
+          },
+          avatar: { cover: 'https://qn-scd1.yuketang.cn/avatar' },
+        },
+        BrowserEnvironment.Standard,
+      );
+      expect(await f.runtime.facade.listPresentations(currentId)).toMatchObject(
+        [
+          {
+            slides: [
+              { id: 'slide-1', imageUrl: first },
+              { id: 'slide-2', imageUrl: second },
+            ],
+          },
+        ],
+      );
     } finally {
       await f.runtime.stop();
     }

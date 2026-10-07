@@ -267,7 +267,7 @@ export class BrowserLessonCollector {
       report.lessonTitle = title;
       report.titlePriority = priority;
     }
-    for (const candidate of reportSlides(value, lessonId)) {
+    for (const candidate of reportSlides(value, lessonId, environment)) {
       if (candidate.imageUrl) {
         report.slides.set(normalizeResourceUrl(candidate.imageUrl), candidate);
       }
@@ -460,28 +460,35 @@ function reportLessonTitle(value: unknown): string {
     : title || course;
 }
 
-function reportSlides(value: unknown, lessonId: string): Slide[] {
+function reportSlides(
+  value: unknown,
+  lessonId: string,
+  environment: BrowserEnvironment,
+): Slide[] {
   const slides = new Map<string, Slide>();
 
-  const visit = (current: unknown): void => {
+  const visit = (current: unknown, slideListItem = false): void => {
     if (typeof current === 'string') {
-      add(current, null);
+      add(current, null, false);
       return;
     }
     if (Array.isArray(current)) {
-      for (const item of current) visit(item);
+      for (const item of current) visit(item, slideListItem);
       return;
     }
     const item = record(current);
     if (!item) return;
     const imageUrl = slideImageUrl(item);
-    if (imageUrl) add(imageUrl, item);
-    for (const child of Object.values(item)) visit(child);
+    if (imageUrl) add(imageUrl, item, slideListItem);
+    for (const [key, child] of Object.entries(item)) {
+      visit(child, key === 'slideList');
+    }
   };
 
   const add = (
     imageUrl: string,
     source: Record<string, unknown> | null,
+    slideListItem: boolean,
   ): void => {
     const url = safeUrl(imageUrl);
     if (!url || url.protocol !== 'https:' || url.username || url.password)
@@ -497,7 +504,18 @@ function reportSlides(value: unknown, lessonId: string): Slide[] {
         source.slide_id !== undefined) &&
       url.hostname.endsWith('.yuketang.cn') &&
       url.pathname.startsWith('/common_uploads/');
-    if (!isSlideImageResponse(url) && !structuredCover) return;
+    // Standard's student/ppt slideList uses extensionless qn-scd1 covers.
+    // Require a slideList record so report avatars and presentation thumbnails
+    // from other parts of the response cannot become courseware pages.
+    const standardSlideCover =
+      environment === BrowserEnvironment.Standard &&
+      slideListItem &&
+      source?.presentationId !== undefined &&
+      source.cover === imageUrl &&
+      url.hostname === 'qn-scd1.yuketang.cn' &&
+      /^\/[a-zA-Z0-9]+$/.test(url.pathname);
+    if (!isSlideImageResponse(url) && !structuredCover && !standardSlideCover)
+      return;
     const key = normalizeResourceUrl(imageUrl);
     if (slides.has(key)) return;
     const fallbackIndex = slides.size;
