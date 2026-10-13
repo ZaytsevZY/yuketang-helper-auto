@@ -49,7 +49,7 @@ node node_modules/electron/install.js
 
 接口依据 [OneTHU PR #28](https://github.com/smartThise/OneTHU/pull/28)（`b9b82ef`，含 R16b）的雨课堂协议实现，复用 Electron 持久登录会话，不需要复制 Cookie 或另行扫码。当前仅支持 PR 验证过的 `pro.yuketang.cn`；标准版和长江版会提示切换。
 
-- 学习日志 `type=19/20` 分别对应作业与考试，`content.score_d` 按毫秒解释；已截止和无截止时间的条目也会保留。不限制未来 30 天。
+- 学习日志 `type=19/20` 分别对应作业与考试，`content.score_d` 按毫秒解释；仅保留截止时间在最近 3 个日历月以内及未来的条目，恰好位于边界的条目保留，无截止时间的条目保留。旧条目在读取作答状态前排除，界面、Desktop CLI 和独立 CLI 的缓存读取也会按当前时间清理。不限制未来 30 天。
 - 逐题读取 `problems[].user.my_answer.content`，仅向界面传递是否作答，不传递题干或答案。区分未作答、部分作答、全部已答和未知；`answer_count` 只有总数时不会推断每题已答，也不会把有作答记录标成最终交卷。
 - 考试使用 `/v/exam/cover?exam_id=…&classroom_id=…`，`result.status=4/5` 显示“已交卷”，6 显示“缺考”；`face_auth_status.monitor_status=2` 优先显示“已作废”。已交卷考试通过 `problem_count - result.unfinished_count` 展示作答总数，不生成逐题明细。无权限、缺少字段或未识别状态仍显示未知，可在官网确认。课程读取失败会显示部分结果警告；登录失效会提示重新登录。刷新失败时保留并标明旧结果。
 - “在官网查看”使用学生端 `/ai-workspace/lms-graph/{classroom_id}/exercise/{leaf_id}?is_chapter=1`（作业）或 `quiz/{leaf_id}?is_chapter=1`（考试）；缺少 `leaf_id` 时回退课程学习日志页。不会使用教师端 `/subject` 路由。
@@ -223,6 +223,8 @@ M4 为 standard、pro 和 changjiang 分别固定了 host adapter，并实现用
 M5 使用 Node 内置 SQLite 保存普通设置、用户信息、脱敏日志和课件 JSON；图片、PDF 等二进制资源保存在独立缓存目录，默认总上限 256 MiB、单项上限 32 MiB，并识别 `Cache-Control`、`Expires`、`ETag` 和 `Last-Modified`。Electron 的持久 session 继续负责网页 Cookie 与 Chromium 自身缓存。
 
 雨课堂 Authorization Token 不进入 SQLite：当前网页 localStorage 和主动请求返回的 `Set-Auth` 会同步到 Electron `safeStorage` 加密的凭据文件，失效响应会清除旧值。设置中出现 Cookie、Token、API Key、Password 等敏感字段会被拒绝，日志和课件元数据在写入前统一脱敏。
+
+凭据文件的读写按路径串行执行，使用同目录临时文件、落盘同步和原子替换，避免退出时留下半写入 JSON 或并发更新丢失 API Key；每次成功写入也保存加密的 `.bak` 副本。读取损坏文件时优先从备份恢复，并保留 `.corrupt-*` 文件、记录脱敏恢复日志。历史零字节文件且无备份时自动修复为空存储，保留 SQLite 中的 AI Profile 与模型配置，但丢失的 API Key 需要在“模型”页重新填写。非空损坏文件且无有效备份时明确报错，不覆盖原文件。
 
 默认数据位于 Electron `userData/storage`。也可使用隔离 profile 启动：
 

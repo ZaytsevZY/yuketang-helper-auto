@@ -15,10 +15,11 @@ import {
   NodeAssignmentSession,
   YuketangActiveClient,
 } from '@ykt/routing';
-import type {
-  Assignment,
-  AssignmentDetail,
-  AssignmentProblemDetail,
+import {
+  assignmentRetentionCutoff,
+  type Assignment,
+  type AssignmentDetail,
+  type AssignmentProblemDetail,
 } from '@ykt/contracts';
 import {
   assignmentQuestion,
@@ -97,6 +98,54 @@ afterEach(async () => {
 });
 
 describe('standalone assignments', () => {
+  it('cleans old list and detail entries from an existing disk cache without network requests', async () => {
+    const dir = await directory();
+    let time = Date.parse('2026-10-13T08:00:00Z');
+    const item = { ...assignment, deadline: assignmentRetentionCutoff(time) };
+    const client = {
+      listAssignments: vi.fn(async () => ({
+        environment: 'pro' as const,
+        fetchedAt: time,
+        assignments: [item],
+        warnings: ['partial course'],
+      })),
+      getAssignmentDetail: vi.fn(async () => ({
+        ...detail,
+        assignment: item,
+        fetchedAt: time,
+      })),
+    };
+    const reader = () =>
+      new HeadlessAssignments(session, dir, () => time, client);
+    await reader().detail(item.id);
+    const path = join(dir, (await readdir(dir))[0]!);
+    const legacy = JSON.parse(await readFile(path, 'utf8'));
+    const old = {
+      ...item,
+      id: 'old-homework',
+      kind: 'homework',
+      deadline: item.deadline - 1,
+    };
+    legacy.snapshot.assignments.push(old);
+    legacy.details[old.id] = { ...detail, assignment: old };
+    await writeFile(path, JSON.stringify(legacy));
+    expect((await reader().list()).assignments).toEqual([item]);
+    expect(
+      JSON.parse(await readFile(path, 'utf8')).details[old.id],
+    ).toBeUndefined();
+    time++;
+    expect(await reader().list()).toMatchObject({
+      assignments: [],
+      warnings: ['partial course'],
+    });
+    await expect(reader().detail(item.id)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    expect(JSON.parse(await readFile(path, 'utf8')).details).toEqual({});
+    expect(client.listAssignments).toHaveBeenCalledTimes(1);
+    expect(client.getAssignmentDetail).toHaveBeenCalledTimes(1);
+  });
+
   it('runs CLI aliases, filters and single-question reads from a standalone cache', async () => {
     const dir = await directory();
     const sessionFile = join(dir, 'session.json');

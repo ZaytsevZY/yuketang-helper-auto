@@ -42,3 +42,41 @@ export interface AssignmentSnapshot {
   /** Partial course failures or truncated logs must remain visible to the user. */
   readonly warnings: readonly string[];
 }
+
+/** Three calendar months, clamped at month-end and independent of host timezone. */
+export function assignmentRetentionCutoff(now = Date.now()): number {
+  const date = new Date(now);
+  const day = date.getUTCDate();
+  date.setUTCDate(1);
+  date.setUTCMonth(date.getUTCMonth() - 3);
+  const lastDay = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  date.setUTCDate(Math.min(day, lastDay));
+  return date.getTime();
+}
+
+/** Missing deadlines cannot prove expiry; keep them and all future assignments. */
+export function isAssignmentRetained(
+  assignment: Pick<Assignment, 'deadline'>,
+  now = Date.now(),
+): boolean {
+  return (
+    assignment.deadline === null ||
+    !Number.isFinite(assignment.deadline) ||
+    assignment.deadline >= assignmentRetentionCutoff(now)
+  );
+}
+
+/** Also apply on cached reads: collecting once must not freeze the time window. */
+export function retainAssignmentSnapshot(
+  snapshot: AssignmentSnapshot,
+  now = Date.now(),
+): AssignmentSnapshot {
+  const assignments = snapshot.assignments.filter((item) =>
+    isAssignmentRetained(item, now),
+  );
+  return assignments.length === snapshot.assignments.length
+    ? snapshot
+    : { ...snapshot, assignments };
+}

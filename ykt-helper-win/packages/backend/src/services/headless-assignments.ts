@@ -1,7 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { AssignmentDetail, AssignmentSnapshot } from '@ykt/contracts';
+import {
+  retainAssignmentSnapshot,
+  isAssignmentRetained,
+  type AssignmentDetail,
+  type AssignmentSnapshot,
+} from '@ykt/contracts';
 import {
   AssignmentAuthError,
   NodeAssignmentSession,
@@ -151,16 +156,34 @@ export class HeadlessAssignments {
       );
     }
   }
+  private async prune() {
+    const now = this.now();
+    let changed = false;
+    if (this.cache.snapshot) {
+      const retained = retainAssignmentSnapshot(this.cache.snapshot, now);
+      changed = retained !== this.cache.snapshot;
+      this.cache.snapshot = retained;
+    }
+    for (const [id, detail] of Object.entries(this.cache.details)) {
+      if (!isAssignmentRetained(detail.assignment, now)) {
+        delete this.cache.details[id];
+        changed = true;
+      }
+    }
+    if (changed) await this.save();
+  }
   async list(refresh = false): Promise<AssignmentSnapshot> {
     await this.load();
+    await this.prune();
     if (
       !refresh &&
       this.cache.snapshot &&
       this.fresh(this.cache.snapshot.fetchedAt)
     )
       return this.cache.snapshot;
-    const snapshot = await this.request(() =>
-      this.client.listAssignments('pro'),
+    const snapshot = retainAssignmentSnapshot(
+      await this.request(() => this.client.listAssignments('pro')),
+      this.now(),
     );
     this.cache = { version: 1, snapshot, details: {} };
     await this.save();

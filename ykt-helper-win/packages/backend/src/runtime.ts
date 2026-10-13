@@ -2,6 +2,7 @@ import {
   ErrorCode,
   DefaultAppSettings,
   YuketangError,
+  retainAssignmentSnapshot,
   type AssignmentSnapshot,
   type CourseProgressSnapshot,
   type CourseProgressRangeMonths,
@@ -357,9 +358,18 @@ class BaselineFacade implements YuketangFacade {
     }
     const scope = await this.assignmentScope(environment);
     const pending = this.#assignmentInFlight.get(environment);
-    if (pending) return pending;
+    if (pending) return retainAssignmentSnapshot(await pending);
     const cached = this.#assignmentCache.get(environment);
-    if (!refresh && cached) return cached;
+    if (!refresh && cached) {
+      const current = await cached;
+      const retained = retainAssignmentSnapshot(current);
+      if (
+        retained !== current &&
+        this.#assignmentCache.get(environment) === cached
+      )
+        this.#assignmentCache.set(environment, Promise.resolve(retained));
+      return retained;
+    }
     // Retain settled failures too: homepage reloads must not retry an expired
     // login. Only the assignment page's explicit refresh starts another attempt.
     this.#assignmentEpoch.set(
@@ -371,7 +381,7 @@ class BaselineFacade implements YuketangFacade {
       async (snapshot) => {
         if ((await this.assignmentScope(environment)) !== scope)
           throw new Error('登录状态已变化，请刷新作业列表。');
-        return snapshot;
+        return retainAssignmentSnapshot(snapshot);
       },
     );
     this.#assignmentCache.set(environment, request);

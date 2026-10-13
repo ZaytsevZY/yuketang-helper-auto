@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { BrowserEnvironment } from '@ykt/contracts';
+import { BrowserEnvironment, assignmentRetentionCutoff } from '@ykt/contracts';
 import { createBackendRuntime } from '@ykt/backend';
 import { describe, expect, it, vi } from 'vitest';
 import { YuketangActiveClient } from '../../packages/routing/src/active/client.js';
@@ -90,6 +90,61 @@ function setup(
 }
 
 describe('read-only assignments', () => {
+  it('drops old homework and exams before status requests, keeping boundary and undated items', async () => {
+    const cutoff = assignmentRetentionCutoff(deadline - 1000);
+    const { client, requests } = setup({
+      activities: [
+        activity(1, 19, { score_d: cutoff - 1 }),
+        activity(2, 20, { score_d: cutoff - 1 }),
+        activity(3, 19, { score_d: cutoff }),
+        activity(4, 20, { score_d: cutoff }),
+        activity(5, 19, { score_d: null }),
+        activity(6, 20, { score_d: null }),
+      ],
+    });
+    const snapshot = await client.listAssignments(BrowserEnvironment.Pro);
+    expect(snapshot.assignments.map((item) => item.leafTypeId)).toEqual([
+      '3',
+      '4',
+      '5',
+      '6',
+    ]);
+    const statusIds = requests
+      .filter((r) => !/courses\/list|logs\/learn/.test(r.url))
+      .map((r) => {
+        const url = new URL(r.url);
+        return (
+          url.searchParams.get('exam_id') ?? url.pathname.split('/').at(-2)
+        );
+      });
+    expect(statusIds.sort()).toEqual(['3', '4', '5', '6']);
+  });
+
+  it('continues pagination after old deadlines because deadline order is not guaranteed', async () => {
+    const cutoff = assignmentRetentionCutoff(deadline - 1000);
+    const { client, requests } = setup({
+      logs: (_cid, page) => ({
+        data: {
+          activities:
+            page === 0
+              ? Array.from({ length: 200 }, (_, i) =>
+                  activity(i + 1, 19, { score_d: cutoff - 1 }),
+                )
+              : [activity(999)],
+        },
+      }),
+    });
+    expect(
+      (await client.listAssignments(BrowserEnvironment.Pro)).assignments.map(
+        (item) => item.leafTypeId,
+      ),
+    ).toEqual(['999']);
+    expect(requests.some((r) => r.url.includes('page=1'))).toBe(true);
+    expect(
+      requests.filter((r) => r.url.includes('/get_exercise_list/')),
+    ).toHaveLength(1);
+  });
+
   it.each([
     [19, 'leaf /?#', 'exercise/leaf%20%2F%3F%23?is_chapter=1'],
     [20, 42, 'quiz/42?is_chapter=1'],

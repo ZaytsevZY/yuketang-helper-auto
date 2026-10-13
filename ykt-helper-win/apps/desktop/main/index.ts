@@ -984,6 +984,19 @@ async function createWindow(): Promise<void> {
   const secretStore = new FileSecretStore(
     join(storageDirectory, 'credentials.json'),
     new ElectronSafeStorageCodec(),
+    {
+      onRecovery: async (source) => {
+        await dataStore.appendLog({
+          level: 'warn',
+          scope: 'credentials',
+          message:
+            source === 'backup'
+              ? '凭据文件损坏，已从加密备份恢复。'
+              : '凭据文件为空且无备份，已修复存储；AI API Key 需要重新配置。',
+          details: { source },
+        });
+      },
+    },
   );
   const nextRuntime = createBackendRuntime({
     dataStore,

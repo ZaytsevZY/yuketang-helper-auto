@@ -3,7 +3,11 @@ import { computed, onUnmounted, ref, toRefs, watch } from 'vue';
 import AssignmentDetail from './AssignmentDetail.vue';
 import type { AssignmentAiDraft } from '../assignment-ai';
 import { assignmentCollection } from '../assignment-collection';
-import { BrowserEnvironment, type Assignment } from '@ykt/contracts';
+import {
+  BrowserEnvironment,
+  isAssignmentRetained,
+  type Assignment,
+} from '@ykt/contracts';
 import {
   assignmentStatusLabel,
   matchesAssignmentStatus,
@@ -41,7 +45,11 @@ onUnmounted(() => {
 });
 
 const supported = computed(() => props.environment === BrowserEnvironment.Pro);
-const assignments = computed(() => snapshot.value?.assignments ?? []);
+const assignments = computed(() =>
+  (snapshot.value?.assignments ?? []).filter((item) =>
+    isAssignmentRetained(item, now.value),
+  ),
+);
 const filtered = computed(() =>
   assignments.value.filter((item) => {
     const query = search.value.trim().toLocaleLowerCase();
@@ -114,7 +122,7 @@ function remaining(item: Assignment): string {
     <div class="heading">
       <div>
         <h2>作业 / 考试</h2>
-        <p class="muted">荷塘雨课堂 · 按截止时间排序</p>
+        <p class="muted">荷塘雨课堂 · 保留近 3 个月 · 按截止时间排序</p>
       </div>
       <button v-if="supported" :disabled="loading" @click="refresh">
         {{ loading ? '读取中…' : '刷新' }}

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BrowserEnvironment,
   canOpenAssignmentAnswer,
@@ -240,6 +240,12 @@ describe('official answer entry eligibility', () => {
 });
 
 describe('detail requests and collection lifetime', () => {
+  beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
   it('coalesces detail reads and updates one entry without another full scan', async () => {
     const client = new YuketangActiveClient({
       credentials: {
@@ -287,6 +293,12 @@ describe('detail requests and collection lifetime', () => {
 });
 
 describe('assignment detail cache', () => {
+  beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
   async function setup() {
     let session = 'first';
     let csrf = 'csrf-a';

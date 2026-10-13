@@ -2,6 +2,8 @@
 // Implemented for this project's transport and DTOs; reuses the browser login.
 import {
   BrowserEnvironment,
+  isAssignmentRetained,
+  retainAssignmentSnapshot,
   type Assignment,
   type AssignmentQuestionStatus,
   type AssignmentSnapshot,
@@ -18,6 +20,7 @@ export async function fetchAssignments(
   universityId: string,
   now: () => number,
 ): Promise<AssignmentSnapshot> {
+  const collectedAt = now();
   const courses = dataOf(
     await get(`${ORIGIN}/v2/api/web/courses/list?identity=2`),
   );
@@ -77,6 +80,11 @@ export async function fetchAssignments(
             if (!activity || (activity.type !== 19 && activity.type !== 20))
               continue;
             const content = record(activity.content) ?? {};
+            const dueAt = deadline(content.score_d);
+            // Logs are not guaranteed to be sorted by deadline. Skip this item,
+            // not the remaining page/course, before fetching its answer status.
+            if (!isAssignmentRetained({ deadline: dueAt }, collectedAt))
+              continue;
             const leaf = id(content.leaf_id);
             const leafTypeId = id(content.leaf_type_id);
             const activityId =
@@ -105,7 +113,7 @@ export async function fetchAssignments(
                   id(activity.title) ||
                   (activity.type === 20 ? '考试' : '作业'),
                 kind: activity.type === 20 ? 'exam' : 'homework',
-                deadline: deadline(content.score_d),
+                deadline: dueAt,
                 // R16b 学生端直链使用 leaf_id；/subject 是教师入口，不能使用。
                 url: leaf
                   ? `${ORIGIN}/ai-workspace/lms-graph/${encodeURIComponent(classroomId)}/${activity.type === 20 ? 'quiz' : 'exercise'}/${encodeURIComponent(leaf)}?is_chapter=1`
@@ -185,18 +193,21 @@ export async function fetchAssignments(
       };
     }
   });
-  return {
-    environment: BrowserEnvironment.Pro,
-    fetchedAt: now(),
-    assignments: pending
-      .map((item) => item.assignment)
-      .sort(
-        (a, b) =>
-          (a.deadline ?? Infinity) - (b.deadline ?? Infinity) ||
-          a.id.localeCompare(b.id),
-      ),
-    warnings: [...new Set(warnings)],
-  };
+  return retainAssignmentSnapshot(
+    {
+      environment: BrowserEnvironment.Pro,
+      fetchedAt: now(),
+      assignments: pending
+        .map((item) => item.assignment)
+        .sort(
+          (a, b) =>
+            (a.deadline ?? Infinity) - (b.deadline ?? Infinity) ||
+            a.id.localeCompare(b.id),
+        ),
+      warnings: [...new Set(warnings)],
+    },
+    now(),
+  );
 }
 
 /** A failed authorization stops the queue and drains in-flight work before

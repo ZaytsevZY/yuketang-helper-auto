@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BrowserEnvironment, type AssignmentSnapshot } from '@ykt/contracts';
+import {
+  BrowserEnvironment,
+  assignmentRetentionCutoff,
+  type Assignment,
+  type AssignmentSnapshot,
+} from '@ykt/contracts';
 import { createBackendRuntime } from '@ykt/backend';
 import { YuketangActiveClient } from '@ykt/routing';
 import {
@@ -24,6 +29,49 @@ function facadeWith(collect: () => Promise<AssignmentSnapshot>) {
 }
 
 describe('assignment collection lifetime', () => {
+  it('prunes cached items as time advances without another collection', async () => {
+    const start = Date.parse('2026-10-13T08:00:00Z');
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(start);
+    try {
+      const item: Assignment = {
+        id: 'old',
+        classroomId: '1',
+        title: 'Exam',
+        courseName: 'Course',
+        kind: 'exam',
+        deadline: assignmentRetentionCutoff(start),
+        url: '',
+        status: 'unknown',
+        graded: null,
+        score: null,
+        totalScore: null,
+        audited: false,
+        answeredCount: null,
+        totalCount: null,
+        questions: [],
+        statusMessage: null,
+      };
+      const collect = vi.fn(async () => ({
+        ...snapshot,
+        assignments: [item],
+        warnings: ['partial course'],
+      }));
+      const facade = facadeWith(collect);
+      expect(
+        (await facade.listAssignments(BrowserEnvironment.Pro)).assignments,
+      ).toEqual([item]);
+      clock.mockReturnValue(start + 1);
+      expect(await facade.listAssignments(BrowserEnvironment.Pro)).toEqual({
+        ...snapshot,
+        assignments: [],
+        warnings: ['partial course'],
+      });
+      expect(collect).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('shares startup, remount and explicit refresh calls while a collection is running', async () => {
     let finish!: (value: AssignmentSnapshot) => void;
     const collect = vi.fn(
