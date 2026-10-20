@@ -12,6 +12,7 @@ import {
   ProblemType,
   type AiProfileView,
   type AnswerProposal,
+  type AnswerValue,
   type AppLogEntry,
   type AppSettings,
   type BrowserEnvironment,
@@ -147,6 +148,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   toggle: [];
   selectPage: [page: WorkspacePage];
+  profileAvailability: [available: boolean];
 }>();
 
 const user = ref<UserProfile | null>(null);
@@ -232,9 +234,11 @@ const subscriptions: Array<() => void> = [];
 const connectedLessonIds = new Set<string>();
 const seenAvailableProblems = new Set<string>();
 const scheduledProblems = new Map<string, ReturnType<typeof setTimeout>>();
+const automaticSubmissions = new Set<string>();
 const slideSelectionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let automationTimer: ReturnType<typeof setInterval> | undefined;
 let automationRunning = false;
+let lessonDataVersion = 0;
 let lastAutoJoinAt = 0;
 let nextNoticeToastId = 1;
 let nextAiChatMessageId = 1;
@@ -613,13 +617,44 @@ async function connectLesson(): Promise<void> {
 }
 
 async function loadLessonData(): Promise<void> {
-  if (!selectedLessonId.value) return;
-  const [nextProblems, nextPresentations] = await Promise.all([
-    window.yuketang.listProblems(selectedLessonId.value),
-    window.yuketang.listPresentations(selectedLessonId.value),
+  const lessonId = selectedLessonId.value;
+  const environment = props.environment;
+  if (!lessonId) return;
+  const version = ++lessonDataVersion;
+  const [problemResult, presentationResult] = await Promise.allSettled([
+    window.yuketang.listProblems(lessonId),
+    window.yuketang.listPresentations(lessonId),
   ]);
-  problems.value = nextProblems;
-  presentations.value = nextPresentations;
+  if (
+    version !== lessonDataVersion ||
+    lessonId !== selectedLessonId.value ||
+    environment !== props.environment
+  )
+    return;
+  // Problems and presentation refreshes are independent. A failed image/deck
+  // read must not turn an acknowledged answer into an apparent submit failure.
+  if (problemResult.status === 'fulfilled') {
+    const answered = new Map(
+      problems.value
+        .filter((item) => item.status === 'answered')
+        .map((item) => [item.id, item]),
+    );
+    problems.value = problemResult.value.map((item) => {
+      const previous = answered.get(item.id);
+      return previous && item.status !== 'answered'
+        ? { ...item, status: 'answered' as const, result: previous.result }
+        : item;
+    });
+  }
+  if (presentationResult.status === 'fulfilled')
+    presentations.value = presentationResult.value;
+  if (
+    problemResult.status === 'rejected' ||
+    presentationResult.status === 'rejected'
+  )
+    errorMessage.value = '部分课堂数据同步失败，请刷新重试。';
+  const nextProblems = problems.value;
+  const nextPresentations = presentations.value;
   if (!nextProblems.some((problem) => problem.id === selectedProblemId.value)) {
     selectedProblemId.value =
       nextProblems.find((problem) => problem.status === 'available')?.id ??
@@ -640,6 +675,21 @@ async function loadLessonData(): Promise<void> {
     infoMessage.value = `已同步 ${nextPresentations.length} 份课件、${nextProblems.length} 道题目`;
     collectingLessonId.value = '';
   }
+}
+
+function markSubmittedProblem(
+  problem: ProblemContext,
+  answer?: AnswerValue,
+): void {
+  if (selectedLessonId.value !== problem.lessonId) return;
+  // Invalidate reads issued before the POST acknowledgment, then preserve this
+  // monotonic answered state even if a cached read briefly returns old data.
+  lessonDataVersion++;
+  problems.value = problems.value.map((item) =>
+    item.id === problem.id
+      ? { ...item, status: 'answered', result: answer ?? item.result }
+      : item,
+  );
 }
 
 function setLesson(id: string): void {
@@ -685,6 +735,7 @@ function openAiForProblem(): void {
 
 async function submitAnswer(forceRetry = false): Promise<void> {
   const problem = selectedProblem.value;
+  const environment = props.environment;
   if (!problem || !canSubmit.value) return;
   await run('submit', async () => {
     const result = await window.yuketang.submitAnswer({
@@ -698,6 +749,14 @@ async function submitAnswer(forceRetry = false): Promise<void> {
           }
         : {}),
     });
+    if (result.status !== 'submitted')
+      throw new Error('服务端未确认答案提交成功。');
+    if (
+      environment !== props.environment ||
+      selectedLessonId.value !== problem.lessonId
+    )
+      return;
+    markSubmittedProblem(problem);
     const action = result.route === 'retry' ? '补交' : '提交';
     submissionMessage.value = result.proposalOutcome
       ? result.proposalOutcome.changed
@@ -910,6 +969,7 @@ async function requestAiProposal(
   auto: boolean,
   retry: boolean,
 ): Promise<void> {
+  const environment = props.environment;
   clearMessages();
   let session = aiChatSessions.get(contextId);
   if (!session) {
@@ -999,6 +1059,15 @@ async function requestAiProposal(
   }
 
   if (session.requestVersion !== requestVersion) return;
+  if (proposal.status === 'failed') {
+    // A missing credential may have removed the last profile in the backend.
+    try {
+      applyProfiles(await window.yuketang.listAiProfiles());
+    } catch {
+      /* Keep the original generation error if availability cannot be read. */
+    }
+    if (session.requestVersion !== requestVersion) return;
+  }
   pendingMessage.proposal = proposal;
   pendingMessage.status = proposal.status;
   pendingMessage.content = proposalResponseText(proposal);
@@ -1013,8 +1082,23 @@ async function requestAiProposal(
   }
 
   if (!problem) return;
+  if (
+    environment !== props.environment ||
+    selectedLessonId.value !== problem.lessonId
+  )
+    return;
   if (agentAutoSubmitEnabled.value) {
-    await applyAutomaticProposal(problem, proposal);
+    try {
+      await applyAutomaticProposal(problem, proposal);
+    } catch (error) {
+      errorMessage.value = `Agent 提交失败：${errorText(error)}`;
+      await emitLocalNotice(
+        'auto-answer-failed',
+        problem,
+        'Agent 未确认提交成功',
+        errorMessage.value,
+      );
+    }
     return;
   }
   infoMessage.value =
@@ -1035,6 +1119,7 @@ async function applyAutomaticProposal(
   problem: ProblemContext,
   proposal: AnswerProposal,
 ): Promise<void> {
+  const environment = props.environment;
   if (proposal.status !== 'ready' || !proposal.answer) {
     infoMessage.value = proposal.failureReason || '没有生成可提交的 AI 答案。';
     await emitLocalNotice(
@@ -1045,6 +1130,10 @@ async function applyAutomaticProposal(
     );
     return;
   }
+  if (
+    problems.value.find((item) => item.id === problem.id)?.status === 'answered'
+  )
+    return;
 
   if (selectedProblemId.value === problem.id) {
     answerDraft.value = answerValueToDraft(proposal.answer, problem.type);
@@ -1055,23 +1144,47 @@ async function applyAutomaticProposal(
     infoMessage.value = 'LLM 已生成答案，托管提交已关闭。';
     return;
   }
-
-  const result = await window.yuketang.submitAnswer({
-    problemId: problem.id,
-    answer: proposal.answer,
-    proposalId: proposal.id,
-    confirmedBy: 'agent',
-  });
-  if (selectedProblemId.value === problem.id) appliedProposalId.value = '';
-  submissionMessage.value = `Agent 已于 ${formatTime(result.submittedAt)} 自动提交`;
-  infoMessage.value = 'Agent 已自动确认并提交答案';
-  await loadLessonData();
-  await emitLocalNotice(
-    'auto-answer-succeeded',
-    problem,
-    'Agent 已提交答案',
-    `${problemTypeLabel(problem.type)}已由模型完成并提交。`,
-  );
+  const current = problems.value.find((item) => item.id === problem.id);
+  const submissionKey = `${props.environment}:${problem.lessonId}:${problem.id}`;
+  if (
+    !current ||
+    current.lessonId !== selectedLessonId.value ||
+    current.status === 'answered' ||
+    automaticSubmissions.has(submissionKey)
+  )
+    return;
+  automaticSubmissions.add(submissionKey);
+  try {
+    const result = await window.yuketang.submitAnswer({
+      problemId: problem.id,
+      answer: proposal.answer,
+      proposalId: proposal.id,
+      confirmedBy: 'agent',
+    });
+    if (result.status !== 'submitted')
+      throw new Error('服务端未确认答案提交成功。');
+    if (
+      environment !== props.environment ||
+      selectedLessonId.value !== problem.lessonId
+    )
+      return;
+    markSubmittedProblem(problem, proposal.answer);
+    if (selectedProblemId.value === problem.id) {
+      appliedProposalId.value = '';
+      confirmed.value = false;
+      submissionMessage.value = `Agent 已于 ${formatTime(result.submittedAt)} 自动提交`;
+    }
+    infoMessage.value = 'Agent 已自动确认并提交答案';
+    await loadLessonData();
+    await emitLocalNotice(
+      'auto-answer-succeeded',
+      problem,
+      'Agent 已提交答案',
+      `${problemTypeLabel(problem.type)}已由模型完成并提交。`,
+    );
+  } finally {
+    automaticSubmissions.delete(submissionKey);
+  }
 }
 
 function proposalResponseText(proposal: AnswerProposal): string {
@@ -1239,6 +1352,15 @@ async function resetSettings(): Promise<void> {
 
 function applyProfiles(value: readonly AiProfileView[]): void {
   aiProfiles.value = value;
+  if (
+    settings.value &&
+    !value.some((profile) => profile.id === settings.value!.activeAiProfileId)
+  )
+    settings.value = {
+      ...settings.value,
+      activeAiProfileId: value[0]?.id ?? '',
+    };
+  emit('profileAvailability', value.length > 0);
   aiProfileSelections.value = Object.fromEntries(
     value.map((profile) => [
       profile.id,
@@ -1542,6 +1664,7 @@ async function automationTick(): Promise<void> {
 }
 
 async function onAvailableProblem(problem: ProblemContext): Promise<void> {
+  const environment = props.environment;
   const currentSettings = settings.value;
   if (!currentSettings) return;
   if (!currentSettings.llmAutoGenerate || scheduledProblems.has(problem.id))
@@ -1563,6 +1686,8 @@ async function onAvailableProblem(problem: ProblemContext): Promise<void> {
     scheduledProblems.delete(problem.id);
     const current = problems.value.find((item) => item.id === problem.id);
     if (
+      props.environment !== environment ||
+      selectedLessonId.value !== problem.lessonId ||
       !settings.value?.llmAutoGenerate ||
       current?.status !== 'available' ||
       (current.deadlineAt && current.deadlineAt <= Date.now())
@@ -1570,7 +1695,9 @@ async function onAvailableProblem(problem: ProblemContext): Promise<void> {
       return;
     selectedProblemId.value = current.id;
     aiSlideSelection.value = [];
-    void nextTick(() => analyzeProblem(true));
+    void nextTick(() => analyzeProblem(true)).catch((error) => {
+      errorMessage.value = errorText(error);
+    });
   }, delay);
   scheduledProblems.set(problem.id, timer);
 }
@@ -2688,9 +2815,7 @@ function clamp(value: number, min: number, max: number): number {
                     {{
                       settings?.activeAiProfileId === profile.id
                         ? '当前 Profile'
-                        : profile.hasApiKey
-                          ? '已连接'
-                          : '缺少密钥'
+                        : '已连接'
                     }}
                   </span>
                 </div>

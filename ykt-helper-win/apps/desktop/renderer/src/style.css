@@ -133,6 +133,14 @@ input[type='radio'] {
   color: var(--green);
 }
 
+.profile-unavailable {
+  padding: 3px 7px;
+  border: 1px solid #d8a096;
+  border-radius: 4px;
+  color: #9a2920;
+  background: #fff0ed;
+}
+
 .brand-mark svg {
   width: 22px;
   height: 22px;
@@ -470,7 +478,7 @@ textarea:focus-visible {
     min-width: auto;
   }
 
-  .brand > span:last-child,
+  .brand > span:last-child:not(.profile-unavailable),
   .runtime-label {
     display: none;
   }

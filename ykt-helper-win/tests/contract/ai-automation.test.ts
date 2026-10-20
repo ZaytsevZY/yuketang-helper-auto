@@ -64,6 +64,278 @@ describe('LLM automation settings', () => {
     );
   });
 
+  it('generates and submits each queued question once when their timers fire together', async () => {
+    const { panel, api, problem } = setupPanel({
+      llmAutoGenerate: true,
+      llmManagedSubmit: true,
+    });
+    const second = { ...problem, id: 'problem-2', slideId: 'slide-2' };
+    panel.problems.value = [problem, second];
+    api.listProblems.mockImplementation(async () => panel.problems.value);
+    await Promise.all([
+      panel.onAvailableProblem(problem),
+      panel.onAvailableProblem(second),
+    ]);
+    await vi.runAllTimersAsync();
+    expect(
+      api.generateAnswerProposal.mock.calls.map(([input]) => input.problemId),
+    ).toEqual([problem.id, second.id]);
+    expect(
+      api.submitAnswer.mock.calls.map(([input]) => input.problemId),
+    ).toEqual([problem.id, second.id]);
+  });
+
+  it('keeps each question result when two model requests finish in reverse order', async () => {
+    const { panel, api, problem } = setupPanel({
+      llmAutoGenerate: true,
+      llmManagedSubmit: true,
+    });
+    const second = { ...problem, id: 'problem-2', slideId: 'slide-2' };
+    const proposals = [
+      await api.generateAnswerProposal({ problemId: problem.id }),
+      await api.generateAnswerProposal({ problemId: second.id }),
+    ];
+    const pending = new Map<string, (proposal: AnswerProposal) => void>();
+    api.generateAnswerProposal
+      .mockClear()
+      .mockImplementation(
+        ({ problemId }) =>
+          new Promise((resolve) => pending.set(problemId, resolve)),
+      );
+    panel.problems.value = [problem, second];
+    api.listProblems.mockImplementation(async () => panel.problems.value);
+    await Promise.all([
+      panel.onAvailableProblem(problem),
+      panel.onAvailableProblem(second),
+    ]);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(api.generateAnswerProposal).toHaveBeenCalledTimes(2);
+    pending.get(second.id)!(proposals[1]!);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(
+      panel.problems.value.find((item: ProblemContext) => item.id === second.id)
+        .status,
+    ).toBe('answered');
+    pending.get(problem.id)!(proposals[0]!);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(
+      api.submitAnswer.mock.calls.map(([input]) => input.problemId),
+    ).toEqual([second.id, problem.id]);
+    expect(
+      panel.problems.value.every(
+        (item: ProblemContext) => item.status === 'answered',
+      ),
+    ).toBe(true);
+  });
+
+  it('does not let an older poll overwrite the state refreshed after submission', async () => {
+    const { panel, api, problem } = setupPanel({
+      llmAutoGenerate: true,
+      llmManagedSubmit: true,
+    });
+    let finish!: (value: ProblemContext[]) => void;
+    api.listProblems.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const oldPoll = panel.loadLessonData();
+    const answered: ProblemContext = {
+      ...problem,
+      result: ['A'],
+      status: 'answered',
+    };
+    api.listProblems.mockResolvedValueOnce([answered]);
+    await panel.applyAutomaticProposal(
+      problem,
+      await api.generateAnswerProposal({ problemId: problem.id }),
+    );
+    expect(panel.problems.value[0].status).toBe('answered');
+    finish([problem]);
+    await oldPoll;
+    expect(panel.problems.value[0].status).toBe('answered');
+  });
+
+  it('keeps a successful submission answered even when refreshing presentations fails', async () => {
+    const { panel, api, problem } = setupPanel({
+      llmAutoGenerate: true,
+      llmManagedSubmit: true,
+    });
+    api.listPresentations.mockRejectedValueOnce(
+      new Error('presentation unavailable'),
+    );
+    api.listProblems.mockResolvedValueOnce([
+      { ...problem, result: ['A'], status: 'answered' },
+    ]);
+    await panel.applyAutomaticProposal(
+      problem,
+      await api.generateAnswerProposal({ problemId: problem.id }),
+    );
+    expect(panel.problems.value[0].status).toBe('answered');
+  });
+
+  it('continues with the next question after a successful POST and failed problem refresh', async () => {
+    const { panel, api, problem } = setupPanel({
+      llmAutoGenerate: true,
+      llmManagedSubmit: true,
+    });
+    api.listProblems.mockRejectedValueOnce(new Error('refresh unavailable'));
+    await panel.onAvailableProblem(problem);
+    await vi.runAllTimersAsync();
+    expect(panel.problems.value[0]).toMatchObject({
+      status: 'answered',
+      result: ['A'],
+    });
+    const second = { ...problem, id: 'problem-2', slideId: 'slide-2' };
+    panel.problems.value.push(second);
+    api.listProblems.mockImplementation(async () => panel.problems.value);
+    await panel.onAvailableProblem(second);
+    await vi.runAllTimersAsync();
+    expect(
+      api.submitAnswer.mock.calls.map(([input]) => input.problemId),
+    ).toEqual([problem.id, second.id]);
+    expect(
+      panel.problems.value.every(
+        (item: ProblemContext) => item.status === 'answered',
+      ),
+    ).toBe(true);
+  });
+
+  it('handles a rejected submission without blocking the next question', async () => {
+    const { panel, api, problem } = setupPanel({
+      llmAutoGenerate: true,
+      llmManagedSubmit: true,
+    });
+    api.submitAnswer.mockRejectedValueOnce(new Error('server rejected answer'));
+    await panel.onAvailableProblem(problem);
+    await vi.runAllTimersAsync();
+    expect(panel.errorMessage.value).toContain('server rejected answer');
+    expect(panel.problems.value[0].status).toBe('available');
+    const second = { ...problem, id: 'problem-2', slideId: 'slide-2' };
+    panel.problems.value.push(second);
+    api.listProblems.mockImplementation(async () => panel.problems.value);
+    await panel.onAvailableProblem(second);
+    await vi.runAllTimersAsync();
+    expect(api.submitAnswer).toHaveBeenCalledTimes(2);
+    expect(
+      panel.problems.value.find((item: ProblemContext) => item.id === second.id)
+        .status,
+    ).toBe('answered');
+  });
+
+  it('does not post a late model response after moving to another classroom or answering elsewhere', async () => {
+    for (const change of ['classroom', 'answered']) {
+      const { panel, api, problem } = setupPanel({
+        llmAutoGenerate: true,
+        llmManagedSubmit: true,
+      });
+      panel.selectedProblemId.value = problem.id;
+      await nextTick();
+      const proposal = await api.generateAnswerProposal({
+        problemId: problem.id,
+      });
+      let finish!: (value: AnswerProposal) => void;
+      api.generateAnswerProposal.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const pending = panel.analyzeProblem(true);
+      if (change === 'classroom')
+        panel.selectedLessonId.value = 'another-classroom';
+      else
+        panel.problems.value = [
+          { ...problem, status: 'answered', result: ['B'] },
+        ];
+      finish(proposal);
+      await pending;
+      expect(api.submitAnswer).not.toHaveBeenCalled();
+    }
+  });
+
+  it('ignores an old classroom response after switching classrooms', async () => {
+    const { panel, api, problem } = setupPanel({});
+    let finish!: (value: ProblemContext[]) => void;
+    api.listProblems.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = panel.loadLessonData();
+    const next = {
+      ...problem,
+      id: 'other-problem',
+      lessonId: 'another-classroom',
+    };
+    panel.selectedLessonId.value = next.lessonId;
+    api.listProblems.mockResolvedValueOnce([next]);
+    await panel.loadLessonData();
+    finish([problem]);
+    await pending;
+    expect(panel.problems.value).toEqual([next]);
+  });
+
+  it('does not clear the next classroom draft when an earlier POST finishes late', async () => {
+    const { panel, api, problem } = setupPanel({
+      llmAutoGenerate: true,
+      llmManagedSubmit: true,
+    });
+    const proposal = await api.generateAnswerProposal({
+      problemId: problem.id,
+    });
+    let finish!: (value: Awaited<ReturnType<typeof api.submitAnswer>>) => void;
+    api.submitAnswer.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = panel.applyAutomaticProposal(problem, proposal);
+    const next = {
+      ...problem,
+      id: 'other-problem',
+      lessonId: 'other-classroom',
+    };
+    panel.selectedLessonId.value = next.lessonId;
+    panel.problems.value = [next];
+    panel.selectedProblemId.value = next.id;
+    await nextTick();
+    panel.confirmed.value = true;
+    panel.appliedProposalId.value = 'next-proposal';
+    finish({
+      problemId: problem.id,
+      status: 'submitted',
+      route: 'answer',
+      submittedAt: new Date().toISOString(),
+    });
+    await pending;
+    expect(panel.problems.value).toEqual([next]);
+    expect(panel.confirmed.value).toBe(true);
+    expect(panel.appliedProposalId.value).toBe('next-proposal');
+    expect(api.listProblems).not.toHaveBeenCalled();
+  });
+
+  it('coalesces overlapping automatic submissions for the same question', async () => {
+    const { panel, api, problem } = setupPanel({
+      llmAutoGenerate: true,
+      llmManagedSubmit: true,
+    });
+    const proposal = await api.generateAnswerProposal({
+      problemId: problem.id,
+    });
+    await Promise.all([
+      panel.applyAutomaticProposal(problem, proposal),
+      panel.applyAutomaticProposal(problem, proposal),
+    ]);
+    expect(api.submitAnswer).toHaveBeenCalledOnce();
+    expect(panel.problems.value[0].status).toBe('answered');
+    await panel.applyAutomaticProposal(problem, proposal);
+    expect(api.submitAnswer).toHaveBeenCalledOnce();
+  });
+
   it('can generate an answer without validating or submitting it', async () => {
     const { panel, api, problem } = setupPanel({
       llmAutoGenerate: false,
@@ -228,8 +500,8 @@ function setupPanel(settings: Record<string, boolean>) {
       issues: [],
       normalizedAnswer: ['A'],
     })),
-    submitAnswer: vi.fn(async () => ({
-      problemId: problem.id,
+    submitAnswer: vi.fn(async ({ problemId }: { problemId: string }) => ({
+      problemId,
       status: 'submitted',
       route: 'answer',
       submittedAt: new Date().toISOString(),

@@ -39,6 +39,7 @@ const pages: ReadonlyArray<{ id: WorkspacePage; label: string }> = [
 ];
 
 const runtimeStatus = ref<RuntimeStatus>();
+const profileAvailable = ref<boolean | null>(null);
 const browserState = ref<BrowserState>();
 const activePage = ref<WorkspacePage>('classroom');
 const initiallyCollapsed = window.matchMedia('(max-width: 680px)').matches;
@@ -193,14 +194,22 @@ async function navigateAddress(): Promise<void> {
     <header class="browser-chrome">
       <div class="tab-row">
         <div class="brand" aria-label="雨课堂助手">
-          <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" role="img">
-              <path
-                d="M4 5.5 10.6 3v16.2L4 21.5V5.5Zm8 0L18.5 3v16L12 21.5v-16ZM7 7.2v9.6M15.2 6.6v9.8"
-              />
-            </svg>
-          </span>
-          <span>雨课堂助手</span>
+          <span
+            v-if="profileAvailable === false"
+            class="profile-unavailable"
+            role="status"
+            >无可用 Profile</span
+          >
+          <template v-else>
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" role="img">
+                <path
+                  d="M4 5.5 10.6 3v16.2L4 21.5V5.5Zm8 0L18.5 3v16L12 21.5v-16ZM7 7.2v9.6M15.2 6.6v9.8"
+                />
+              </svg>
+            </span>
+            <span>雨课堂助手</span>
+          </template>
         </div>
 
         <div class="tab-strip" role="tablist" aria-label="雨课堂页面">
@@ -359,6 +368,7 @@ async function navigateAddress(): Promise<void> {
       :collapsed="assistantCollapsed"
       @toggle="toggleAssistant"
       @select-page="selectPage"
+      @profile-availability="profileAvailable = $event"
     />
     <NetworkLab />
   </div>

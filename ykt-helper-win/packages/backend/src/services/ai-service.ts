@@ -68,11 +68,12 @@ export class AiService {
     const profiles = existing
       ? current.map((item) => (item.id === id ? profile : item))
       : [...current, profile];
+    // Publish only profiles whose credential has been persisted successfully.
+    await this.secrets.set(credentialKey(profile.id), apiKey);
     await this.storage.updateSettings({
       aiProfiles: profiles,
       activeAiProfileId: profile.id,
     });
-    await this.secrets.set(credentialKey(profile.id), apiKey);
     return this.listProfiles();
   }
 
@@ -456,9 +457,19 @@ export class AiService {
   private async profiles(): Promise<readonly AiProfileConfig[]> {
     const settings = await this.storage.getSettings();
     const stored = settings.aiProfiles ?? [];
-    const profiles = stored
+    const candidates = stored
       .filter((profile) => !isObsoleteKimiProfile(profile))
       .map(validateStoredProfile);
+    const usable = await Promise.all(
+      candidates.map(async (profile) =>
+        (await this.secrets.get(credentialKey(profile.id)))?.trim()
+          ? profile
+          : null,
+      ),
+    );
+    const profiles = usable.filter(
+      (profile): profile is AiProfileConfig => profile !== null,
+    );
     if (profiles.length !== stored.length) {
       await this.storage.updateSettings({
         aiProfiles: profiles,
@@ -468,11 +479,13 @@ export class AiService {
           ? settings.activeAiProfileId
           : (profiles[0]?.id ?? ''),
       });
-      await Promise.all([
-        this.secrets.delete('ai-profile:default:main'),
-        this.secrets.delete('ai-profile:default:ocr'),
-        this.secrets.delete('ai-profile:default:translation'),
-      ]);
+      const retainedIds = new Set(profiles.map((profile) => profile.id));
+      await Promise.all(
+        stored
+          .filter((profile) => !retainedIds.has(profile.id))
+          .flatMap((profile) => credentialKeys(profile.id))
+          .map((key) => this.secrets.delete(key)),
+      );
     }
     return profiles;
   }

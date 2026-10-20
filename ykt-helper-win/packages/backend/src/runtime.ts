@@ -614,15 +614,34 @@ class BaselineFacade implements YuketangFacade {
           const submittedAnswer =
             this.problems.validateAnswerFormat(input).normalizedAnswer;
           if (!submittedAnswer) return result;
-          return {
-            ...result,
-            proposalOutcome: await this.ai.recordOutcome(
-              proposal,
-              input,
-              submittedAnswer,
-              result.submittedAt,
-            ),
-          };
+          try {
+            return {
+              ...result,
+              proposalOutcome: await this.ai.recordOutcome(
+                proposal,
+                input,
+                submittedAnswer,
+                result.submittedAt,
+              ),
+            };
+          } catch (error) {
+            // The remote POST already committed and the problem is answered.
+            // Audit persistence must not invite another POST by reporting failure.
+            await this.storage
+              .appendLog({
+                level: 'warn',
+                scope: 'answer',
+                message: '答案已提交，但 AI 提交审计记录保存失败。',
+                details: {
+                  problemId: input.problemId,
+                  proposalId: proposal.id,
+                  error:
+                    error instanceof Error ? error.message : 'Unknown error',
+                },
+              })
+              .catch(() => undefined);
+            return result;
+          }
         },
         {
           problemId: input.problemId,
@@ -653,20 +672,24 @@ class BaselineFacade implements YuketangFacade {
   ): Promise<T> {
     try {
       const result = await action();
-      await this.storage.appendLog({ level: 'info', scope, message, details });
+      await this.storage
+        .appendLog({ level: 'info', scope, message, details })
+        .catch(() => undefined);
       return result;
     } catch (error) {
       const diagnostic = loggableErrorDetails(error);
-      await this.storage.appendLog({
-        level: 'error',
-        scope,
-        message: `${message.slice(0, -1)}失败。`,
-        details: {
-          ...details,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          ...(diagnostic ? { diagnostic } : {}),
-        },
-      });
+      await this.storage
+        .appendLog({
+          level: 'error',
+          scope,
+          message: `${message.slice(0, -1)}失败。`,
+          details: {
+            ...details,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            ...(diagnostic ? { diagnostic } : {}),
+          },
+        })
+        .catch(() => undefined);
       throw error;
     }
   }
