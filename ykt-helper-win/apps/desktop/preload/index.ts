@@ -24,6 +24,7 @@ import {
   type NetworkEntry,
   type NetworkSnapshot,
   type Lesson,
+  type LessonCollectionStatus,
   type ProblemContext,
   type Presentation,
   type RuntimeStatus,
@@ -178,6 +179,26 @@ const api: DesktopApi = Object.freeze({
     ipcRenderer.invoke(IpcChannel.ListPresentations, lessonId) as Promise<
       readonly Presentation[]
     >,
+  getLessonCollectionStatus: (lessonId: string) =>
+    ipcRenderer.invoke(
+      IpcChannel.GetLessonCollectionStatus,
+      lessonId,
+    ) as Promise<LessonCollectionStatus | null>,
+  onLessonCollectionStatusChanged: (
+    listener: (status: LessonCollectionStatus) => void,
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      status: LessonCollectionStatus,
+    ) => listener(status);
+    ipcRenderer.on(IpcChannel.LessonCollectionStatusChanged, handler);
+    return () => {
+      ipcRenderer.removeListener(
+        IpcChannel.LessonCollectionStatusChanged,
+        handler,
+      );
+    };
+  },
   listProblems: (lessonId: string) =>
     ipcRenderer.invoke(IpcChannel.ListProblems, lessonId) as Promise<
       readonly ProblemContext[]

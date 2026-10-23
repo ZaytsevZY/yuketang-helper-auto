@@ -64,6 +64,7 @@ let runtime: BackendRuntime | undefined;
 let mainWindow: BrowserWindow | undefined;
 let browserController: BrowserController | undefined;
 let networkLabController: NetworkLabController | undefined;
+let lessonCollector: BrowserLessonCollector | undefined;
 let webProbeController: WebProbeController | undefined;
 let cliServer: DesktopCliServer | undefined;
 let serviceCleanupPromise: Promise<void> | undefined;
@@ -433,6 +434,14 @@ function registerIpc(): void {
       assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
       if (typeof lessonId !== 'string') throw new Error('Invalid lesson id.');
       return getRuntime().facade.listPresentations(lessonId);
+    },
+  );
+  ipcMain.handle(
+    IpcChannel.GetLessonCollectionStatus,
+    (event, lessonId: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (typeof lessonId !== 'string') throw new Error('Invalid lesson id.');
+      return lessonCollector?.getCollectionStatus(lessonId) ?? null;
     },
   );
   ipcMain.handle(IpcChannel.ValidateAnswer, async (event, input: unknown) => {
@@ -906,6 +915,12 @@ async function createWindow(): Promise<void> {
   });
   browserController = nextBrowserController;
   const browserLessonCollector = new BrowserLessonCollector();
+  lessonCollector = browserLessonCollector;
+  browserLessonCollector.onCollectionStatusChanged((status) => {
+    if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+      window.webContents.send(IpcChannel.LessonCollectionStatusChanged, status);
+    }
+  });
   const networkRecorder = await createNetworkRecorderForDesktop({
     argv: process.argv,
     isPackaged: app.isPackaged,
@@ -942,6 +957,7 @@ async function createWindow(): Promise<void> {
     if (disposed) return;
     disposed = true;
     nextWebProbeController.cancel();
+    if (lessonCollector === browserLessonCollector) lessonCollector = undefined;
     if (webProbeController === nextWebProbeController)
       webProbeController = undefined;
     nextNetworkLabController.destroy();

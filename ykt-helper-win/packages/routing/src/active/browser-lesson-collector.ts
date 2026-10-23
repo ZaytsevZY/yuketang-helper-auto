@@ -2,6 +2,7 @@ import {
   BrowserEnvironment,
   type AnswerValue,
   type Presentation,
+  type LessonCollectionStatus,
   type Slide,
 } from '@ykt/contracts';
 
@@ -36,6 +37,7 @@ export interface ObservedBrowserWebSocketFrame {
 }
 
 interface LessonWatch {
+  status: LessonCollectionStatus;
   environment: BrowserEnvironment;
   presentationId: string | null;
   listener: (observation: BrowserLessonObservation) => void | Promise<void>;
@@ -57,6 +59,9 @@ interface ArchivedReportState {
  * check-in request or WebSocket connection.
  */
 export class BrowserLessonCollector {
+  readonly #statusListeners = new Set<
+    (status: LessonCollectionStatus) => void
+  >();
   readonly #lessons = new Map<string, LessonWatch>();
   readonly #socketLessons = new Map<string, string>();
   readonly #archivedReports = new Map<string, ArchivedReportState>();
@@ -65,6 +70,74 @@ export class BrowserLessonCollector {
       observation: BrowserArchivedPresentationObservation,
     ) => void | Promise<void>
   >();
+
+  getCollectionStatus(lessonId: string): LessonCollectionStatus | null {
+    return this.#lessons.get(lessonId)?.status ?? null;
+  }
+
+  onCollectionStatusChanged(
+    listener: (status: LessonCollectionStatus) => void,
+  ): () => void {
+    this.#statusListeners.add(listener);
+    return () => this.#statusListeners.delete(listener);
+  }
+
+  private updateStatus(
+    lessonId: string,
+    patch: Partial<LessonCollectionStatus>,
+  ): void {
+    const watch = this.#lessons.get(lessonId);
+    if (!watch) return;
+    watch.status = { ...watch.status, ...patch, updatedAt: Date.now() };
+    for (const listener of this.#statusListeners) listener(watch.status);
+  }
+
+  /** Only matching PPT traffic can change a connected lesson's progress. */
+  observeCollectionRequest(input: {
+    url: string;
+    phase:
+      | 'requesting'
+      | 'receiving'
+      | 'network-error'
+      | 'response-error'
+      | 'format-error';
+    receivedBytes?: number;
+    detail?: string;
+  }): void {
+    const url = safeUrl(input.url);
+    if (!url || !isCollectionResponse(url.pathname)) return;
+    const environment = environmentForHostname(url.hostname);
+    if (!environment) return;
+    const reportLessonId = url.searchParams.get('lesson_id');
+    const reportWatch = reportLessonId
+      ? this.#lessons.get(reportLessonId)
+      : undefined;
+    const match = isClassroomReportResponse(url.pathname)
+      ? reportLessonId && reportWatch
+        ? ([reportLessonId, reportWatch] as const)
+        : null
+      : this.findLesson(
+          environment,
+          url.searchParams.get('presentation_id') ??
+            url.searchParams.get('presentationId'),
+          true,
+        );
+    if (!match || match[1].environment !== environment) return;
+    const [lessonId, watch] = match;
+    // Archived reports may collect several resources at once. Metadata traffic
+    // must not hide a usable deck already collected from a different response.
+    if (isClassroomReportResponse(url.pathname) && watch.status.slideCount > 0)
+      return;
+    this.updateStatus(lessonId, {
+      phase: input.phase,
+      ...(input.phase === 'requesting' ? { startedAt: Date.now() } : {}),
+      receivedBytes:
+        input.phase === 'requesting'
+          ? 0
+          : (input.receivedBytes ?? watch.status.receivedBytes),
+      detail: input.detail ?? '',
+    });
+  }
 
   onArchivedPresentation(
     listener: (
@@ -82,12 +155,24 @@ export class BrowserLessonCollector {
     listener: LessonWatch['listener'],
   ): void {
     this.#lessons.set(lessonId, {
+      status: {
+        lessonId,
+        environment,
+        phase: 'waiting',
+        startedAt: Date.now(),
+        updatedAt: Date.now(),
+        receivedBytes: 0,
+        slideCount: 0,
+        problemCount: 0,
+        detail: '',
+      },
       environment,
       presentationId,
       listener,
       problemIds: new Set(),
       seenMessages: new Set(),
     });
+    this.updateStatus(lessonId, {});
   }
 
   unwatchLesson(lessonId: string): void {
@@ -107,7 +192,14 @@ export class BrowserLessonCollector {
   }
 
   async observeHttp(input: ObservedBrowserHttpResponse): Promise<void> {
-    if (input.statusCode < 200 || input.statusCode >= 300) return;
+    if (input.statusCode < 200 || input.statusCode >= 300) {
+      this.observeCollectionRequest({
+        url: input.url,
+        phase: 'network-error',
+        detail: `HTTP ${input.statusCode}`,
+      });
+      return;
+    }
     const url = safeUrl(input.url);
     if (!url) return;
 
@@ -128,7 +220,6 @@ export class BrowserLessonCollector {
     const environment = environmentForHostname(url.hostname);
     if (!environment) return;
     const value = parseJson(input.body);
-    if (value === null) return;
 
     const responsePresentationId =
       url.searchParams.get('presentation_id') ??
@@ -139,8 +230,21 @@ export class BrowserLessonCollector {
 
     const [lessonId, watch] = match;
     const presentationId = responsePresentationId ?? watch.presentationId;
-    if (!presentationId) return;
+    this.updateStatus(lessonId, { phase: 'parsing', detail: '' });
+    let failurePhase: 'format-error' | 'response-error' = 'format-error';
     try {
+      if (value === null) throw new Error('课件响应不是有效 JSON');
+      if (!presentationId) throw new Error('课件响应缺少课件 ID');
+      const root = record(value);
+      if (root?.code !== undefined && root.code !== 0) {
+        failurePhase = 'response-error';
+        throw new Error(`课件接口返回错误码 ${String(root.code)}`);
+      }
+      const data = record(root?.data) ?? record(root?.result) ?? root;
+      // parsePresentation historically defaults missing slide arrays to [].
+      // Keep an explicitly empty deck valid, but surface schema changes.
+      if (!data || (!Array.isArray(data.slides) && !Array.isArray(data.pages)))
+        throw new Error('课件响应缺少 slides / pages 列表');
       const presentation = hostAdapterFor(environment).parsePresentation(
         value,
         lessonId,
@@ -150,7 +254,18 @@ export class BrowserLessonCollector {
         if (slide.problem) watch.problemIds.add(slide.problem.id);
       }
       await watch.listener({ type: 'presentation', presentation });
+      this.updateStatus(lessonId, {
+        phase: 'ready',
+        slideCount: presentation.slides.length,
+        problemCount: presentation.slides.filter((slide) => slide.problem)
+          .length,
+        detail: '',
+      });
     } catch (error: unknown) {
+      this.updateStatus(lessonId, {
+        phase: failurePhase,
+        detail: error instanceof Error ? error.message : '课件响应解析失败',
+      });
       await watch.listener({
         type: 'error',
         message: error instanceof Error ? error.message : '课件响应解析失败。',
@@ -218,6 +333,7 @@ export class BrowserLessonCollector {
   private findLesson(
     environment: BrowserEnvironment,
     presentationId: string | null,
+    strictPresentationId = false,
   ): [string, LessonWatch] | null {
     const candidates = [...this.#lessons.entries()].filter(
       ([, watch]) => watch.environment === environment,
@@ -227,6 +343,13 @@ export class BrowserLessonCollector {
         ([, watch]) => watch.presentationId === presentationId,
       );
       if (exact) return exact;
+      // Request-only diagnostics lack a body to bind a changed presentation.
+      // Preserve the existing response fallback for teachers switching decks.
+      if (
+        strictPresentationId &&
+        candidates.some(([, watch]) => watch.presentationId)
+      )
+        return null;
     }
     return candidates.length === 1 ? candidates[0]! : null;
   }
@@ -254,9 +377,25 @@ export class BrowserLessonCollector {
     }
 
     const value = parseJson(input.body);
-    if (value === null) return;
+    if (value === null) {
+      // An empty body is sent at responseReceived to bind lazy slide images.
+      if (input.body)
+        this.observeCollectionRequest({
+          url: input.url,
+          phase: 'format-error',
+          detail: '课件响应不是有效 JSON',
+        });
+      return;
+    }
     const root = record(value);
-    if (root?.code !== undefined && root.code !== 0) return;
+    if (root?.code !== undefined && root.code !== 0) {
+      this.observeCollectionRequest({
+        url: input.url,
+        phase: 'response-error',
+        detail: `课件接口返回错误码 ${String(root.code)}`,
+      });
+      return;
+    }
     const title = reportLessonTitle(value);
     const priority = url.pathname.endsWith('/student/lesson-info')
       ? 3
@@ -319,6 +458,14 @@ export class BrowserLessonCollector {
       ),
     };
     const watch = this.#lessons.get(report.lessonId);
+    if (presentation.slides.length > 0)
+      this.updateStatus(report.lessonId, {
+        phase: 'ready',
+        slideCount: presentation.slides.length,
+        problemCount: presentation.slides.filter((slide) => slide.problem)
+          .length,
+        detail: '',
+      });
     if (
       this.#archivedListeners.size === 0 &&
       watch?.environment === report.environment
@@ -338,6 +485,14 @@ export class BrowserLessonCollector {
 
 function isPresentationResponse(pathname: string): boolean {
   return pathname.includes('presentation') && pathname.includes('fetch');
+}
+
+function isCollectionResponse(pathname: string): boolean {
+  return (
+    isPresentationResponse(pathname) ||
+    (isClassroomReportResponse(pathname) &&
+      /\/(?:ppt|review|detail|replay)\/?$/.test(pathname))
+  );
 }
 
 export function isClassroomReportResponse(pathname: string): boolean {

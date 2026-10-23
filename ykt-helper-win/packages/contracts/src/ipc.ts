@@ -6,6 +6,7 @@ import type {
   WebProbeResponse,
 } from './web-probe.js';
 import type { AssignmentSnapshot } from './assignments.js';
+import type { LessonCollectionStatus } from './lesson-collection.js';
 import type {
   CourseProgressRangeMonths,
   CourseProgressSnapshot,
@@ -72,6 +73,8 @@ export const IpcChannel = {
   OpenAssignmentLink: 'browser:open-assignment-link',
   ConnectLesson: 'backend:connect-lesson',
   ListPresentations: 'backend:list-presentations',
+  GetLessonCollectionStatus: 'classroom:get-collection-status',
+  LessonCollectionStatusChanged: 'classroom:collection-status-changed',
   ListProblems: 'backend:list-problems',
   ValidateAnswer: 'backend:validate-answer',
   SubmitAnswer: 'backend:submit-answer',
@@ -166,6 +169,12 @@ export interface DesktopApi {
   openAssignmentLink(url: string): Promise<void>;
   connectLesson(environment: BrowserEnvironment, id: string): Promise<void>;
   listPresentations(lessonId: string): Promise<readonly Presentation[]>;
+  getLessonCollectionStatus(
+    lessonId: string,
+  ): Promise<LessonCollectionStatus | null>;
+  onLessonCollectionStatusChanged(
+    listener: (status: LessonCollectionStatus) => void,
+  ): () => void;
   listProblems(lessonId: string): Promise<readonly ProblemContext[]>;
   validateAnswer(input: AnswerInput): Promise<ValidationResult>;
   submitAnswer(input: AnswerInput): Promise<SubmissionResult>;

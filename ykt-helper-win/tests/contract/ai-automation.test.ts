@@ -508,6 +508,7 @@ function setupPanel(settings: Record<string, boolean>) {
     })),
     listProblems: vi.fn(async () => [problem]),
     listPresentations: vi.fn(async () => []),
+    getLessonCollectionStatus: vi.fn(async () => null),
   };
   vi.stubGlobal('window', { yuketang: api });
   const scope = effectScope();

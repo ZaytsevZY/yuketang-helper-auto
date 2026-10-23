@@ -19,6 +19,7 @@ import {
   type ClassroomNotice,
   type ClassroomNoticeKind,
   type Lesson,
+  type LessonCollectionStatus,
   type NetworkEntry,
   type Presentation,
   type ProblemContext,
@@ -219,6 +220,69 @@ const logs = ref<readonly LogRow[]>([]);
 const noticeToasts = ref<readonly NoticeToast[]>([]);
 const entries = ref<NetworkEntry[]>([]);
 const collectingLessonId = ref('');
+const collectionStatus = ref<LessonCollectionStatus | null>(null);
+const collectionNow = ref(Date.now());
+const currentCollectionStatus = computed(() => {
+  const status = collectionStatus.value;
+  return status?.lessonId === selectedLessonId.value &&
+    status.environment === props.environment
+    ? status
+    : null;
+});
+const collectionProgress = computed(() => {
+  const status = currentCollectionStatus.value;
+  if (!status) return null;
+  const seconds = Math.max(
+    0,
+    Math.floor((collectionNow.value - status.startedAt) / 1000),
+  );
+  const received = `${(status.receivedBytes / 1024).toFixed(1)} KB`;
+  switch (status.phase) {
+    case 'waiting':
+      return {
+        title: '已连接课堂 · 等待 PPT',
+        detail: `已等待 ${seconds} 秒，尚未收到课件请求。`,
+      };
+    case 'requesting':
+      return {
+        title: '正在请求 PPT',
+        detail: `等待服务器响应 · 已用 ${seconds} 秒`,
+      };
+    case 'receiving':
+      return {
+        title: '正在接收 PPT',
+        detail: `已接收 ${received} · 已用 ${seconds} 秒`,
+      };
+    case 'parsing':
+      return { title: '正在解析 PPT', detail: `已接收 ${received}` };
+    case 'ready':
+      return {
+        title: 'PPT 已就绪',
+        detail: `${status.slideCount} 页课件 · ${status.problemCount} 道题目`,
+      };
+    case 'network-error':
+      return {
+        title: 'PPT 收集失败：网络或响应读取异常',
+        detail: status.detail,
+      };
+    case 'format-error':
+      return { title: 'PPT 收集失败：课件格式异常', detail: status.detail };
+    case 'response-error':
+      return { title: 'PPT 收集失败：接口返回异常', detail: status.detail };
+  }
+  return null;
+});
+
+function receiveCollectionStatus(status: LessonCollectionStatus): void {
+  if (
+    status.lessonId !== selectedLessonId.value ||
+    status.environment !== props.environment
+  )
+    return;
+  const previous = currentCollectionStatus.value;
+  if (previous && previous.updatedAt > status.updatedAt) return;
+  collectionStatus.value = status;
+}
 const answerDraft = ref('');
 const submissionMessage = ref('');
 const confirmed = ref(false);
@@ -444,9 +508,13 @@ onMounted(async () => {
     window.yuketang.onClassroomNotice((notice) => {
       void handleClassroomNotice(notice);
     }),
+    window.yuketang.onLessonCollectionStatusChanged(receiveCollectionStatus),
   );
   await loadWorkspace();
-  automationTimer = setInterval(() => void automationTick(), 1000);
+  automationTimer = setInterval(() => {
+    collectionNow.value = Date.now();
+    void automationTick();
+  }, 1000);
 });
 
 onUnmounted(() => {
@@ -462,6 +530,7 @@ watch(
     assignmentAiContext.value = null;
     selectedLessonId.value = '';
     collectingLessonId.value = '';
+    collectionStatus.value = null;
     aiSlideContextId.value = '';
     problems.value = [];
     presentations.value = [];
@@ -624,16 +693,25 @@ async function loadLessonData(): Promise<void> {
   const environment = props.environment;
   if (!lessonId) return;
   const version = ++lessonDataVersion;
-  const [problemResult, presentationResult] = await Promise.allSettled([
-    window.yuketang.listProblems(lessonId),
-    window.yuketang.listPresentations(lessonId),
-  ]);
+  const previousCollectionStatus = collectionStatus.value;
+  const [problemResult, presentationResult, collectionResult] =
+    await Promise.allSettled([
+      window.yuketang.listProblems(lessonId),
+      window.yuketang.listPresentations(lessonId),
+      window.yuketang.getLessonCollectionStatus(lessonId),
+    ]);
   if (
     version !== lessonDataVersion ||
     lessonId !== selectedLessonId.value ||
     environment !== props.environment
   )
     return;
+  if (collectionResult.status === 'fulfilled') {
+    if (collectionResult.value) receiveCollectionStatus(collectionResult.value);
+    // A push may arrive while the other reads are still pending.
+    else if (collectionStatus.value === previousCollectionStatus)
+      collectionStatus.value = null;
+  }
   // Problems and presentation refreshes are independent. A failed image/deck
   // read must not turn an acknowledged answer into an apparent submit failure.
   if (problemResult.status === 'fulfilled') {
@@ -2102,6 +2180,20 @@ function clamp(value: number, min: number, max: number): number {
             <span class="count-badge">{{ problems.length }}</span>
           </div>
 
+          <div
+            v-if="collectionProgress"
+            class="collection-progress"
+            :class="{
+              'collection-error':
+                currentCollectionStatus?.phase.endsWith('-error'),
+            }"
+            role="status"
+            aria-live="polite"
+          >
+            <strong>{{ collectionProgress.title }}</strong>
+            <p>{{ collectionProgress.detail }}</p>
+          </div>
+
           <div class="field-label">
             <span>当前题目</span>
             <ProblemPicker
@@ -2219,8 +2311,21 @@ function clamp(value: number, min: number, max: number): number {
             </div>
           </template>
           <div v-else class="empty-state">
-            <strong>尚未载入题目</strong>
-            <p>先在“课堂”页连接课堂。</p>
+            <strong>{{
+              presentations.length ? '课件已载入，暂无题目' : '尚未载入题目'
+            }}</strong>
+            <p
+              v-if="
+                !collectionProgress &&
+                collectingLessonId === selectedLessonId &&
+                selectedLessonId
+              "
+            >
+              已连接课堂 · 等待 PPT 收集。
+            </p>
+            <p v-else-if="!collectionProgress && !presentations.length">
+              先在“课堂”页连接课堂。
+            </p>
           </div>
         </section>
 
@@ -3800,6 +3905,27 @@ button:disabled {
   padding: 28px 16px;
   color: var(--text-muted);
   text-align: center;
+}
+
+.collection-progress {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #b9d5ec;
+  border-radius: 10px;
+  background: #f0f7fc;
+  color: #234e6d;
+}
+
+.collection-progress p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.collection-progress.collection-error {
+  border-color: #edb3ad;
+  background: #fff2f0;
+  color: #a12b22;
 }
 
 .empty-state.compact {

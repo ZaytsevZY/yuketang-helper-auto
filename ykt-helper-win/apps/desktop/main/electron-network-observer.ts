@@ -33,6 +33,8 @@ interface CdpMessage {
   requestId?: string;
   type?: string;
   encodedDataLength?: number;
+  dataLength?: number;
+  errorText?: string;
   request?: {
     method?: string;
     url?: string;
@@ -55,6 +57,7 @@ export class ElectronNetworkObserver {
   readonly #requests = new Map<number, RequestMetadata>();
   readonly #cdpRequests = new Map<string, CdpRequestMetadata>();
   readonly #cdpResponses = new Map<string, CdpResponseMetadata>();
+  readonly #receivedBytes = new Map<string, number>();
   readonly #webSockets = new Map<string, string>();
   #deepCapture = false;
   #deepCaptureError: string | null = null;
@@ -188,12 +191,49 @@ export class ElectronNetworkObserver {
     if (!requestId) return;
 
     if (method === 'Network.requestWillBeSent') {
+      this.#receivedBytes.set(requestId, 0);
       this.#cdpRequests.set(requestId, {
         method: params.request?.method ?? 'GET',
         url: params.request?.url ?? '',
         body: params.request?.postData ?? null,
         headers: flattenUnknownHeaders(params.request?.headers),
       });
+      this.lessonCollector?.observeCollectionRequest({
+        url: params.request?.url ?? '',
+        phase: 'requesting',
+      });
+      return;
+    }
+
+    if (method === 'Network.dataReceived') {
+      const receivedBytes =
+        (this.#receivedBytes.get(requestId) ?? 0) + (params.dataLength ?? 0);
+      this.#receivedBytes.set(requestId, receivedBytes);
+      const response = this.#cdpResponses.get(requestId);
+      if (!response || (response.status >= 200 && response.status < 300))
+        this.lessonCollector?.observeCollectionRequest({
+          url:
+            this.#cdpResponses.get(requestId)?.url ??
+            this.#cdpRequests.get(requestId)?.url ??
+            '',
+          phase: 'receiving',
+          receivedBytes,
+        });
+      return;
+    }
+
+    if (method === 'Network.loadingFailed') {
+      this.lessonCollector?.observeCollectionRequest({
+        url:
+          this.#cdpResponses.get(requestId)?.url ??
+          this.#cdpRequests.get(requestId)?.url ??
+          '',
+        phase: 'network-error',
+        detail: params.errorText ?? '课件请求中断',
+      });
+      this.#cdpRequests.delete(requestId);
+      this.#cdpResponses.delete(requestId);
+      this.#receivedBytes.delete(requestId);
       return;
     }
 
@@ -208,6 +248,17 @@ export class ElectronNetworkObserver {
         headers: flattenUnknownHeaders(response.headers),
       };
       this.#cdpResponses.set(requestId, metadata);
+      this.lessonCollector?.observeCollectionRequest({
+        url: metadata.url,
+        phase:
+          metadata.status >= 200 && metadata.status < 300
+            ? 'receiving'
+            : 'network-error',
+        detail:
+          metadata.status >= 200 && metadata.status < 300
+            ? ''
+            : `HTTP ${metadata.status}`,
+      });
       if (
         this.lessonCollector &&
         metadata.status >= 200 &&
@@ -230,6 +281,7 @@ export class ElectronNetworkObserver {
       await this.captureResponseBody(requestId, params.encodedDataLength ?? 0);
       this.#cdpRequests.delete(requestId);
       this.#cdpResponses.delete(requestId);
+      this.#receivedBytes.delete(requestId);
       return;
     }
 
@@ -316,6 +368,7 @@ export class ElectronNetworkObserver {
   ): Promise<void> {
     const response = this.#cdpResponses.get(requestId);
     if (!response) return;
+    const successful = response.status >= 200 && response.status < 300;
     const profile = this.recorder.captureProfile;
     if (
       !isCapturableResponse(
@@ -325,6 +378,12 @@ export class ElectronNetworkObserver {
         profile.captureBinaryBodies,
       )
     ) {
+      if (successful)
+        this.lessonCollector?.observeCollectionRequest({
+          url: response.url,
+          phase: 'format-error',
+          detail: '课件响应超出捕获限制或不是可读取的文本',
+        });
       return;
     }
     const neededByLessonCollector =
@@ -339,7 +398,21 @@ export class ElectronNetworkObserver {
         'Network.getResponseBody',
         { requestId },
       )) as { body?: string; base64Encoded?: boolean };
-      if (result.body === undefined) return;
+      if (result.body === undefined) {
+        if (successful)
+          this.lessonCollector?.observeCollectionRequest({
+            url: response.url,
+            phase: 'format-error',
+            detail: '无法读取课件文本响应',
+          });
+        return;
+      }
+      if (successful && result.base64Encoded)
+        this.lessonCollector?.observeCollectionRequest({
+          url: response.url,
+          phase: 'format-error',
+          detail: '课件响应不是文本格式',
+        });
 
       const request = this.#cdpRequests.get(requestId);
       if (!result.base64Encoded) {
@@ -380,6 +453,12 @@ export class ElectronNetworkObserver {
         });
       }
     } catch (error: unknown) {
+      if (successful)
+        this.lessonCollector?.observeCollectionRequest({
+          url: response.url,
+          phase: 'network-error',
+          detail: '课件响应读取失败，请刷新课堂重试',
+        });
       if (!this.#deepCapture) return;
       const request = this.#cdpRequests.get(requestId);
       this.recorder.addHttp({

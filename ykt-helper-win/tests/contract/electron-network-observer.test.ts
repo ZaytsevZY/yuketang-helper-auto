@@ -7,6 +7,85 @@ import { ElectronNetworkObserver } from '../../apps/desktop/main/electron-networ
 import { DevelopmentNetworkRecorder } from '../../apps/desktop/main/development-network-recorder.js';
 
 describe('Electron classroom network observer', () => {
+  it('streams actual PPT transfer stages and failures without deep capture', async () => {
+    const collector = new BrowserLessonCollector();
+    const stages: string[] = [];
+    collector.onCollectionStatusChanged((status) => stages.push(status.phase));
+    collector.watchLesson('standard', 'lesson-1', 'deck-1', vi.fn());
+    const contents = new FakeContents();
+    const observer = new ElectronNetworkObserver(
+      contents as never,
+      new NetworkRecorder(),
+      vi.fn(),
+      collector,
+      false,
+    );
+    await observer.start();
+    const url =
+      'https://www.yuketang.cn/api/v3/lesson/presentation/fetch?presentation_id=deck-1';
+    const emit = (method: string, params: object = {}) =>
+      contents.debugger.emit('message', {}, `Network.${method}`, {
+        requestId: 'ppt',
+        ...params,
+      });
+    emit('requestWillBeSent', { request: { method: 'GET', url } });
+    expect(collector.getCollectionStatus('lesson-1')?.phase).toBe('requesting');
+    emit('responseReceived', {
+      type: 'XHR',
+      response: { url, status: 200, mimeType: 'application/json' },
+    });
+    emit('dataReceived', { dataLength: 2048 });
+    emit('dataReceived', { dataLength: 1024 });
+    expect(collector.getCollectionStatus('lesson-1')).toMatchObject({
+      phase: 'receiving',
+      receivedBytes: 3072,
+    });
+    contents.debugger.responseBody = JSON.stringify({
+      data: { slides: [{ id: 's1', problem: { id: 'p1', type: 1 } }] },
+    });
+    emit('loadingFinished', { encodedDataLength: 3072 });
+    await vi.waitFor(() =>
+      expect(collector.getCollectionStatus('lesson-1')).toMatchObject({
+        phase: 'ready',
+        slideCount: 1,
+        problemCount: 1,
+      }),
+    );
+    expect(stages).toContain('parsing');
+    emit('requestWillBeSent', { request: { method: 'GET', url } });
+    emit('loadingFailed', { errorText: 'net::ERR_TIMED_OUT' });
+    expect(collector.getCollectionStatus('lesson-1')).toMatchObject({
+      phase: 'network-error',
+      detail: 'net::ERR_TIMED_OUT',
+      receivedBytes: 0,
+    });
+    emit('requestWillBeSent', { request: { method: 'GET', url } });
+    emit('responseReceived', {
+      type: 'XHR',
+      response: { url, status: 503, mimeType: 'text/html' },
+    });
+    emit('dataReceived', { dataLength: 500 });
+    expect(collector.getCollectionStatus('lesson-1')).toMatchObject({
+      phase: 'network-error',
+      detail: 'HTTP 503',
+    });
+    emit('requestWillBeSent', { request: { method: 'GET', url } });
+    emit('responseReceived', {
+      type: 'XHR',
+      response: { url, status: 200, mimeType: 'application/json' },
+    });
+    vi.spyOn(contents.debugger, 'sendCommand').mockRejectedValueOnce(
+      new Error('Response body evicted'),
+    );
+    emit('loadingFinished', { encodedDataLength: 100 });
+    await vi.waitFor(() =>
+      expect(collector.getCollectionStatus('lesson-1')).toMatchObject({
+        phase: 'network-error',
+        detail: expect.stringContaining('响应读取失败'),
+      }),
+    );
+  });
+
   it('collects report names and extensionless slides without deep capture', async () => {
     const collector = new BrowserLessonCollector();
     const received = vi.fn();

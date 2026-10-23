@@ -34,6 +34,7 @@ async function mount(hasApiKey: boolean) {
   window.yuketang = {
     onNetworkEntryAdded: vi.fn(() => () => {}),
     onClassroomNotice: vi.fn(() => () => {}),
+    onLessonCollectionStatusChanged: vi.fn(() => () => {}),
     getSettings: vi.fn(async () => ({
       ...DefaultAppSettings,
       aiProfiles: [profile],
