@@ -156,6 +156,8 @@ const lessons = ref<readonly Lesson[]>([]);
 const selectedLessonId = ref('');
 const problems = ref<readonly ProblemContext[]>([]);
 const selectedProblemId = ref('');
+const answerDrafts = new Map<string, { draft: string; proposalId: string }>();
+let answerDraftContextKey = '';
 const presentations = ref<readonly Presentation[]>([]);
 const selectedPresentationId = ref('');
 const selectedSlideId = ref('');
@@ -277,12 +279,7 @@ const selectedSlide = computed(() =>
 const selectedAiImages = computed(() => {
   if (assignmentAiContext.value) return [];
   const problem = selectedProblem.value;
-  if (problem) {
-    const problemImage = presentations.value
-      .find((presentation) => presentation.id === problem.presentationId)
-      ?.slides.find((slide) => slide.id === problem.slideId)?.imageUrl;
-    return problemImage ? [problemImage] : [];
-  }
+  if (problem) return problemImageUrls(problem);
   const chosen = new Set(aiSlideSelection.value);
   const selected = presentations.value
     .flatMap((presentation) => presentation.slides)
@@ -472,9 +469,15 @@ watch(
   },
 );
 
-watch(selectedProblemId, (id) => {
+watch([() => props.environment, selectedLessonId, selectedProblemId], () => {
+  if (answerDraftContextKey) {
+    answerDrafts.set(answerDraftContextKey, {
+      draft: answerDraft.value,
+      proposalId: appliedProposalId.value,
+    });
+  }
   assignmentAiContext.value = null;
-  if (id) aiSlideContextId.value = '';
+  if (selectedProblemId.value) aiSlideContextId.value = '';
   resetAnswer();
 });
 watch(
@@ -769,16 +772,41 @@ async function submitAnswer(forceRetry = false): Promise<void> {
   });
 }
 
+function problemDraftKey(
+  problem: ProblemContext,
+  environment = props.environment,
+): string {
+  return JSON.stringify([environment, problem.lessonId, problem.id]);
+}
+
+function problemImageUrls(problem: ProblemContext): string[] {
+  const imageUrl = presentations.value
+    .find((presentation) => presentation.id === problem.presentationId)
+    ?.slides.find((slide) => slide.id === problem.slideId)?.imageUrl;
+  return imageUrl ? [imageUrl] : [];
+}
+
 function resetAnswer(): void {
-  const result = selectedProblem.value?.result;
-  answerDraft.value = !result
-    ? ''
-    : Array.isArray(result)
-      ? result.join('')
-      : (result as { content: string }).content;
+  const problem = selectedProblem.value;
+  answerDraftContextKey =
+    problem?.lessonId === selectedLessonId.value
+      ? problemDraftKey(problem)
+      : '';
+  const saved =
+    problem?.status === 'available'
+      ? answerDrafts.get(answerDraftContextKey)
+      : undefined;
+  const result = answerDraftContextKey ? problem?.result : undefined;
+  answerDraft.value = saved
+    ? saved.draft
+    : !result
+      ? ''
+      : Array.isArray(result)
+        ? result.join('')
+        : (result as { content: string }).content;
   aiProposal.value = latestSessionProposal(currentAiSession.value);
   aiChatDraft.value = '';
-  appliedProposalId.value = '';
+  appliedProposalId.value = saved?.proposalId ?? '';
   confirmed.value = false;
   submissionMessage.value = '';
 }
@@ -970,6 +998,7 @@ async function requestAiProposal(
   retry: boolean,
 ): Promise<void> {
   const environment = props.environment;
+  const managedSubmitAtStart = agentAutoSubmitEnabled.value;
   clearMessages();
   let session = aiChatSessions.get(contextId);
   if (!session) {
@@ -977,7 +1006,9 @@ async function requestAiProposal(
       id: crypto.randomUUID(),
       contextId,
       ...(problem ? { problemId: problem.id } : {}),
-      imageUrls: [...selectedAiImages.value],
+      imageUrls: problem
+        ? problemImageUrls(problem)
+        : [...selectedAiImages.value],
       captureCurrentPage: captureCurrentBrowserPage.value,
       messages: [],
       requestVersion: 0,
@@ -1027,7 +1058,7 @@ async function requestAiProposal(
     const includeInitialContext =
       Boolean(problem) || retry || session.messages.length === 2;
     const imageUrls = problem
-      ? [...selectedAiImages.value]
+      ? problemImageUrls(problem)
       : includeInitialContext
         ? [...session.imageUrls]
         : [];
@@ -1087,7 +1118,7 @@ async function requestAiProposal(
     selectedLessonId.value !== problem.lessonId
   )
     return;
-  if (agentAutoSubmitEnabled.value) {
+  if (managedSubmitAtStart && agentAutoSubmitEnabled.value) {
     try {
       await applyAutomaticProposal(problem, proposal);
     } catch (error) {
@@ -1101,9 +1132,37 @@ async function requestAiProposal(
     }
     return;
   }
+  const current = problems.value.find((item) => item.id === problem.id);
+  if (
+    selectedLessonId.value !== problem.lessonId ||
+    current?.status !== 'available' ||
+    (current.deadlineAt && current.deadlineAt <= Date.now())
+  )
+    return;
+  if (proposal.status === 'ready' && proposal.answer) {
+    const draftKey = problemDraftKey(problem, environment);
+    const isCurrentProblem = selectedProblemId.value === problem.id;
+    const existingDraft = isCurrentProblem
+      ? answerDraft.value
+      : answerDrafts.get(draftKey)?.draft;
+    if (existingDraft?.trim() || (isCurrentProblem && confirmed.value)) {
+      infoMessage.value =
+        '已保留现有答案及确认状态。LLM 建议可在 AI 页查看并手动采用。';
+      return;
+    }
+    const draft = answerValueToDraft(proposal.answer, problem.type);
+    answerDrafts.set(draftKey, { draft, proposalId: proposal.id });
+    if (selectedProblemId.value === problem.id) {
+      answerDraft.value = draft;
+      appliedProposalId.value = proposal.id;
+      confirmed.value = false;
+      submissionMessage.value = '';
+      emit('selectPage', 'problems');
+    }
+  }
   infoMessage.value =
     proposal.status === 'ready'
-      ? 'LLM 已生成答案，等待手动核对。'
+      ? 'LLM 已填入答案，尚未提交，等待手动核对并确认提交。'
       : proposal.failureReason || 'LLM 未生成可用答案。';
   await emitLocalNotice(
     proposal.status === 'ready'
@@ -1682,8 +1741,7 @@ async function onAvailableProblem(problem: ProblemContext): Promise<void> {
     'LLM 答案生成已排队',
     `${Math.ceil(delay / 1000)} 秒后开始分析。`,
   );
-  const timer = setTimeout(() => {
-    scheduledProblems.delete(problem.id);
+  const startAnalysis = async (): Promise<void> => {
     const current = problems.value.find((item) => item.id === problem.id);
     if (
       props.environment !== environment ||
@@ -1691,14 +1749,39 @@ async function onAvailableProblem(problem: ProblemContext): Promise<void> {
       !settings.value?.llmAutoGenerate ||
       current?.status !== 'available' ||
       (current.deadlineAt && current.deadlineAt <= Date.now())
-    )
+    ) {
+      scheduledProblems.delete(problem.id);
       return;
+    }
+    if (
+      busy.value ||
+      (aiRequestPending.value && !currentAiSession.value?.lastAuto)
+    ) {
+      scheduledProblems.set(
+        problem.id,
+        setTimeout(() => void startAnalysis(), 500),
+      );
+      return;
+    }
+    scheduledProblems.delete(problem.id);
     selectedProblemId.value = current.id;
     aiSlideSelection.value = [];
-    void nextTick(() => analyzeProblem(true)).catch((error) => {
+    try {
+      await nextTick();
+      // Bind each request to its queued problem, even when another timer or
+      // user selection changes the active problem before this tick completes.
+      await requestAiProposal(
+        current,
+        current.id,
+        '分析这道题并给出答案建议。',
+        true,
+        false,
+      );
+    } catch (error) {
       errorMessage.value = errorText(error);
-    });
-  }, delay);
+    }
+  };
+  const timer = setTimeout(() => void startAnalysis(), delay);
   scheduledProblems.set(problem.id, timer);
 }
 
@@ -3032,8 +3115,8 @@ function clamp(value: number, min: number, max: number): number {
                 <span>
                   <strong>LLM 托管提交答案</strong>
                   <small
-                    >生成成功后由 Agent 校验并提交；关闭时仅保留 AI
-                    回答。</small
+                    >生成成功后由 Agent
+                    校验并提交；关闭时自动填入答案草稿，等待手动核对提交。</small
                   >
                 </span>
                 <input
