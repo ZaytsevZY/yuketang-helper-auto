@@ -34,6 +34,7 @@ import type {
 } from './assistant.js';
 import type {
   ClassroomNotice,
+  NoticeDeliveryReport,
   ClassroomSimulationAction,
   ClassroomSimulationState,
 } from './events.js';
@@ -93,6 +94,7 @@ export const IpcChannel = {
   SetWebAreaBounds: 'browser:set-web-area-bounds',
   BrowserStateChanged: 'browser:state-changed',
   ClassroomNotice: 'classroom:notice',
+  ReportNoticeDelivery: 'classroom:report-notice-delivery',
   GetWebProbeReport: 'network:web-probe-report',
   ScanWebPage: 'network:scan-web-page',
   AnalyzeWebAsset: 'network:analyze-web-asset',
@@ -193,6 +195,7 @@ export interface DesktopApi {
   setWebAreaBounds(bounds: WebAreaBounds): Promise<void>;
   onBrowserStateChanged(listener: (state: BrowserState) => void): () => void;
   onClassroomNotice(listener: (notice: ClassroomNotice) => void): () => void;
+  reportNoticeDelivery(report: NoticeDeliveryReport): Promise<void>;
   getWebProbeReport(): Promise<WebProbeReport | null>;
   scanWebPage(): Promise<WebProbeReport>;
   analyzeWebAsset(url: string): Promise<WebProbeReport>;

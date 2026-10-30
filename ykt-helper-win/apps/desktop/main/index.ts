@@ -30,6 +30,8 @@ import {
   type RecognizeSlideInput,
   type TranslateTextInput,
   type UpdateAiProfileSelectionInput,
+  type NewAppLogEntry,
+  type NoticeDeliveryReport,
 } from '@ykt/contracts';
 import { BrowserLessonCollector, YuketangActiveClient } from '@ykt/routing';
 import {
@@ -71,6 +73,14 @@ let serviceCleanupPromise: Promise<void> | undefined;
 let quitAfterCleanup = false;
 let keepScreenAwake = false;
 let wakeLockId: number | null = null;
+const activeNotifications = new Set<Notification>();
+
+function recordNotificationLog(entry: Omit<NewAppLogEntry, 'scope'>): void {
+  // Never let diagnostic storage interrupt a classroom event or OS request.
+  void runtime?.dataStore
+    .appendLog({ ...entry, scope: 'notification' })
+    .catch(() => {});
+}
 
 if (electronSquirrelStartup) {
   app.quit();
@@ -666,12 +676,79 @@ function registerIpc(): void {
       if (typeof title !== 'string' || typeof body !== 'string') {
         throw new Error('Invalid notification.');
       }
-      if (Notification.isSupported()) {
-        new Notification({
-          title: title.slice(0, 80),
-          body: body.slice(0, 500),
-        }).show();
+      if (!Notification.isSupported()) {
+        recordNotificationLog({
+          level: 'warn',
+          message: '当前系统不支持系统通知。',
+        });
+        throw new Error('当前系统不支持系统通知');
       }
+      const notification = new Notification({
+        title: title.slice(0, 80),
+        body: body.slice(0, 500),
+      });
+      activeNotifications.add(notification);
+      notification.once('show', () =>
+        recordNotificationLog({
+          level: 'info',
+          message: '系统通知触发 show 事件。',
+        }),
+      );
+      notification.once('failed', (_event, error) => {
+        activeNotifications.delete(notification);
+        recordNotificationLog({
+          level: 'error',
+          message: '系统通知发送失败。',
+          details: { error },
+        });
+      });
+      notification.once('close', () =>
+        activeNotifications.delete(notification),
+      );
+      try {
+        notification.show();
+        recordNotificationLog({ level: 'info', message: '已请求系统通知。' });
+      } catch (error) {
+        activeNotifications.delete(notification);
+        recordNotificationLog({
+          level: 'error',
+          message: '系统通知调用失败。',
+          details: { error: String(error) },
+        });
+        throw error;
+      }
+    },
+  );
+  ipcMain.handle(
+    IpcChannel.ReportNoticeDelivery,
+    async (event, input: unknown) => {
+      assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+      if (typeof input !== 'object' || input === null)
+        throw new Error('Invalid notification report.');
+      const report = input as NoticeDeliveryReport;
+      if (
+        !['popup', 'sound', 'native'].includes(report.channel) ||
+        !['requested', 'succeeded', 'failed'].includes(report.outcome) ||
+        [report.kind, report.lessonId, report.dedupeKey].some(
+          (value) => typeof value !== 'string' || value.length > 250,
+        ) ||
+        (report.error !== undefined &&
+          (typeof report.error !== 'string' || report.error.length > 500))
+      )
+        throw new Error('Invalid notification report.');
+      await getRuntime().dataStore.appendLog({
+        scope: 'notification',
+        level: report.outcome === 'failed' ? 'warn' : 'info',
+        message: '课堂提醒渠道状态。',
+        details: {
+          lessonId: report.lessonId,
+          kind: report.kind,
+          dedupeKey: report.dedupeKey,
+          channel: report.channel,
+          outcome: report.outcome,
+          ...(report.error ? { error: report.error } : {}),
+        },
+      });
     },
   );
   ipcMain.handle(IpcChannel.OpenSourceModule, async (event, id: unknown) => {
@@ -903,6 +980,8 @@ async function createWindow(): Promise<void> {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      // Notification audio belongs to the trusted shell, not the embedded site.
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
   mainWindow = window;
@@ -1032,6 +1111,15 @@ async function createWindow(): Promise<void> {
     onClassroomNotice: (notice) => {
       if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
         window.webContents.send(IpcChannel.ClassroomNotice, notice);
+        recordNotificationLog({
+          level: 'info',
+          message: '课堂提醒已转发到界面。',
+          details: {
+            kind: notice.kind,
+            lessonId: notice.lessonId,
+            dedupeKey: notice.dedupeKey,
+          },
+        });
       }
     },
   });

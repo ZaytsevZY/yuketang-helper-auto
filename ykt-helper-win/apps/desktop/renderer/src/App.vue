@@ -139,6 +139,12 @@ async function toggleAssistant(): Promise<void> {
   }
 }
 
+async function revealNotice(): Promise<void> {
+  if (!assistantCollapsed.value) return;
+  assistantCollapsed.value = false;
+  await runControl(() => window.yuketang.setAssistantPanelCollapsed(false));
+}
+
 function selectPage(page: WorkspacePage): void {
   activePage.value = page;
   if (assistantCollapsed.value) void toggleAssistant();
@@ -369,6 +375,7 @@ async function navigateAddress(): Promise<void> {
       @toggle="toggleAssistant"
       @select-page="selectPage"
       @profile-availability="profileAvailable = $event"
+      @reveal-notice="revealNotice"
     />
     <NetworkLab />
   </div>

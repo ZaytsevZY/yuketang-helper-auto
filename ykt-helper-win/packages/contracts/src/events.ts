@@ -61,6 +61,16 @@ export interface ClassroomNotice {
   readonly occurredAt: number;
 }
 
+/** A successful native request does not guarantee the OS displayed a banner. */
+export interface NoticeDeliveryReport {
+  readonly lessonId: string;
+  readonly kind: ClassroomNoticeKind;
+  readonly dedupeKey: string;
+  readonly channel: 'popup' | 'sound' | 'native';
+  readonly outcome: 'requested' | 'succeeded' | 'failed';
+  readonly error?: string;
+}
+
 export type ClassroomSimulationAction =
   | 'reset'
   | 'show-slide'

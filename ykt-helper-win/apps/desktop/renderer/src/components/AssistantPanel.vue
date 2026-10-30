@@ -21,6 +21,7 @@ import {
   type Lesson,
   type LessonCollectionStatus,
   type NetworkEntry,
+  type NoticeDeliveryReport,
   type Presentation,
   type ProblemContext,
   type RuntimeStatus,
@@ -150,6 +151,7 @@ const emit = defineEmits<{
   toggle: [];
   selectPage: [page: WorkspacePage];
   profileAvailability: [available: boolean];
+  revealNotice: [];
 }>();
 
 const user = ref<UserProfile | null>(null);
@@ -1620,7 +1622,9 @@ async function handleNotifyAudioFile(event: Event): Promise<void> {
   }
   draft.customNotifyAudioSrc = await readFileAsDataUrl(file);
   draft.customNotifyAudioName = file.name;
-  playNotifySound();
+  await playNotifySound().catch(() => {
+    errorMessage.value = '提示音播放失败，请检查音频设置。';
+  });
 }
 
 function clearNotifyAudio(): void {
@@ -1669,17 +1673,76 @@ async function emitLocalNotice(
 async function deliverNotice(notice: ClassroomNotice): Promise<void> {
   const currentSettings = settings.value;
   if (!currentSettings) return;
-  if (currentSettings.notifySound) playNotifySound();
-  if (currentSettings.notifyNative) {
-    await window.yuketang.showNotification(notice.title, notice.detail);
-  }
+  // WebContentsView is above the shell renderer. Keep popups inside the
+  // assistant panel and reveal that area before trying optional channels.
   if (currentSettings.notifyPopup) {
     const toast: NoticeToast = { ...notice, id: nextNoticeToastId++ };
     noticeToasts.value = [...noticeToasts.value, toast].slice(-3);
+    if (props.collapsed) emit('revealNotice');
+    reportNoticeDelivery(notice, 'popup', 'succeeded');
     setTimeout(
       () => removeNoticeToast(toast.id),
       currentSettings.notifyPopupDuration,
     );
+  }
+  const deliveries: Promise<void>[] = [];
+  const deliverChannel = async (
+    channel: 'sound' | 'native',
+    deliver: () => Promise<void>,
+  ) => {
+    reportNoticeDelivery(notice, channel, 'requested');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const operation = deliver();
+      await Promise.race([
+        operation,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error('提醒渠道响应超时')), 3000);
+        }),
+      ]);
+      reportNoticeDelivery(notice, channel, 'succeeded');
+    } catch (error) {
+      reportNoticeDelivery(notice, channel, 'failed', error);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+  if (currentSettings.notifySound)
+    deliveries.push(deliverChannel('sound', playNotifySound));
+  if (currentSettings.notifyNative)
+    deliveries.push(
+      deliverChannel('native', () =>
+        window.yuketang.showNotification(notice.title, notice.detail),
+      ),
+    );
+  await Promise.all(deliveries);
+}
+
+function reportNoticeDelivery(
+  notice: ClassroomNotice,
+  channel: NoticeDeliveryReport['channel'],
+  outcome: NoticeDeliveryReport['outcome'],
+  error?: unknown,
+): void {
+  try {
+    void window.yuketang
+      .reportNoticeDelivery({
+        lessonId: notice.lessonId,
+        kind: notice.kind,
+        dedupeKey: notice.dedupeKey,
+        channel,
+        outcome,
+        ...(error === undefined
+          ? {}
+          : {
+              error: String(
+                error instanceof Error ? error.message : error,
+              ).slice(0, 500),
+            }),
+      })
+      .catch(() => {});
+  } catch {
+    // Diagnostic storage must not interrupt another notification channel.
   }
 }
 
@@ -1703,19 +1766,31 @@ function noticeEnabled(kind: ClassroomNoticeKind): boolean {
   }[kind];
 }
 
-function playNotifySound(): void {
+async function playNotifySound(): Promise<void> {
   const draft = settingsDraft.value;
   const volume = clamp(draft?.notifyVolumePercent ?? 60, 0, 100) / 100;
   const src = draft?.customNotifyAudioSrc.trim();
   if (src) {
     const audio = new Audio(src);
     audio.volume = volume;
-    void audio.play().catch(() => playNotifyTone(volume));
-  } else playNotifyTone(volume);
+    try {
+      await audio.play();
+    } catch {
+      await playNotifyTone(volume);
+    }
+  } else await playNotifyTone(volume);
 }
 
-function playNotifyTone(volume: number): void {
+async function playNotifyTone(volume: number): Promise<void> {
   const context = new AudioContext();
+  if (context.state === 'suspended') {
+    try {
+      await context.resume();
+    } catch (error) {
+      await context.close().catch(() => {});
+      throw error;
+    }
+  }
   const gain = context.createGain();
   gain.gain.value = volume;
   gain.connect(context.destination);
@@ -1740,7 +1815,7 @@ function playNotifyTone(volume: number): void {
     oscillator.start(context.currentTime + offset);
     oscillator.stop(context.currentTime + offset + 0.16);
   }
-  setTimeout(() => void context.close(), 500);
+  setTimeout(() => void context.close().catch(() => {}), 500);
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -5180,9 +5255,9 @@ button:focus-visible {
   position: fixed;
   z-index: 8;
   top: auto;
-  bottom: calc(var(--network-lab-height) + 12px);
-  right: calc(var(--assistant-width) + 12px);
-  width: min(340px, calc(100vw - var(--assistant-width) - 24px));
+  bottom: 12px;
+  right: 12px;
+  width: min(340px, calc(var(--assistant-width) - 24px));
   display: grid;
   gap: 6px;
   pointer-events: none;
@@ -5324,14 +5399,6 @@ button:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-@media (max-width: 680px) {
-  .notice-stack {
-    right: 12px;
-    bottom: 12px;
-    width: calc(100vw - 24px);
-  }
 }
 
 @media (max-width: 420px) {

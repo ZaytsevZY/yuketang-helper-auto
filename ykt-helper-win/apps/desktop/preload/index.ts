@@ -13,6 +13,7 @@ import {
   type BrowserEnvironment,
   type BrowserState,
   type ClassroomNotice,
+  type NoticeDeliveryReport,
   type ClassroomSimulationAction,
   type ClassroomSimulationState,
   type ConnectAiProfileInput,
@@ -268,6 +269,11 @@ const api: DesktopApi = Object.freeze({
     return () =>
       ipcRenderer.removeListener(IpcChannel.ClassroomNotice, handler);
   },
+  reportNoticeDelivery: (report: NoticeDeliveryReport) =>
+    ipcRenderer.invoke(
+      IpcChannel.ReportNoticeDelivery,
+      report,
+    ) as Promise<void>,
   getWebProbeReport: () =>
     ipcRenderer.invoke(
       IpcChannel.GetWebProbeReport,
