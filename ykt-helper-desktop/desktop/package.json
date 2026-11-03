@@ -1,0 +1,26 @@
+{
+  "name": "yuketang-helper-desktop-package",
+  "productName": "雨课堂助手",
+  "version": "2.0.0",
+  "private": true,
+  "description": "雨课堂助手 macOS / Windows 桌面端",
+  "author": "Yuketang Helper contributors",
+  "main": "main/index.cjs",
+  "scripts": {
+    "package": "npm run package:win --",
+    "package:win": "cross-env YKT_PACKAGE_PLATFORM=win32 YKT_PORTABLE=0 electron-forge package --platform win32 --arch x64",
+    "make:installer": "cross-env YKT_PACKAGE_PLATFORM=win32 YKT_PORTABLE=0 electron-forge make --platform win32 --arch x64",
+    "make:portable": "cross-env YKT_PACKAGE_PLATFORM=win32 YKT_PORTABLE=1 electron-forge make --platform win32 --arch x64",
+    "package:mac": "cross-env YKT_PACKAGE_PLATFORM=darwin YKT_MAC_RELEASE=0 electron-forge package --platform darwin",
+    "make:mac": "cross-env YKT_PACKAGE_PLATFORM=darwin YKT_MAC_RELEASE=0 electron-forge make --platform darwin",
+    "make:mac:release": "cross-env YKT_PACKAGE_PLATFORM=darwin YKT_MAC_RELEASE=1 electron-forge make --platform darwin"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/maker-dmg": "^7.11.2",
+    "@electron-forge/maker-squirrel": "^7.11.2",
+    "@electron-forge/maker-zip": "^7.11.2",
+    "cross-env": "^10.1.0",
+    "electron": "^44.0.0"
+  }
+}
