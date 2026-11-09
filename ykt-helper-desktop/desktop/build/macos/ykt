@@ -1,0 +1,4 @@
+#!/bin/sh
+# Run the bundled CLI without launching another desktop window.
+YKT_RESOURCE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec env ELECTRON_RUN_AS_NODE=1 "$YKT_RESOURCE_DIR/../MacOS/YuketangHelper" "$YKT_RESOURCE_DIR/ykt-cli.cjs" "$@"

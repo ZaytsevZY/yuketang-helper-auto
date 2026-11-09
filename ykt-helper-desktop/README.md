@@ -6,7 +6,7 @@
 
 后续开发设计见[笔记模式实现计划](docs/notes-mode-coding-plan.md)，采用与课程网页并列的本地笔记标签，包含产品参考、标签与编辑交互、标注与逐页笔记、本地恢复、课堂跟随及 PPTX 导出的实施阶段和验收标准。该功能当前处于计划阶段。
 
-使用 Node.js 24.x、npm 11.x，在 `ykt-helper-win` 目录执行：
+使用 Node.js 24.x、npm 11.x，在 `ykt-helper-desktop` 目录执行：
 
 ```powershell
 npm ci --include=dev --include=optional
@@ -26,11 +26,11 @@ Electron 已声明为项目本地开发依赖，不需要全局安装。首次�
 
 ## 启动故障排查
 
-- 提示找不到 `electron`：先在 `ykt-helper-win` 执行上述依赖安装命令，确认成功后再构建、启动。不要用全局 Electron 代替项目依赖。
+- 提示找不到 `electron`：先在 `ykt-helper-desktop` 执行上述依赖安装命令，确认成功后再构建、启动。不要用全局 Electron 代替项目依赖。
 - 提示找不到 `dist/main/index.cjs`：先执行 `npm run build`，构建成功后再启动。
 - 提示 `Cannot find native binding` 或 `Electron failed to install correctly`：先确认错误路径是否位于全局 `npm/node_modules/electron`。若是，请完成项目本地安装后重试；本项目的锁文件不控制全局安装的版本。
 
-若本地 Electron 仍安装失败，可在 `ykt-helper-win` 执行以下命令查看完整的原生模块加载错误和安装输出：
+若本地 Electron 仍安装失败，可在 `ykt-helper-desktop` 执行以下命令查看完整的原生模块加载错误和安装输出：
 
 ```sh
 node -e "try { require('@electron-internal/extract-zip') } catch (error) { console.dir(error, { depth: null }); process.exitCode = 1 }"
@@ -245,6 +245,43 @@ M8 将模型调用收敛到统一 `AiProviderPlugin` 接口，默认提供 OpenA
 
 提交经服务端确认后立即标记当前题为已作答。题目与课件分别同步，较早轮询的迟到响应不能覆盖提交后的状态；单次同步失败仍保留已提交结果并允许继续处理下一题。同一道题的托管提交会合并正在进行的请求，模型返回时若该题已作答或已切换课堂则跳过提交。AI 审计记录或日志保存失败不会改变服务端已确认的提交结果，审计失败会尽可能写入警告日志；真实提交失败仍按失败处理，不自动重发。
 
+## macOS 发行包
+
+在 macOS 上安装依赖后运行（需要 Xcode Command Line Tools）：
+
+```sh
+npm run make:mac
+# 也可分别构建 Apple Silicon / Intel 版本：
+npm run make:mac -- --arch arm64
+npm run make:mac -- --arch x64
+```
+
+默认构建当前机器架构，不生成 universal 包。`.app` 位于 `desktop/out/macos/local/雨课堂助手-darwin-<arch>/`，DMG 和 ZIP 位于该输出根目录的 `make/` 下。将 DMG 内的“雨课堂助手”拖入“应用程序”后运行。macOS 使用固定 Bundle ID `cn.yuketang.helper.desktop`，不会运行 Windows 的 locale 清理、`ykt.cmd` 或 Portable 标记逻辑。
+
+DMG 生成依赖 `macos-alias` 和 `fs-xattr` 的原生模块，安装依赖时应允许安装脚本执行。若曾使用 `--ignore-scripts`，出现缺少 `volume.node` 或 `xattr` 的错误，可在 macOS 上执行 `npm rebuild macos-alias fs-xattr` 后重试。
+
+`make:mac` 使用完整应用包的 ad-hoc 签名，适合本机开发验证；它没有 Apple 公证，不能作为正式发行包，也不能据此保证系统通知已获得授权。开发态 `npm start` 仍运行 Electron 开发壳，不会变成已签名的正式应用。通知应使用安装后的应用实际测试，并检查系统授权及应用日志。
+
+正式发行前，将 **Developer ID Application** 证书和私钥安装到构建机钥匙串，并通过 `xcrun notarytool store-credentials` 保存公证凭据。构建时只传证书名称和凭据配置名称，不把密码或私钥放进仓库：
+
+```sh
+export YKT_MAC_SIGN_IDENTITY='Developer ID Application: Your Name (TEAMID)'
+export YKT_MAC_NOTARY_PROFILE='ykt-helper-notary'
+npm run make:mac:release -- --arch arm64
+# Intel 发行包另行构建：
+npm run make:mac:release -- --arch x64
+```
+
+正式产物输出到 `desktop/out/macos/release/`，与本地测试包、Windows 包分离。正式流程启用 Electron 默认的分进程权限配置及 Hardened Runtime，签名、公证任一步失败都会终止构建，不会降级成未签名发行物。签名完成后不修改应用包内容。签名及公证使用 [Electron Forge 官方流程](https://www.electronforge.io/guides/code-signing/code-signing-macos)。
+
+运行桌面端后，可调用包内 CLI（无需另外安装 Node.js）：
+
+```sh
+"/Applications/雨课堂助手.app/Contents/Resources/ykt" status
+```
+
+macOS 包不提供 Portable 模式。打包只读取构建产物，不删除或迁移现有用户数据；开发壳与发行包可能使用不同的默认用户目录和钥匙串身份，首次使用发行包时应重新登录并配置模型，保留原开发环境数据。
+
 ## Windows 发行包
 
 `desktop/` 是 Electron Forge 的完整应用目录。根目录脚本会先构建桌面端与单文件 CLI，再把运行文件同步到该目录并生成发行物：
@@ -254,7 +291,7 @@ npm run make:win
 npm run make:portable
 ```
 
-安装版使用 Squirrel.Windows，Portable 使用 ZIP。运行桌面端后，可通过应用根目录中的 `ykt.cmd` 执行 `status` 等 desktop-attached CLI 命令。Portable 会把 Cookie、缓存和应用数据写到可执行文件旁的 `ykt-helper-data`。
+安装版使用 Squirrel.Windows，输出到 `desktop/out/windows/installer/`；Portable 使用 ZIP，输出到 `desktop/out/windows/portable/`。建议在 Windows 上生成 Windows 发行包。运行桌面端后，可通过应用根目录中的 `ykt.cmd` 执行 `status` 等 desktop-attached CLI 命令。Portable 会把 Cookie、缓存和应用数据写到可执行文件旁的 `ykt-helper-data`。
 
 若当前网络无法访问 GitHub 的 Electron 分发地址，可在构建终端临时指定镜像后重试：
 
