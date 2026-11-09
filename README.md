@@ -47,7 +47,7 @@
 
 ```sh
 git clone https://github.com/ZaytsevZY/yuketang-helper-auto.git
-cd yuketang-helper-auto/ykt-helper-win
+cd yuketang-helper-auto/ykt-helper-desktop
 npm ci --include=dev --include=optional
 npm run build
 npm start
@@ -58,7 +58,7 @@ npm start
 |文件夹|适用平台|状态|
 |---|---|---|
 |`ykt-helper`|Edge/Chrome 浏览器|`1.21.5` 正在更新|
-|`ykt-helper-win`|Windows/macOS 独立客户端|`2.0.0-preview`正在更新|
+|`ykt-helper-desktop`|Windows/macOS 独立客户端（不包含编译后的软件）|`2.0.0-preview`正在更新|
 |`ykt-helper-android`|Android 移动端|正在开发|
 
 
