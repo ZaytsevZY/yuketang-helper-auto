@@ -344,9 +344,13 @@ class ClassroomSession(
     private fun isOpen(p: Problem) = p.unlockedAt != null && !p.answered && (p.deadlineAt?.let { it > System.currentTimeMillis() } != false)
 
     fun saveSettings(value: UserSettings) {
+        val previous = settings.settings()
+        if (value == previous) return
         settings.saveSettings(value)
         if (!value.notifyNewProblems) problemNotifications.clear()
-        report(if (value.autoSubmit) "自动回答已开启：新题目将自动分析并提交" else "自动提交已关闭")
+        report(if (value.autoSubmit != previous.autoSubmit) {
+            if (value.autoSubmit) "自动回答已开启：新题目将自动分析并提交" else "自动提交已关闭"
+        } else "设置已自动保存")
     }
 
     fun ask(question: String, withSlide: Boolean) {

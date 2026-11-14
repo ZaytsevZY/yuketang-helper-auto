@@ -19,6 +19,18 @@ class MobileWorkflowTest {
         override fun saveBearerToken(environment: Environment, token: String?) = Unit
     }
 
+    @Test fun checkinIncludesRequiredSourceAndPreservesLargeLessonId() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""{"code":0,"data":{"lessonToken":"mock-token"}}"""))
+            val client = YuketangClient(credentials, origin = { server.url("/").toString().trimEnd('/') })
+            client.checkin(Environment.STANDARD, Lesson("1818856943482358400", "test", "active", "c1", null))
+            val request = server.takeRequest()
+            val body = JSONObject(request.body.readUtf8())
+            assertEquals(5, body.getInt("source"))
+            assertEquals("1818856943482358400", body.getString("lessonId"))
+            assertEquals("c1", body.getString("classroomId"))
+        }
+    }
     @Test fun rejectsOutOfRangeAmbiguousAndUnknownAnswers() {
         assertNull(AnswerParser.normalized(problem(), "Z"))
         assertNull(AnswerParser.normalized(problem(), "I think B"))

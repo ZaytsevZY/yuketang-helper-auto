@@ -29,6 +29,7 @@ import com.google.android.material.textfield.TextInputLayout
 import com.zaytsev.yuketanghelper.model.AiProfile
 import com.zaytsev.yuketanghelper.model.AiProviderPresets
 import com.zaytsev.yuketanghelper.model.Problem
+import com.zaytsev.yuketanghelper.model.UserSettings
 import com.zaytsev.yuketanghelper.storage.SettingsStore
 
 class AssistantController(
@@ -64,11 +65,16 @@ class AssistantController(
     }
 
     private var modelProviderId: String? = null
+    private var syncingSettings = false
 
     fun refresh() {
         container.findViewWithTag<TextView>("modelConnectionStatus")?.let(::renderModelStatus)
         // Do not destroy a focused editor when another question or socket event arrives.
         if (container.findFocus() is EditText) return
+        if (page == Page.SETTINGS && container.findViewWithTag<View>("notifyNewProblems") != null) {
+            refreshSettingsPage()
+            return
+        }
         show()
     }
 
@@ -351,6 +357,7 @@ class AssistantController(
     private fun settingsPage(): View = page("设置") {
         secondaryButton("关于") { show(Page.ABOUT) }
         secondaryButton("后台运行设置") { show(Page.BACKGROUND) }
+        hint("设置调整后自动保存并立即生效。")
         label("雨课堂服务器", bold = true)
         val environments = com.zaytsev.yuketanghelper.model.Environment.entries
         addView(Spinner(context, Spinner.MODE_DROPDOWN).apply {
@@ -367,24 +374,50 @@ class AssistantController(
         }, matchWrap())
         hint("切换服务器会退出当前课堂，请在登录网页中登录所选服务器。")
         val value = settingsStore.settings()
-        val notifications = checkbox("新题目弹窗提醒", value.notifyNewProblems).apply { tag = "notifyNewProblems" }
+        settingSwitch("新题目弹窗提醒", "notifyNewProblems", value.notifyNewProblems) { old, checked -> old.copy(notifyNewProblems = checked) }
         hint("默认开启。连接课堂期间收到新题目时，通知显示课堂名称和时限；点击通知可查看题目。")
-        val bannerAllowed = com.zaytsev.yuketanghelper.session.ProblemNotifications(context).bannersAllowed()
-        hint(if (bannerAllowed) "系统已允许题目提醒；横幅仍受勿扰模式等系统设置影响。" else "系统通知或横幅未开启，请在系统通知设置中允许通知及横幅／悬浮提醒。")
+        hint(notificationPermissionHint()).tag = "notificationPermissionHint"
         secondaryButton("系统通知设置") { actions.openNotificationSettings() }
-        val autoAnalyze = checkbox("新题目自动生成 AI 答案", value.autoAnalyze)
-        val autoSubmit = checkbox("自动提交 AI 答案", value.autoSubmit)
-        val autoExpand = checkbox("收到新题目时显示题目页", value.autoExpandOnProblem)
-        val includeSlide = checkbox("AI 答题附带题目所在课件图片", value.includeCurrentSlide)
-        val keepScreen = checkbox("上课期间保持屏幕常亮", value.keepScreenOn)
+        settingSwitch("新题目自动生成 AI 答案", "autoAnalyze", value.autoAnalyze) { old, checked -> old.copy(autoAnalyze = checked) }
+        settingSwitch("自动提交 AI 答案", "autoSubmit", value.autoSubmit) { old, checked -> old.copy(autoSubmit = checked) }
+        settingSwitch("收到新题目时显示题目页", "autoExpandOnProblem", value.autoExpandOnProblem) { old, checked -> old.copy(autoExpandOnProblem = checked) }
+        settingSwitch("AI 答题附带题目所在课件图片", "includeCurrentSlide", value.includeCurrentSlide) { old, checked -> old.copy(includeCurrentSlide = checked) }
+        settingSwitch("上课期间保持屏幕常亮", "keepScreenOn", value.keepScreenOn) { old, checked -> old.copy(keepScreenOn = checked) }
         hint("自动提交仅作用于当前连接课堂中新解锁的题目。关闭后尚未发送的提交会停止，已发出的请求无法撤回。")
         hint("后台上课会显示常驻通知；退出课堂即可停止。系统省电策略或强行结束应用可能中断连接。")
-        primaryButton("保存设置") {
-            actions.saveSettings(com.zaytsev.yuketanghelper.model.UserSettings(
-                autoAnalyze = autoAnalyze.isChecked, autoExpandOnProblem = autoExpand.isChecked,
-                includeCurrentSlide = includeSlide.isChecked, autoSubmit = autoSubmit.isChecked,
-                keepScreenOn = keepScreen.isChecked, notifyNewProblems = notifications.isChecked))
+    }
+
+    private fun notificationPermissionHint(): String =
+        if (com.zaytsev.yuketanghelper.session.ProblemNotifications(context).bannersAllowed())
+            "系统已允许题目提醒；横幅仍受勿扰模式等系统设置影响。"
+        else "系统通知或横幅未开启，请在系统通知设置中允许通知及横幅／悬浮提醒。"
+
+    private fun LinearLayout.settingSwitch(text: String, key: String, checked: Boolean,
+        update: (UserSettings, Boolean) -> UserSettings) {
+        checkbox(text, checked).apply {
+            tag = key
+            // Attach after initial state; loading the page must never write settings.
+            setOnCheckedChangeListener { _, selected ->
+                if (!syncingSettings) actions.saveSettings(update(settingsStore.settings(), selected))
+            }
         }
+    }
+
+    private fun refreshSettingsPage() {
+        val value = settingsStore.settings()
+        // Keep views and scroll position, including when a service action changes a setting.
+        syncingSettings = true
+        try {
+            mapOf("notifyNewProblems" to value.notifyNewProblems, "autoAnalyze" to value.autoAnalyze,
+                "autoSubmit" to value.autoSubmit, "autoExpandOnProblem" to value.autoExpandOnProblem,
+                "includeCurrentSlide" to value.includeCurrentSlide, "keepScreenOn" to value.keepScreenOn).forEach { (tag, checked) ->
+                container.findViewWithTag<MaterialSwitch>(tag)?.let { if (it.isChecked != checked) it.isChecked = checked }
+            }
+            container.findViewWithTag<Spinner>("classroomEnvironment")?.let {
+                if (it.selectedItemPosition != state.environment.ordinal) it.setSelection(state.environment.ordinal)
+            }
+            container.findViewWithTag<TextView>("notificationPermissionHint")?.text = notificationPermissionHint()
+        } finally { syncingSettings = false }
     }
 
     private fun LinearLayout.problemCard(problem: Problem) {

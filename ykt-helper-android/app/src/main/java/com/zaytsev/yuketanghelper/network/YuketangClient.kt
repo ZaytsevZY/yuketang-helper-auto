@@ -27,7 +27,7 @@ class YuketangClient(
         request(environment, "/api/v3/classroom/on-lesson"))
 
     suspend fun checkin(environment: Environment, lesson: Lesson) {
-        val body = JSONObject().put("lessonId", lesson.id).apply { lesson.classroomId?.let { put("classroomId", it) } }
+        val body = JSONObject().put("source", 5).put("lessonId", lesson.id).apply { lesson.classroomId?.let { put("classroomId", it) } }
         lessonTokens[lesson.id] = YuketangParser.lessonToken(request(environment, "/api/v3/lesson/checkin", body = body))
     }
 

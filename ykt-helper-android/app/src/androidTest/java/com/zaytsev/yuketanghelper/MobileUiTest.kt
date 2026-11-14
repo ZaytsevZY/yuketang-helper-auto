@@ -230,6 +230,64 @@ class MobileUiTest {
         } finally { instrumentation.removeMonitor(battery); instrumentation.removeMonitor(details) }
     }
 
+    @Test fun everySettingsSwitchSavesImmediatelyWithoutResettingScrollOrOtherOptions() {
+        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        var expected = com.zaytsev.yuketanghelper.model.UserSettings()
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            try {
+                scenario.onActivity { activity ->
+                    val session = (activity.application as HelperApplication).session
+                    session.disconnect()
+                    session.saveSettings(expected)
+                    activity.findViewById<View>(R.id.tabSettings).performClick()
+                }
+                instrumentation.waitForIdleSync()
+                scenario.onActivity { activity ->
+                    val session = (activity.application as HelperApplication).session
+                    val body = activity.findViewById<ViewGroup>(R.id.assistantContent)
+                    val scroll = body.getChildAt(0) as androidx.core.widget.NestedScrollView
+                    scroll.scrollTo(0, 300)
+                    val position = scroll.scrollY
+                    assertTrue(position > 0)
+                    for (key in listOf("notifyNewProblems", "autoAnalyze", "autoSubmit", "autoExpandOnProblem", "includeCurrentSlide", "keepScreenOn")) {
+                        val toggle = body.findViewWithTag<com.google.android.material.materialswitch.MaterialSwitch>(key)
+                        val selected = !toggle.isChecked
+                        expected = when (key) {
+                            "notifyNewProblems" -> expected.copy(notifyNewProblems = selected)
+                            "autoAnalyze" -> expected.copy(autoAnalyze = selected)
+                            "autoSubmit" -> expected.copy(autoSubmit = selected)
+                            "autoExpandOnProblem" -> expected.copy(autoExpandOnProblem = selected)
+                            "includeCurrentSlide" -> expected.copy(includeCurrentSlide = selected)
+                            else -> expected.copy(keepScreenOn = selected)
+                        }
+                        toggle.performClick()
+                        assertEquals(expected, com.zaytsev.yuketanghelper.storage.SettingsStore(activity).settings())
+                        assertSame(scroll, body.getChildAt(0))
+                        assertEquals(position, scroll.scrollY)
+                    }
+                    // A service-side pause must update the existing switch without saving stale UI values.
+                    expected = expected.copy(autoSubmit = false)
+                    session.saveSettings(expected)
+                    assertFalse(body.findViewWithTag<com.google.android.material.materialswitch.MaterialSwitch>("autoSubmit").isChecked)
+                    assertEquals(expected, session.settings.settings())
+                    assertSame(scroll, body.getChildAt(0))
+                    assertEquals(position, scroll.scrollY)
+                }
+                scenario.recreate()
+                scenario.onActivity { activity ->
+                    assertEquals(expected, com.zaytsev.yuketanghelper.storage.SettingsStore(activity).settings())
+                    activity.findViewById<View>(R.id.tabSettings).performClick()
+                    assertTrue(activity.findViewById<ViewGroup>(R.id.assistantContent)
+                        .findViewWithTag<com.google.android.material.materialswitch.MaterialSwitch>("keepScreenOn").isChecked)
+                }
+            } finally {
+                scenario.onActivity { activity ->
+                    (activity.application as HelperApplication).session.saveSettings(com.zaytsev.yuketanghelper.model.UserSettings())
+                }
+            }
+        }
+    }
+
     @Test fun problemReminderSwitchDefaultsOnAndSavesAcrossRecreation() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             try {
@@ -242,7 +300,7 @@ class MobileUiTest {
                     val toggle = body.findViewWithTag<com.google.android.material.materialswitch.MaterialSwitch>("notifyNewProblems")
                     assertTrue(toggle.isChecked)
                     toggle.performClick()
-                    descendants(body).filterIsInstance<Button>().first { it.text == "保存设置" }.performClick()
+                    assertFalse(descendants(body).filterIsInstance<Button>().any { it.text == "保存设置" })
                     assertFalse(com.zaytsev.yuketanghelper.storage.SettingsStore(activity).settings().notifyNewProblems)
                 }
                 scenario.recreate()
