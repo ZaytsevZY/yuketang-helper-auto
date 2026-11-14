@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="@drawable/glass_scene">
+    <LinearLayout android:id="@+id/browserToolbar" android:layout_width="match_parent" android:layout_height="60dp"
+        android:layout_marginLeft="8dp" android:layout_marginRight="8dp" android:layout_marginTop="8dp" android:layout_marginBottom="4dp"
+        android:paddingLeft="6dp" android:paddingRight="6dp" android:gravity="center_vertical" android:orientation="horizontal">
+        <ImageButton android:id="@+id/backButton" android:layout_width="48dp" android:layout_height="48dp" android:padding="13dp" android:background="@android:color/transparent" android:contentDescription="@string/back" android:src="@drawable/ic_back" app:tint="@color/text_primary" />
+        <ImageButton android:id="@+id/forwardButton" android:layout_width="48dp" android:layout_height="48dp" android:padding="13dp" android:background="@android:color/transparent" android:contentDescription="@string/forward" android:src="@drawable/ic_forward" app:tint="@color/text_primary" />
+        <ImageButton android:id="@+id/reloadButton" android:layout_width="48dp" android:layout_height="48dp" android:padding="13dp" android:background="@android:color/transparent" android:contentDescription="@string/reload" android:src="@drawable/ic_reload" app:tint="@color/text_primary" />
+        <androidx.appcompat.widget.AppCompatTextView android:id="@+id/appTitle" android:layout_width="0dp" android:layout_height="48dp"
+            android:layout_weight="1" android:gravity="center_vertical" android:paddingLeft="8dp" android:paddingRight="8dp" android:text="@string/app_name"
+            android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" android:maxLines="2"
+            app:autoSizeTextType="uniform" app:autoSizeMinTextSize="12sp" app:autoSizeMaxTextSize="14sp" app:autoSizeStepGranularity="1sp"
+            android:ellipsize="end" android:background="?attr/selectableItemBackground" android:contentDescription="@string/return_to_assistant" />
+        <androidx.appcompat.widget.AppCompatButton android:id="@+id/settingsButton" android:layout_width="wrap_content" android:layout_height="48dp"
+            android:minWidth="84dp" android:paddingLeft="8dp" android:paddingRight="8dp" android:paddingTop="0dp" android:paddingBottom="0dp"
+            android:text="@string/close_assistant" android:textSize="14sp" android:textAllCaps="false" android:maxLines="1"
+            android:contentDescription="@string/close_assistant" />
+    </LinearLayout>
+    <ProgressBar android:id="@+id/pageProgress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="2dp" android:max="100" android:visibility="gone" />
+    <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <WebView android:id="@+id/webView" android:layout_width="match_parent" android:layout_height="match_parent" />
+        <LinearLayout android:id="@+id/assistantSheet" android:layout_width="match_parent" android:layout_height="match_parent"
+            android:orientation="vertical" android:background="@drawable/glass_scene">
+            <LinearLayout android:id="@+id/sheetHeader" android:layout_width="match_parent" android:layout_height="40dp"
+                android:gravity="center_vertical" android:paddingLeft="22dp" android:paddingRight="22dp" android:orientation="vertical">
+                <TextView android:id="@+id/sheetTitle" android:layout_width="match_parent" android:layout_height="match_parent"
+                    android:gravity="center_vertical" android:text="雨课堂助手" android:textColor="@color/text_secondary" android:textSize="12sp"
+                    android:maxLines="1" android:ellipsize="end" />
+            </LinearLayout>
+            <FrameLayout android:id="@+id/assistantContent" android:focusable="true" android:focusableInTouchMode="true"
+                android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
+            <com.zaytsev.yuketanghelper.ui.GlassTabBar android:id="@+id/assistantTabs" android:layout_width="match_parent"
+                android:layout_height="72dp" android:orientation="horizontal" android:padding="6dp"
+                android:layout_marginLeft="8dp" android:layout_marginRight="8dp" android:layout_marginTop="6dp" android:layout_marginBottom="8dp">
+                <com.google.android.material.button.MaterialButton android:id="@+id/tabClassroom" style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:minWidth="0dp"
+                    android:paddingLeft="0dp" android:paddingRight="0dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:insetTop="0dp" android:insetBottom="0dp"
+                    android:textSize="11sp" android:letterSpacing="0" android:textAllCaps="false" android:maxLines="1" android:text="课堂"
+                    app:icon="@drawable/ic_classroom" app:iconSize="21dp" app:iconGravity="textTop" app:iconPadding="3dp" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/tabProblems" style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:minWidth="0dp"
+                    android:paddingLeft="0dp" android:paddingRight="0dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:insetTop="0dp" android:insetBottom="0dp"
+                    android:textSize="11sp" android:letterSpacing="0" android:textAllCaps="false" android:maxLines="1" android:text="题目"
+                    app:icon="@drawable/ic_problems" app:iconSize="21dp" app:iconGravity="textTop" app:iconPadding="3dp" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/tabAi" style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:minWidth="0dp"
+                    android:paddingLeft="0dp" android:paddingRight="0dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:insetTop="0dp" android:insetBottom="0dp"
+                    android:textSize="11sp" android:letterSpacing="0" android:textAllCaps="false" android:maxLines="1" android:text="AI"
+                    app:icon="@drawable/ic_chat" app:iconSize="21dp" app:iconGravity="textTop" app:iconPadding="3dp" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/tabCourseware" style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:minWidth="0dp"
+                    android:paddingLeft="0dp" android:paddingRight="0dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:insetTop="0dp" android:insetBottom="0dp"
+                    android:textSize="11sp" android:letterSpacing="0" android:textAllCaps="false" android:maxLines="1" android:text="课件"
+                    app:icon="@drawable/ic_slides" app:iconSize="21dp" app:iconGravity="textTop" app:iconPadding="3dp" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/tabModels" style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:minWidth="0dp"
+                    android:paddingLeft="0dp" android:paddingRight="0dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:insetTop="0dp" android:insetBottom="0dp"
+                    android:textSize="11sp" android:letterSpacing="0" android:textAllCaps="false" android:maxLines="1" android:text="配置"
+                    app:icon="@drawable/ic_config" app:iconSize="21dp" app:iconGravity="textTop" app:iconPadding="3dp" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/tabSettings" style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:minWidth="0dp"
+                    android:paddingLeft="0dp" android:paddingRight="0dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:insetTop="0dp" android:insetBottom="0dp"
+                    android:textSize="11sp" android:letterSpacing="0" android:textAllCaps="false" android:maxLines="1" android:text="设置"
+                    app:icon="@drawable/ic_settings" app:iconSize="21dp" app:iconGravity="textTop" app:iconPadding="3dp" />
+            </com.zaytsev.yuketanghelper.ui.GlassTabBar>
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

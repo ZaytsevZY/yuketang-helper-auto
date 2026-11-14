@@ -27,6 +27,10 @@
 
 [返回旧版](./README_origin.md)
 
+## Android 手机版
+
+新增原生 Android 客户端，支持课堂连接、题目同步、AI 问答、课件浏览和可暂停的自动回答。安装、模型配置及构建说明见 [Android README](./ykt-helper-android/README.md)，已验证范围见 [测试记录](./ykt-helper-android/TESTING.md)。
+
 ## 简介
 
 > Latest Release：2.0.0-preview 20260906

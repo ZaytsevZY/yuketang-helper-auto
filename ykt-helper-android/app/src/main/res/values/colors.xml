@@ -1,0 +1,9 @@
+<resources>
+    <color name="brand_green">#176B4D</color>
+    <color name="brand_green_dark">#0E4F38</color>
+    <color name="surface">#F6F8FC</color>
+    <color name="surface_variant">#E8F0EB</color>
+    <color name="outline">#D8E2EB</color>
+    <color name="text_primary">#1F3041</color>
+    <color name="text_secondary">#607181</color>
+</resources>

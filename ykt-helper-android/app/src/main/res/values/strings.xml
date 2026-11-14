@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">雨课堂助手</string>
+    <string name="app_title_version">雨课堂助手-安卓-v%1$s</string>
+    <string name="toolbar_title_version">雨课堂助手\n安卓-v%1$s</string>
+    <string name="open_assistant">打开助手</string>
+    <string name="close_assistant">收起助手</string>
+    <string name="back">后退</string>
+    <string name="forward">前进</string>
+    <string name="reload">刷新</string>
+    <string name="assistant">助手</string>
+    <string name="settings">设置</string>
+    <string name="return_to_assistant">雨课堂助手，返回课堂</string>
+</resources>
