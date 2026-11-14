@@ -202,6 +202,27 @@ object GlassUi {
 /** Independent pill tabs: unlike a segmented toggle group, every selected tab keeps rounded ends. */
 class GlassTabBar @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) : LinearLayout(context, attrs) {
     private val listeners = mutableListOf<(GlassTabBar, Int, Boolean) -> Unit>()
+    private val badges = mutableSetOf<Int>()
+    private val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    fun setBadge(id: Int, visible: Boolean) {
+        val changed = if (visible) badges.add(id) else badges.remove(id)
+        if (changed) invalidate()
+    }
+    fun hasBadge(id: Int) = id in badges
+    override fun dispatchDraw(canvas: Canvas) {
+        super.dispatchDraw(canvas)
+        val density = resources.displayMetrics.density
+        for (i in 0 until childCount) {
+            val child = getChildAt(i)
+            if (child.id !in badges || child.visibility != View.VISIBLE) continue
+            val x = child.right - 9f * density
+            val y = child.top + 8f * density
+            badgePaint.color = Color.WHITE
+            canvas.drawCircle(x, y, 5f * density, badgePaint)
+            badgePaint.color = 0xFFE55353.toInt()
+            canvas.drawCircle(x, y, 4f * density, badgePaint)
+        }
+    }
     var checkedButtonId = View.NO_ID
         private set
     override fun onFinishInflate() {

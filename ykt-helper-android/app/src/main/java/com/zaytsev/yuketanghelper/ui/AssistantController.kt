@@ -39,7 +39,7 @@ class AssistantController(
     private val actions: Actions,
     private val onPageShown: (Page) -> Unit = {},
 ) {
-    enum class Page { CLASSROOM, PROBLEMS, AI, COURSEWARE, MODELS, SETTINGS, ABOUT }
+    enum class Page { CLASSROOM, PROBLEMS, AI, COURSEWARE, MODELS, SETTINGS, ABOUT, BACKGROUND }
 
     interface Actions {
         fun refreshLessons()
@@ -57,6 +57,7 @@ class AssistantController(
         fun openWebsite()
         fun cancelAi()
         fun exportSlide()
+        fun openBackgroundSettings(batteryOptimization: Boolean)
         fun openNotificationSettings()
         fun clearProfile()
         fun changeEnvironment(environment: com.zaytsev.yuketanghelper.model.Environment)
@@ -87,6 +88,7 @@ class AssistantController(
                 Page.MODELS -> modelsPage()
                 Page.SETTINGS -> settingsPage()
                 Page.ABOUT -> aboutPage()
+                Page.BACKGROUND -> backgroundPage()
             },
         )
     }
@@ -325,8 +327,30 @@ class AssistantController(
         secondaryButton("返回设置") { show(Page.SETTINGS) }
     }
 
+    private fun backgroundPage(): View = page("后台运行设置") {
+        hint("用于切到其他应用或熄屏后继续接收课堂题目。“屏幕常亮”只控制屏幕，不代表允许后台运行。")
+        label("当前系统状态", bold = true)
+        selectable(BackgroundRunSupport.status(context)).tag = "backgroundSystemStatus"
+        hint("以上为系统可读取的状态；厂商的自启动、后台锁定状态需要在手机设置中核对。返回本页会刷新状态。")
+        label("1 · 允许后台运行", bold = true)
+        hint("进入本应用的系统详情，找到“电池”或“应用耗电管理”，选择“无限制”或允许后台活动。设置名称随手机系统而不同。")
+        primaryButton("打开应用系统设置") { actions.openBackgroundSettings(false) }
+        hint("也可进入电池优化列表，切换到“所有应用”，找到“雨课堂助手”，选择“不优化”。部分系统称为“不允许优化”，这里的“不允许”指不允许系统限制应用。")
+        secondaryButton("打开电池优化设置") { actions.openBackgroundSettings(true) }
+        label("2 · 在多任务中锁定应用", bold = true)
+        hint("从屏幕底部上滑并停留，或点击多任务键，找到“雨课堂助手”卡片。按系统提供的菜单选择“锁定”或小锁图标；部分手机需要下拉卡片，部分需要长按卡片。")
+        hint("不要把应用卡片向上划走，这通常会结束应用。锁定需要你在多任务界面操作，助手不能自动替你加锁。")
+        label("常见手机的设置", bold = true)
+        hint("小米 / Redmi：查找“应用智能省电”，将雨课堂助手设为“无限制”；如有后台自启动选项，可按需允许。")
+        hint("支持 Android 应用的华为系统：在“应用启动管理”中关闭本应用的自动管理，再允许后台活动；多任务卡片可下拉加锁。")
+        hint("其他品牌：在应用详情或系统设置中搜索“允许后台运行”“后台耗电”“自启动”。以本机提供的选项为准。")
+        hint("完成设置可减少后台中断，但不保证永久运行。上课期间保持课堂连接；强行停止、系统清理或退出课堂仍会中断收题。")
+        secondaryButton("返回设置") { show(Page.SETTINGS) }
+    }
+
     private fun settingsPage(): View = page("设置") {
         secondaryButton("关于") { show(Page.ABOUT) }
+        secondaryButton("后台运行设置") { show(Page.BACKGROUND) }
         label("雨课堂服务器", bold = true)
         val environments = com.zaytsev.yuketanghelper.model.Environment.entries
         addView(Spinner(context, Spinner.MODE_DROPDOWN).apply {

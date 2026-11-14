@@ -87,7 +87,7 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
                 AssistantController.Page.AI -> binding.tabAi
                 AssistantController.Page.COURSEWARE -> binding.tabCourseware
                 AssistantController.Page.MODELS -> binding.tabModels
-                AssistantController.Page.SETTINGS, AssistantController.Page.ABOUT -> binding.tabSettings
+                AssistantController.Page.SETTINGS, AssistantController.Page.ABOUT, AssistantController.Page.BACKGROUND -> binding.tabSettings
             }
             if (binding.assistantTabs.checkedButtonId != button.id) binding.assistantTabs.check(button.id)
             button.post { button.requestRectangleOnScreen(android.graphics.Rect(0, 0, button.width, button.height), false) }
@@ -107,7 +107,7 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
         if (savedInstanceState == null) openNotifiedProblem(intent)
         onBackPressedDispatcher.addCallback(this) {
             when {
-                assistantVisible && assistant.page == AssistantController.Page.ABOUT -> assistant.show(AssistantController.Page.SETTINGS)
+                assistantVisible && assistant.page in setOf(AssistantController.Page.ABOUT, AssistantController.Page.BACKGROUND) -> assistant.show(AssistantController.Page.SETTINGS)
                 assistantVisible -> showAssistant(false)
                 binding.webView.canGoBack() -> binding.webView.goBack()
                 else -> moveTaskToBack(true)
@@ -228,6 +228,9 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
         if (state.active && session.settings.settings().keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         assistant.refresh()
+        val needsConfiguration = session.settings.aiProfile() == null
+        binding.assistantTabs.setBadge(binding.tabModels.id, needsConfiguration)
+        binding.tabModels.contentDescription = if (needsConfiguration) "配置，需要填写 API Key 并启用" else "配置"
         updateNavigation()
     }
     override fun refreshLessons() {
@@ -270,6 +273,10 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
             notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+    override fun openBackgroundSettings(batteryOptimization: Boolean) {
+        if (!com.zaytsev.yuketanghelper.ui.BackgroundRunSupport.open(this, batteryOptimization))
+            toast("无法打开系统设置，请在手机设置中查找雨课堂助手的电池与后台运行选项")
     }
     override fun openNotificationSettings() {
         val target = if (Build.VERSION.SDK_INT >= 26) Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)

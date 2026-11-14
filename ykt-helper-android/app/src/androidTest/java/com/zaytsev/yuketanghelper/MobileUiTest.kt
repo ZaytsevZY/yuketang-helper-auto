@@ -167,6 +167,69 @@ class MobileUiTest {
             }
         }
     }
+    @Test fun configurationBadgePersistsUntilProfileEnabledAndReturnsWhenCleared() {
+        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            try {
+                scenario.onActivity { activity ->
+                    activity.clearProfile()
+                    val tabs = activity.findViewById<com.zaytsev.yuketanghelper.ui.GlassTabBar>(R.id.assistantTabs)
+                    assertTrue(tabs.hasBadge(R.id.tabModels))
+                    assertTrue(activity.findViewById<View>(R.id.tabModels).contentDescription.toString().contains("API Key"))
+                    val edits = descendants(activity.findViewById(R.id.assistantContent)).filterIsInstance<EditText>()
+                    edits[0].setText("https://api.deepseek.com")
+                    edits[1].setText("fake-badge-key")
+                    edits[2].setText("deepseek-flash")
+                    assertTrue(tabs.hasBadge(R.id.tabModels))
+                    descendants(activity.findViewById(R.id.assistantContent)).filterIsInstance<Button>()
+                        .first { it.text == "启用当前配置" }.performClick()
+                }
+                instrumentation.waitForIdleSync()
+                scenario.onActivity { activity ->
+                    assertFalse(activity.findViewById<com.zaytsev.yuketanghelper.ui.GlassTabBar>(R.id.assistantTabs).hasBadge(R.id.tabModels))
+                    assertEquals("配置", activity.findViewById<View>(R.id.tabModels).contentDescription)
+                }
+                scenario.recreate()
+                scenario.onActivity { activity ->
+                    val tabs = activity.findViewById<com.zaytsev.yuketanghelper.ui.GlassTabBar>(R.id.assistantTabs)
+                    assertFalse(tabs.hasBadge(R.id.tabModels))
+                    activity.clearProfile()
+                    assertTrue(tabs.hasBadge(R.id.tabModels))
+                }
+            } finally { scenario.onActivity { it.clearProfile() } }
+        }
+    }
+
+    @Test fun backgroundRunGuideOpensStandardSettingsAndReturnsToSettingsPage() {
+        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        val battery = instrumentation.addMonitor(android.content.IntentFilter(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+            android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED, null), true)
+        val details = instrumentation.addMonitor(android.content.IntentFilter(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply { addDataScheme("package") },
+            android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED, null), true)
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    activity.findViewById<View>(R.id.tabSettings).performClick()
+                    descendants(activity.findViewById(R.id.assistantContent)).filterIsInstance<Button>()
+                        .first { it.text == "后台运行设置" }.performClick()
+                    val body = activity.findViewById<ViewGroup>(R.id.assistantContent)
+                    assertEquals(com.zaytsev.yuketanghelper.ui.BackgroundRunSupport.status(activity), body.findViewWithTag<TextView>("backgroundSystemStatus").text.toString())
+                    descendants(body).filterIsInstance<Button>().first { it.text == "打开电池优化设置" }.performClick()
+                    descendants(body).filterIsInstance<Button>().first { it.text == "打开应用系统设置" }.performClick()
+                }
+                instrumentation.waitForIdleSync()
+                assertEquals(1, battery.hits)
+                assertEquals(1, details.hits)
+                scenario.onActivity { activity ->
+                    assertTrue(activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.tabSettings).isChecked)
+                    activity.onBackPressedDispatcher.onBackPressed()
+                    assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.assistantSheet).visibility)
+                    assertTrue(descendants(activity.findViewById(R.id.assistantContent)).filterIsInstance<Button>().any { it.text == "后台运行设置" })
+                }
+            }
+        } finally { instrumentation.removeMonitor(battery); instrumentation.removeMonitor(details) }
+    }
+
     @Test fun problemReminderSwitchDefaultsOnAndSavesAcrossRecreation() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             try {
