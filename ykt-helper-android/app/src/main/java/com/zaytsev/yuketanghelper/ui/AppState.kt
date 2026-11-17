@@ -22,6 +22,7 @@ data class AppState(
     var busy: Boolean = false,
     var active: Boolean = false,
     var online: Boolean = false,
+    var loggingOut: Boolean = false,
     var status: String = "请先在网页中登录雨课堂",
     var chatBusy: Boolean = false,
     var chatDraft: String = "",

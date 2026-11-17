@@ -206,3 +206,47 @@ API 36 设备测试验证：
 - 验证前暂停自动提交，验证结束恢复用户原有的自动回答开启状态。没有对其他课堂作答。
 - 未运行会卸载应用的 connectedAndroidTest，以保留用户真实登录；此前模拟流程结果不替代本次真实课堂核对。该结果只证明这次 test 课堂的签到、连接及本题提交，不代表其他学校、服务器或机型全部验收。
 - 日志：`app/build/verification/checkin-source-build.log`；截图：`real-test-submitted.png`；产物 SHA-256 已更新至 `artifacts.json`。日志和文档不保存账号 Cookie、Bearer、课堂令牌或模型密钥。
+
+## 0.3.5：发题通知与自动提交成功通知
+
+2026-11-14：
+
+- 保留新题目实时通知，新增独立的高重要性“自动提交成功”通知渠道。仅自动提交请求被服务端确认、持久提交状态写入后发送“助手已帮你自动提交了一道题，刷新查看”。手动提交、仅 AI 生成、失败和结果未确认均不发成功通知。
+- 成功通知按服务器/课堂/题目独立去重，不覆盖原发题通知；两类通知设置均默认开启、独立即时保存。关闭其中一项只清理该类提醒。系统设置入口改为应用通知总页，可分别调整两类渠道。
+- 成功通知点击或“刷新查看”按钮复用对应题目导航，并刷新当前课堂网页；网页不在该课堂时加载该课堂页。已断开的旧通知不自动重连。
+- 24 项 JVM 测试和 37 项设备测试全部通过，包含自动提交成功/失败、手动提交不误报、重复推送不重复通知、两项设置独立、通知操作按钮与持久去重。
+- 设备测试通过 verificationApplicationId 属性使用 com.zaytsev.yuketanghelper.verification 独立包运行，未清除用户原应用的 Cookie、模型配置或课堂状态。随后去掉该参数重建正常 Debug/Release APK，并核对 applicationId 为 com.zaytsev.yuketanghelper、版本为 0.3.5 / code 11，Debug 签名校验通过。
+- 构建、lint 通过，未新增 lint error；报告见 app/build/reports。日志：`submission-notification-tests.log`、`submission-notification-build.log`；最新 SHA-256 见 `artifacts.json`。
+- 本轮通知与自动提交使用模拟课堂、虚构 Key 和真实系统通知管理器验证，没有向用户真实课堂额外作答；厂商横幅、勿扰和权限策略仍需真机核对。
+
+## 0.3.6：退出全部雨课堂账号
+
+2026-11-17：
+
+- 设置页最底部新增“退出登录”，确认弹窗列明三个服务器和清理范围。取消保留原有登录及课堂；确认后停止课堂、自动回答和后台服务，删除三个服务器的加密 Bearer、全部应用内网页 Cookie、网页存储和缓存，清理课堂、题目、问答草稿、课件图片缓存、提交记录及提醒历史。AI 配置和普通设置保留。
+- 销毁旧 WebView 后清理浏览数据，等待 Cookie 删除完成并落盘，再重建页面，避免旧 sessionStorage、历史页面或脚本恢复登录。支持时使用 WebStorageCompat.deleteBrowsingData；旧 WebView 使用 WebStorage.deleteAllData、CookieManager 和 WebView 缓存清理接口。原生迟到响应与网页令牌回调不能恢复已清除的凭据。
+- API 36 模拟器使用独立 verification 包运行 38 项设备测试全部通过。新增 LogoutTest 在三个官方来源注入虚构 Cookie、Bearer、localStorage/sessionStorage 和课堂缓存，验证按钮位于底部、取消不清理、确认清空、重建后不恢复，以及 AI Key 和设置保留。未使用或注销用户真实账号。
+- 设备测试日志：app/build/verification/logout-device-tests.log；正常包构建、JVM 测试和 lint 日志：app/build/verification/logout-build.log。正常发布产物为 0.3.6 / code 12；本轮旧系统清理降级分支未做真机验证。
+
+## 0.3.7：六个页面统一蓝灰边框
+
+2026-11-17：
+
+- 课堂、题目、AI、课件、配置、设置共用灰蓝底板、2dp 蓝色圆角外框和固定“助手模式”标识；关于和后台运行子页继承同一套样式。正文、输入区、图片占位、默认模型状态以及玻璃按钮、下拉菜单、开关、底部选中项统一为蓝灰色系。成功、失败、测试中的语义提示色保留。
+- 助手与浏览器切换时同步切换底板和工具栏颜色；助手外框由不透明底板承托，圆角和外侧留白不会透出下层网页。状态栏与导航栏的留白跟随当前模式。
+- 在 API 36 的独立 verification 包上逐一打开六个页面，核对页面标题、“助手模式”与底部入口；截图保存在 app/build/verification/blue-gray-{classroom,problems,ai,courseware,models,settings}.png。收起助手后的浏览器外观截图为 blue-gray-browser.png。
+- 320dp 窄屏、1.3 倍字体下检查设置与配置页，标题和六个底部入口均可见，表单及长内容可滚动；截图为 blue-gray-narrow-settings.png、blue-gray-narrow-models.png。检查后恢复模拟器原始分辨率、密度和 1.0 字号。
+- 38 项设备回归测试全部通过，使用独立包名 com.zaytsev.yuketanghelper.verification，未覆盖安装或清除用户原应用。日志：app/build/verification/blue-gray-device-tests.log。正常包构建和 JVM/lint 结果见 app/build/verification/blue-gray-build.log；交付版本为 0.3.7 / code 13。
+- 正常包的 24 项 JVM 测试通过；lint 0 errors / 61 warnings；Debug/Release 构建成功。已核对交付 APK 的正常 applicationId、版本号和安装签名，Debug APK 可直接安装，Release 仍为未签名产物。大小与 SHA-256 已更新至 artifacts.json。本轮视觉核对限于 API 36 模拟器。
+
+## 0.3.8：题目页码、状态和已提交答案
+
+2026-11-17：
+
+- 题目页顶部与选择列表显示原始课件页码、发布状态（未发布 / 已发布 / 已截止）和作答状态，提交结果未知时追加待核对提示。合并课件不使用题目序号或合并列表位置代替页码；未同步到页码时明确提示。
+- 答案模型保留接口 result 中的选择、多选、填空、主观文字和附件数量。已提交内容与 AI 建议、草稿分开显示；无答案内容时不从草稿推测。收到其他设备的已作答事件但没有 result 时，重新请求课件内容。
+- 仅收到服务端成功确认后记录本应用提交的答案，失败的补答继续显示上次确认内容并保留待核对标记。确认记录与服务端同步内容保存在原有本地提交缓存中；新返回内容优先于旧缓存，重新连接后可恢复，退出全部账号清除。
+- 页面状态及已提交内容更新时保留正在编辑的草稿；到达截止时间会更新状态标签，离开题目页或销毁界面会取消回调。已作答题目不再显示默认“等待作答”。
+- ProblemDetailsTest 使用虚构题目核对第 7 / 12 页、未发布 / 已发布 / 已截止、已作答内容与不同草稿分离、编辑中同步和截止更新、逐空展示；截图为 app/build/verification/problem-details-preview.png。预览测试日志：problem-details-preview-test.log；完整设备回归日志：problem-details-device-tests.log；正常构建/JVM/lint 日志：problem-details-build.log。未向用户真实课堂作答。
+- API 36 独立 verification 包的 40 项设备测试全部通过，包含其他设备已作答事件触发真实内容同步、权威结果替换缓存、补答失败保留旧答案、重新连接恢复确认答案。本轮未注销或清除用户正常包的登录信息。
+- 正常包 25 项 JVM 测试通过，lint 0 errors / 62 warnings，Debug/Release 构建成功；交付 APK 为 0.3.8 / code 14，正常 applicationId 和 Debug 安装签名已核对。最新 APK 摘要保存于 app/build/verification/artifacts.json。旧系统和其他品牌真机未在本轮重新验收。

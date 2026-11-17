@@ -4,6 +4,7 @@ import com.zaytsev.yuketanghelper.answer.AnswerParser
 import com.zaytsev.yuketanghelper.model.*
 import com.zaytsev.yuketanghelper.web.CredentialSource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -22,6 +23,7 @@ class YuketangClient(
     private val lessonTokens = mutableMapOf<String, String>()
     private var socket: WebSocket? = null
     @Volatile private var generation = 0L
+    @Volatile private var requestGeneration = 0L
 
     suspend fun listLessons(environment: Environment): List<Lesson> = YuketangParser.lessons(
         request(environment, "/api/v3/classroom/on-lesson"))
@@ -64,6 +66,7 @@ class YuketangClient(
                     }
                 }
                 problem.answered = true
+                problem.submittedAnswer = SubmittedAnswer(normalized)
                 return
             } catch (e: ClassroomApiException) {
                 // Only retry an explicit token-expired rejection, never a timeout or ambiguous response.
@@ -95,6 +98,7 @@ class YuketangClient(
     }
 
     private suspend fun request(environment: Environment, path: String, body: JSONObject? = null, lessonId: String? = null): String = withContext(Dispatchers.IO) {
+        val current = requestGeneration
         val session = credentials.load(environment)
         val request = Request.Builder().url(origin(environment) + path)
             .header("Accept", "application/json").header("xtbz", "ykt").header("x-client", "h5")
@@ -106,10 +110,15 @@ class YuketangClient(
                 if (body != null) post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
             }.build()
         http.newCall(request).awaitResponse().use { response ->
-            response.header("Set-Auth")?.let { credentials.saveBearerToken(environment, it) }
-            credentials.captureCookies(environment, response.headers("Set-Cookie"))
+            // Serialize credential writes with close(). A late response
+            // from a closed session must never restore an old account's cookies or token.
+            synchronized(this@YuketangClient) {
+                if (current != requestGeneration) throw CancellationException("Classroom session closed")
+                response.header("Set-Auth")?.let { credentials.saveBearerToken(environment, it) }
+                credentials.captureCookies(environment, response.headers("Set-Cookie"))
+                if (response.code == 401 || response.code == 403) credentials.saveBearerToken(environment, null)
+            }
             if (response.code == 401 || response.code == 403) {
-                credentials.saveBearerToken(environment, null)
                 error("登录已失效，请返回网页重新登录后重连课堂")
             }
             if (!response.isSuccessful) error("雨课堂请求失败（HTTP ${response.code}）")
@@ -123,5 +132,5 @@ class YuketangClient(
     private class ClassroomApiException(val code: Int) : Exception("雨课堂未接受请求（code $code）")
 
     fun closeSocket() { generation++; socket?.cancel(); socket = null }
-    fun close() { closeSocket(); lessonTokens.clear() }
+    @Synchronized fun close() { requestGeneration++; closeSocket(); http.dispatcher.cancelAll(); lessonTokens.clear() }
 }

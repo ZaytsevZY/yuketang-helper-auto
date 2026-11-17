@@ -30,6 +30,7 @@ import com.zaytsev.yuketanghelper.model.AiProfile
 import com.zaytsev.yuketanghelper.model.AiProviderPresets
 import com.zaytsev.yuketanghelper.model.Problem
 import com.zaytsev.yuketanghelper.model.UserSettings
+import com.zaytsev.yuketanghelper.model.ProblemType
 import com.zaytsev.yuketanghelper.storage.SettingsStore
 
 class AssistantController(
@@ -61,14 +62,23 @@ class AssistantController(
         fun openBackgroundSettings(batteryOptimization: Boolean)
         fun openNotificationSettings()
         fun clearProfile()
+        fun logout()
         fun changeEnvironment(environment: com.zaytsev.yuketanghelper.model.Environment)
     }
 
     private var modelProviderId: String? = null
     private var syncingSettings = false
+    private var displayedProblemId: String? = null
+    private val deadlineRefresh = Runnable { refresh() }
+
+    fun dispose() { container.removeCallbacks(deadlineRefresh) }
 
     fun refresh() {
         container.findViewWithTag<TextView>("modelConnectionStatus")?.let(::renderModelStatus)
+        if (page == Page.PROBLEMS) {
+            refreshProblemSummary()
+            scheduleProblemDeadline()
+        }
         // Do not destroy a focused editor when another question or socket event arrives.
         if (container.findFocus() is EditText) return
         if (page == Page.SETTINGS && container.findViewWithTag<View>("notifyNewProblems") != null) {
@@ -82,6 +92,7 @@ class AssistantController(
         private set
 
     fun show(page: Page = this.page) {
+        container.removeCallbacks(deadlineRefresh)
         this.page = page
         onPageShown(page)
         container.removeAllViews()
@@ -97,6 +108,7 @@ class AssistantController(
                 Page.BACKGROUND -> backgroundPage()
             },
         )
+        if (page == Page.PROBLEMS) scheduleProblemDeadline()
     }
 
     private fun classroomPage(): View = page("我的课堂") {
@@ -137,16 +149,33 @@ class AssistantController(
             secondaryButton("前往课堂") { show(Page.CLASSROOM) }
             return@page
         }
-        val spinner = Spinner(context, Spinner.MODE_DROPDOWN)
-        GlassUi.spinner(spinner, problems.mapIndexed { index, p -> "${index + 1}. ${if(p.answered) "✓ " else ""}${plain(p.prompt).ifBlank { "题目 ${p.id}" }.take(40)}" })
         val selected = problems.indexOfFirst { it.id == state.selectedProblem?.id }.coerceAtLeast(0)
+        val problem = problems[selected]
+        displayedProblemId = problem.id
+        val q = state.question(problem)
+        hint(problemSummary(problem)).apply {
+            tag = "problemSummary"
+            setTextColor(GlassUi.accent)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            GlassUi.card(this, GlassUi.control, 12f)
+        }
+        val spinner = Spinner(context, Spinner.MODE_DROPDOWN)
+        GlassUi.spinner(spinner, problems.mapIndexed { index, p ->
+            "${problemSummary(p)}\n${index + 1}. ${plain(p.prompt).ifBlank { "题目 ${p.id}" }.take(32)}"
+        })
         spinner.setSelection(selected)
         addView(spinner, matchWrap())
         secondaryButton("查看所选题目") { actions.selectProblem(spinner.selectedItemPosition) }
-        val problem = state.selectedProblem ?: problems[selected]
-        val q = state.question(problem)
+        label("已提交的答案", bold = true).apply {
+            tag = "submittedAnswerHeading"
+            visibility = if (problem.answered) View.VISIBLE else View.GONE
+        }
+        selectable(submittedAnswerText(problem)).apply {
+            tag = "submittedAnswerContent"
+            visibility = if (problem.answered) View.VISIBLE else View.GONE
+        }
         problemCard(problem)
-        hint(q.status)
+        hint(problemActionStatus(problem)).tag = "problemActionStatus"
         primaryButton(if (q.analyzing) "AI 正在分析…" else "AI 分析本题", !q.analyzing) { actions.analyzeProblem() }
         q.answer?.let {
             label("AI 建议", bold = true)
@@ -207,7 +236,7 @@ class AssistantController(
                 adjustViewBounds = true
                 minimumHeight = dp(160)
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
-                setBackgroundColor(Color.rgb(238, 243, 240))
+                setBackgroundColor(GlassUi.control)
                 loadRemoteImage(this, url)
             }
             addView(image, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(240)))
@@ -255,7 +284,7 @@ class AssistantController(
         hint(enabledProfile?.let { "当前已启用：${AiProviderPresets.find(it.providerPresetId).label} · ${it.model}" }
             ?: "当前尚未启用 AI 配置")
         val baseUrl = input("Base URL（OpenAI 兼容接口）", existing.baseUrl)
-        val apiKey = input("API Key", existing.apiKey, secret = true)
+        val apiKey = input("API Key", existing.apiKey, sensitive = true)
         val model = input("文本模型名称", existing.model)
         val vision = input("视觉模型（留空沿用文本模型）", existing.visionModel)
         fun snapshot(): AiProfile = AiProfile(
@@ -305,7 +334,7 @@ class AssistantController(
             ModelStatusKind.SUCCESS -> Color.rgb(20, 125, 64) to Color.rgb(229, 246, 235)
             ModelStatusKind.ERROR -> Color.rgb(176, 37, 37) to Color.rgb(255, 237, 237)
             ModelStatusKind.TESTING -> Color.rgb(151, 95, 0) to Color.rgb(255, 246, 219)
-            ModelStatusKind.IDLE -> Color.rgb(88, 103, 95) to Color.rgb(237, 242, 239)
+            ModelStatusKind.IDLE -> GlassUi.secondary to GlassUi.control
         }
         view.text = state.modelStatus
         view.setTextColor(foreground)
@@ -374,6 +403,8 @@ class AssistantController(
         }, matchWrap())
         hint("切换服务器会退出当前课堂，请在登录网页中登录所选服务器。")
         val value = settingsStore.settings()
+        settingSwitch("自动提交成功通知", "notifyAutoSubmissions", value.notifyAutoSubmissions) { old, checked -> old.copy(notifyAutoSubmissions = checked) }
+        hint("助手自动提交成功后通知“已自动提交一道题，刷新查看”。点击通知会刷新网页并打开对应题目。")
         settingSwitch("新题目弹窗提醒", "notifyNewProblems", value.notifyNewProblems) { old, checked -> old.copy(notifyNewProblems = checked) }
         hint("默认开启。连接课堂期间收到新题目时，通知显示课堂名称和时限；点击通知可查看题目。")
         hint(notificationPermissionHint()).tag = "notificationPermissionHint"
@@ -385,6 +416,13 @@ class AssistantController(
         settingSwitch("上课期间保持屏幕常亮", "keepScreenOn", value.keepScreenOn) { old, checked -> old.copy(keepScreenOn = checked) }
         hint("自动提交仅作用于当前连接课堂中新解锁的题目。关闭后尚未发送的提交会停止，已发出的请求无法撤回。")
         hint("后台上课会显示常驻通知；退出课堂即可停止。系统省电策略或强行结束应用可能中断连接。")
+        hint("退出后将清除雨课堂、荷塘雨课堂、长江雨课堂的登录状态及本地课堂、题目和课件缓存。AI 配置和其他设置保留。")
+        secondaryButton("退出登录") {
+            MaterialAlertDialogBuilder(context).setTitle("退出全部雨课堂账号？")
+                .setMessage("将退出雨课堂、荷塘雨课堂、长江雨课堂，停止当前课堂和自动回答，并清除登录信息、网页及课堂缓存。\n\nAI 配置和其他设置保留，继续使用需重新登录。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("退出登录") { _, _ -> actions.logout() }.showGlass()
+        }
     }
 
     private fun notificationPermissionHint(): String =
@@ -408,7 +446,7 @@ class AssistantController(
         // Keep views and scroll position, including when a service action changes a setting.
         syncingSettings = true
         try {
-            mapOf("notifyNewProblems" to value.notifyNewProblems, "autoAnalyze" to value.autoAnalyze,
+            mapOf("notifyNewProblems" to value.notifyNewProblems, "notifyAutoSubmissions" to value.notifyAutoSubmissions, "autoAnalyze" to value.autoAnalyze,
                 "autoSubmit" to value.autoSubmit, "autoExpandOnProblem" to value.autoExpandOnProblem,
                 "includeCurrentSlide" to value.includeCurrentSlide, "keepScreenOn" to value.keepScreenOn).forEach { (tag, checked) ->
                 container.findViewWithTag<MaterialSwitch>(tag)?.let { if (it.isChecked != checked) it.isChecked = checked }
@@ -439,13 +477,69 @@ class AssistantController(
             com.zaytsev.yuketanghelper.model.ProblemType.SUBJECTIVE -> "主观题"
             else -> "未知题型"
         }
-        val status = when {
-            problem.answered -> "已作答"
-            problem.unlockedAt == null -> "尚未解锁"
-            problem.deadlineAt?.let { it <= System.currentTimeMillis() } == true -> "已截止"
-            else -> "可作答"
+        hint(type + (problem.deadlineAt?.let { " · 截止 " + java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ROOT).format(java.util.Date(it)) } ?: ""))
+    }
+
+    private fun problemSummary(problem: Problem): String {
+        val slide = state.connected?.presentation?.slides?.find {
+            it.id == problem.slideId && it.problem?.presentationId == problem.presentationId
         }
-        hint("$type · $status" + (problem.deadlineAt?.let { " · 截止 " + java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ROOT).format(java.util.Date(it)) } ?: ""))
+        val page = slide?.let { "课件第 ${it.index + 1} 页" } ?: "页码未同步"
+        val publication = when {
+            problem.deadlineAt?.let { it <= System.currentTimeMillis() } == true -> "已截止"
+            problem.unlockedAt != null || problem.answered -> "已发布"
+            else -> "未发布"
+        }
+        return "$page · $publication · ${if (problem.answered) "已作答" else "未作答"}" +
+            if (state.question(problem).submissionUnknown) " · 提交待核对" else ""
+    }
+
+    private fun submittedAnswerText(problem: Problem): String {
+        val answer = problem.submittedAnswer
+            ?: return "已作答，暂未获取到答案内容。可重新同步课堂，或打开网页查看。"
+        return buildList {
+            answer.values.forEachIndexed { index, value ->
+                add(when (problem.type) {
+                    ProblemType.SINGLE_CHOICE, ProblemType.MULTIPLE_CHOICE, ProblemType.POLL -> {
+                        val option = value.singleOrNull()?.takeIf { it in 'A'..'Z' }?.let { problem.options.getOrNull(it - 'A') }
+                        if (option != null) "$value. ${plain(option)}" else value.ifBlank { "（空）" }
+                    }
+                    ProblemType.FILL_BLANK -> "第 ${index + 1} 空：${value.ifBlank { "（空）" }}"
+                    else -> plain(value).ifBlank { "（空）" }
+                })
+            }
+            if (answer.pictureCount > 0) add("图片：${answer.pictureCount} 张，请在网页查看附件")
+            if (answer.videoCount > 0) add("视频：${answer.videoCount} 个，请在网页查看附件")
+        }.joinToString("\n")
+    }
+
+    private fun refreshProblemSummary() {
+        val problem = state.connected?.problems?.find { it.id == displayedProblemId } ?: return
+        container.findViewWithTag<TextView>("problemSummary")?.text = problemSummary(problem)
+        container.findViewWithTag<TextView>("problemActionStatus")?.text = problemActionStatus(problem)
+        container.findViewWithTag<TextView>("submittedAnswerHeading")?.visibility = if (problem.answered) View.VISIBLE else View.GONE
+        container.findViewWithTag<TextView>("submittedAnswerContent")?.apply {
+            visibility = if (problem.answered) View.VISIBLE else View.GONE
+            text = submittedAnswerText(problem)
+        }
+    }
+
+    private fun problemActionStatus(problem: Problem): String {
+        val status = state.question(problem).status
+        if (status != "等待作答") return status
+        return when {
+            problem.answered -> "已同步作答记录"
+            problem.deadlineAt?.let { it <= System.currentTimeMillis() } == true -> "题目已截止"
+            problem.unlockedAt == null -> "等待教师发布题目"
+            else -> status
+        }
+    }
+
+    private fun scheduleProblemDeadline() {
+        container.removeCallbacks(deadlineRefresh)
+        val deadline = state.connected?.problems?.find { it.id == displayedProblemId }?.deadlineAt ?: return
+        val delay = deadline - System.currentTimeMillis()
+        if (delay > 0) container.postDelayed(deadlineRefresh, delay + 25)
     }
 
     @Suppress("DEPRECATION")
@@ -487,29 +581,29 @@ class AssistantController(
     private fun LinearLayout.selectable(text: String): TextView = label(text).apply {
         setTextIsSelectable(true)
         setPadding(dp(12), dp(10), dp(12), dp(10))
-        GlassUi.card(this, 0xFFF2F6FA.toInt(), 16f)
+        GlassUi.card(this, GlassUi.control, 16f)
     }
 
-    private fun LinearLayout.input(label: String, value: String, secret: Boolean = false): TextInputLayout {
+    private fun LinearLayout.input(label: String, value: String, sensitive: Boolean = false): TextInputLayout {
         val edit = TextInputEditText(context).apply {
             setText(value)
-            inputType = if (secret) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            // API keys use the normal keyboard so users can paste from the clipboard.
+            inputType = if (sensitive) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
                 else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            maxLines = if (secret) 1 else 8
+            if (sensitive) setSingleLine(true) else maxLines = 8
             minimumHeight = dp(56)
             textSize = 15f
             setTextColor(GlassUi.ink)
             setPadding(dp(16), dp(16), dp(16), dp(14))
-            if (secret && Build.VERSION.SDK_INT >= 26) importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            if (sensitive && Build.VERSION.SDK_INT >= 26) importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
         }
         return TextInputLayout(context).also { layout ->
             layout.hint = label
             layout.boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
             layout.setBoxCornerRadii(dp(16).toFloat(), dp(16).toFloat(), dp(16).toFloat(), dp(16).toFloat())
-            layout.boxBackgroundColor = Color.WHITE
+            layout.boxBackgroundColor = GlassUi.control
             layout.boxStrokeColor = GlassUi.accent
             layout.defaultHintTextColor = android.content.res.ColorStateList.valueOf(GlassUi.secondary)
-            if (secret) layout.endIconMode = TextInputLayout.END_ICON_PASSWORD_TOGGLE
             layout.setPadding(0, dp(6), 0, dp(4))
             layout.addView(edit)
             addView(layout, matchWrap())

@@ -8,6 +8,8 @@
     <string name="forward">前进</string>
     <string name="reload">刷新</string>
     <string name="assistant">助手</string>
+    <string name="assistant_mode">助手模式</string>
+    <string name="view_browser">收起助手，查看雨课堂网页</string>
     <string name="settings">设置</string>
     <string name="return_to_assistant">雨课堂助手，返回课堂</string>
 </resources>

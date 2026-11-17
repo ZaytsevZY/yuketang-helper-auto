@@ -16,6 +16,10 @@ object SlideImages {
     private val cache = object : LruCache<String, Bitmap>(12 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
+    fun clear() {
+        scope.coroutineContext.cancelChildren()
+        cache.evictAll()
+    }
     suspend fun bytes(url: String): ByteArray = withContext(Dispatchers.IO) {
         require(url.startsWith("https://")) { "图片地址必须使用 HTTPS" }
         http.newCall(Request.Builder().url(url).build()).awaitResponse().use { response ->

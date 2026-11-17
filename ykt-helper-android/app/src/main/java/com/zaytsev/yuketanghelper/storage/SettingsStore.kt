@@ -20,6 +20,7 @@ class SettingsStore(context: Context) {
         autoSubmit = preferences.getBoolean("auto_submit", false),
         keepScreenOn = preferences.getBoolean("keep_screen_on", false),
         notifyNewProblems = preferences.getBoolean("notify_new_problems", true),
+        notifyAutoSubmissions = preferences.getBoolean("notify_auto_submissions", true),
     )
 
     fun saveSettings(value: UserSettings) {
@@ -30,6 +31,7 @@ class SettingsStore(context: Context) {
             .putBoolean("auto_submit", value.autoSubmit)
             .putBoolean("keep_screen_on", value.keepScreenOn)
             .putBoolean("notify_new_problems", value.notifyNewProblems)
+            .putBoolean("notify_auto_submissions", value.notifyAutoSubmissions)
             .apply()
     }
 

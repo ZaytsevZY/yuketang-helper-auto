@@ -5,6 +5,7 @@ import com.zaytsev.yuketanghelper.model.Presentation
 import com.zaytsev.yuketanghelper.model.Problem
 import com.zaytsev.yuketanghelper.model.ProblemType
 import com.zaytsev.yuketanghelper.model.Slide
+import com.zaytsev.yuketanghelper.model.SubmittedAnswer
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -121,6 +122,7 @@ object YuketangParser {
             5 -> ProblemType.SUBJECTIVE
             else -> ProblemType.UNKNOWN
         }
+        val submitted = submittedAnswer(data.value("result"))
         return Problem(
             id = id,
             lessonId = lessonId,
@@ -129,15 +131,35 @@ object YuketangParser {
             type = type,
             prompt = data.text("prompt", "content", "body"),
             options = options,
-            answered = when (val result = data.value("result")) {
-                is JSONArray -> result.length() > 0
-                is JSONObject -> result.optString("content").isNotBlank() || (result.optJSONArray("pics")?.length() ?: 0) > 0
-                else -> false
-            },
+            answered = submitted != null,
             blankCount = data.optJSONArray("blanks")?.length() ?: 0,
             encrypted = Regex("[\uE000-\uF8FF]").containsMatchIn(data.text("prompt", "content", "body") + options.joinToString()) ||
                 data.optBoolean("encrypted", false) || data.toString().contains("xuetangx-com-encrypted-font"),
+            submittedAnswer = submitted,
         )
+    }
+
+    fun submittedAnswer(result: Any?): SubmittedAnswer? = when (result) {
+        is JSONArray -> if (result.length() == 0) null else SubmittedAnswer(
+            (0 until result.length()).map { if (result.isNull(it)) "" else result.optString(it) })
+        is JSONObject -> {
+            fun attachments(key: String): Int {
+                val values = result.optJSONArray(key) ?: return 0
+                return (0 until values.length()).count { index ->
+                    when (val item = values.opt(index)) {
+                        is String -> item.isNotBlank()
+                        is JSONObject -> listOf("pic", "url", "video").any { !item.isNull(it) && item.optString(it).isNotBlank() }
+                        else -> false
+                    }
+                }
+            }
+            val content = if (result.isNull("content")) "" else result.optString("content")
+            val pictures = attachments("pics")
+            val videos = attachments("videos")
+            if (content.isBlank() && pictures == 0 && videos == 0) null
+            else SubmittedAnswer(if (content.isBlank()) emptyList() else listOf(content), pictures, videos)
+        }
+        else -> null
     }
 
     private fun unwrap(root: JSONObject): JSONObject =

@@ -249,11 +249,12 @@ class MobileUiTest {
                     scroll.scrollTo(0, 300)
                     val position = scroll.scrollY
                     assertTrue(position > 0)
-                    for (key in listOf("notifyNewProblems", "autoAnalyze", "autoSubmit", "autoExpandOnProblem", "includeCurrentSlide", "keepScreenOn")) {
+                    for (key in listOf("notifyNewProblems", "notifyAutoSubmissions", "autoAnalyze", "autoSubmit", "autoExpandOnProblem", "includeCurrentSlide", "keepScreenOn")) {
                         val toggle = body.findViewWithTag<com.google.android.material.materialswitch.MaterialSwitch>(key)
                         val selected = !toggle.isChecked
                         expected = when (key) {
                             "notifyNewProblems" -> expected.copy(notifyNewProblems = selected)
+                            "notifyAutoSubmissions" -> expected.copy(notifyAutoSubmissions = selected)
                             "autoAnalyze" -> expected.copy(autoAnalyze = selected)
                             "autoSubmit" -> expected.copy(autoSubmit = selected)
                             "autoExpandOnProblem" -> expected.copy(autoExpandOnProblem = selected)

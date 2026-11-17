@@ -1,10 +1,10 @@
 <resources>
     <style name="Theme.YuketangHelper" parent="Theme.Material3.Light.NoActionBar">
-        <item name="colorPrimary">@color/brand_green</item>
-        <item name="colorPrimaryDark">@color/brand_green_dark</item>
-        <item name="colorSecondaryContainer">#DCEEE6</item>
-        <item name="colorOnSecondaryContainer">@color/brand_green_dark</item>
-        <item name="colorSecondary">@color/brand_green</item>
+        <item name="colorPrimary">@color/brand_blue</item>
+        <item name="colorPrimaryDark">@color/brand_blue_dark</item>
+        <item name="colorSecondaryContainer">@color/surface_variant</item>
+        <item name="colorOnSecondaryContainer">@color/brand_blue_dark</item>
+        <item name="colorSecondary">@color/brand_blue</item>
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:statusBarColor">@color/surface</item>

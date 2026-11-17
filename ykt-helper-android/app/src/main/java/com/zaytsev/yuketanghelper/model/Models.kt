@@ -45,6 +45,14 @@ data class Problem(
     var answered: Boolean = false,
     val blankCount: Int = 0,
     val encrypted: Boolean = false,
+    var submittedAnswer: SubmittedAnswer? = null,
+)
+
+/** An answer returned by the classroom API or acknowledged after submission, never an AI draft. */
+data class SubmittedAnswer(
+    val values: List<String>,
+    val pictureCount: Int = 0,
+    val videoCount: Int = 0,
 )
 
 data class Slide(
@@ -89,4 +97,5 @@ data class UserSettings(
     val autoSubmit: Boolean = false,
     val keepScreenOn: Boolean = false,
     val notifyNewProblems: Boolean = true,
+    val notifyAutoSubmissions: Boolean = true,
 )

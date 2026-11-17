@@ -7,11 +7,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.zaytsev.yuketanghelper"
+        applicationId = providers.gradleProperty("verificationApplicationId").orElse("com.zaytsev.yuketanghelper").get()
         minSdk = 23
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.3.4"
+        versionCode = 14
+        versionName = "0.3.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

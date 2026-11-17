@@ -13,6 +13,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
+import org.json.JSONArray
 
 /** All mutable classroom state is owned by the main dispatcher. Network calls are cancellable. */
 class ClassroomSession(
@@ -35,6 +36,7 @@ class ClassroomSession(
     private var reconnect: Job? = null
     private var chatJob: Job? = null
     private var profileJob: Job? = null
+    private var refreshJob: Job? = null
     private var chatGeneration = 0L
     private var reconnectCount = 0
     private var messages = Channel<String>(Channel.UNLIMITED)
@@ -67,11 +69,11 @@ class ClassroomSession(
     }
 
     fun refreshLessons() {
-        if (state.busy) return
+        if (state.busy || state.loggingOut) return
         val current = generation
         val env = state.environment
         state.busy = true; changed()
-        scope.launch {
+        refreshJob = scope.launch {
             try {
                 val lessons = client.listLessons(env)
                 if (current == generation) {
@@ -179,11 +181,18 @@ class ClassroomSession(
         if (presentation.lessonId != connected.lesson.id) return
         val previous = connected.problems.associateBy { it.id }
         val problems = presentation.slides.mapNotNull { slide -> slide.problem?.also { p ->
-            previous[p.id]?.let { old -> p.unlockedAt = old.unlockedAt; p.deadlineAt = old.deadlineAt; p.answered = p.answered || old.answered }
+            val serverAnswer = p.submittedAnswer
+            previous[p.id]?.let { old ->
+                p.unlockedAt = old.unlockedAt; p.deadlineAt = old.deadlineAt; p.answered = p.answered || old.answered
+                if (p.submittedAnswer == null) p.submittedAnswer = old.submittedAnswer
+            }
             when (ledger.getString(ledgerKey(p), null)) {
                 "submitted" -> p.answered = true
                 "pending" -> state.question(p).submissionUnknown = true
             }
+            if (serverAnswer != null) ledger.edit().putString("${ledgerKey(p)}:answer", encodeAnswer(serverAnswer)).apply()
+            if (p.submittedAnswer == null) p.submittedAnswer = cachedAnswer(p)
+            if (p.submittedAnswer != null) p.answered = true
         } }
         // Retain earlier courseware and its questions when the teacher publishes another deck.
         val oldSlides = connected.presentation?.slides.orEmpty().filter { old -> presentation.slides.none { it.id == old.id } }
@@ -215,11 +224,24 @@ class ClassroomSession(
         when (message.optString("op")) {
             "lessonfinished" -> { disconnect(); report("课堂已结束，已停止自动回答"); return }
             "problemanswered" -> {
-                val id = listOf("problemId", "problem_id", "problemid", "id").firstNotNullOfOrNull { message.opt(it)?.toString() }
-                state.connected?.problems?.find { it.id == id }?.let {
-                    it.answered = true; state.question(it).submissionUnknown = false
-                    ledger.edit().putString(ledgerKey(it), "submitted").commit()
-                    state.question(it).status = "已同步服务端作答状态"
+                val entity = message.optJSONObject("problem") ?: message
+                val id = listOf("problemId", "problem_id", "problemid", "id").firstNotNullOfOrNull { entity.opt(it)?.toString() }
+                state.connected?.problems?.find { it.id == id }?.let { p ->
+                    p.answered = true; state.question(p).submissionUnknown = false
+                    val result = YuketangParser.submittedAnswer(entity.opt("result"))
+                    p.submittedAnswer = result
+                    ledger.edit().putString(ledgerKey(p), "submitted").apply {
+                        if (result != null) putString("${ledgerKey(p)}:answer", encodeAnswer(result))
+                        else remove("${ledgerKey(p)}:answer")
+                    }.commit()
+                    state.question(p).status = "已同步服务端作答状态"
+                    // Events often contain only an ID. Fetch actual answer content rather than
+                    // treating the current editor/AI draft as what another device submitted.
+                    if (result == null) {
+                        try { loadPresentation(p.presentationId) }
+                        catch (e: CancellationException) { throw e }
+                        catch (_: Exception) { state.question(p).status = "已作答，答案内容暂未同步，可重新同步课堂" }
+                    }
                 }
             }
             "closeproblem", "lockproblem" -> {
@@ -289,7 +311,7 @@ class ClassroomSession(
                         if (AnswerParser.normalized(p, q.draft) == null) { q.status = "答案格式不明确，等待手动核对"; return@withPermit }
                         q.status = "3 秒后自动提交，可在课堂页暂停"; changed()
                         delay(autoSubmitDelayMs)
-                        if (settings.settings().autoSubmit && state.active && isOpen(p) && state.online) submitNow(p, q.draft)
+                        if (settings.settings().autoSubmit && state.active && isOpen(p) && state.online) submitNow(p, q.draft, automatic = true)
                         else q.status = "自动提交已暂停或题目已截止"
                     }
                 }
@@ -309,7 +331,7 @@ class ClassroomSession(
         }
     }
 
-    private suspend fun submitNow(requested: Problem, answer: String, forceRetry: Boolean = false) {
+    private suspend fun submitNow(requested: Problem, answer: String, forceRetry: Boolean = false, automatic: Boolean = false) {
         val p = state.connected?.problems?.find { it.id == requested.id } ?: error("题目已不在当前课堂")
         val q = state.question(p)
         require(state.active && state.online) { "课堂未连接，请先重新连接课堂" }
@@ -324,11 +346,20 @@ class ClassroomSession(
         q.submitting = true; q.submissionUnknown = true; q.status = if (forceRetry) "正在补答" else "正在提交"; changed()
         try {
             client.submitAnswer(state.environment, p, answer, forceRetry)
-            ledger.edit().putString(ledgerKey(p), "submitted").commit()
+            val confirmed = p.submittedAnswer!!
+            // A courseware refresh can replace the Problem while this request is in flight.
+            state.connected?.problems?.find { it.id == p.id }?.let {
+                it.answered = true; it.submittedAnswer = confirmed
+            }
+            ledger.edit().putString(ledgerKey(p), "submitted")
+                .putString("${ledgerKey(p)}:answer", encodeAnswer(confirmed)).commit()
             q.submissionUnknown = false; q.status = if (forceRetry) "补答成功" else "已提交"; report("题目 ${p.id} ${q.status}")
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { error("${if (forceRetry) "补答" else "提交"}结果未确认，请在雨课堂网页核对后再决定是否重试") }
         finally { q.submitting = false; changed() }
+        if (automatic) state.connected?.lesson?.let { lesson ->
+            runCatching { problemNotifications.showAutomaticSubmission(state.environment, lesson, p.id, settings.settings().notifyAutoSubmissions) }
+        }
     }
 
     fun allowManualRetry(p: Problem) {
@@ -341,13 +372,27 @@ class ClassroomSession(
     }
 
     private fun ledgerKey(p: Problem) = "${state.environment.name}:${p.lessonId}:${p.id}"
+
+    private fun encodeAnswer(answer: SubmittedAnswer): String = JSONObject()
+        .put("values", JSONArray(answer.values)).put("pictureCount", answer.pictureCount)
+        .put("videoCount", answer.videoCount).toString()
+
+    private fun cachedAnswer(p: Problem): SubmittedAnswer? = ledger.getString("${ledgerKey(p)}:answer", null)?.let { encoded ->
+        runCatching {
+            val json = JSONObject(encoded)
+            val values = json.getJSONArray("values")
+            SubmittedAnswer((0 until values.length()).map { values.optString(it) },
+                json.optInt("pictureCount").coerceAtLeast(0), json.optInt("videoCount").coerceAtLeast(0))
+        }.getOrNull()
+    }
     private fun isOpen(p: Problem) = p.unlockedAt != null && !p.answered && (p.deadlineAt?.let { it > System.currentTimeMillis() } != false)
 
     fun saveSettings(value: UserSettings) {
         val previous = settings.settings()
         if (value == previous) return
         settings.saveSettings(value)
-        if (!value.notifyNewProblems) problemNotifications.clear()
+        if (!value.notifyNewProblems) problemNotifications.clearNewProblems()
+        if (!value.notifyAutoSubmissions) problemNotifications.clearAutomaticSubmissions()
         report(if (value.autoSubmit != previous.autoSubmit) {
             if (value.autoSubmit) "自动回答已开启：新题目将自动分析并提交" else "自动提交已关闭"
         } else "设置已自动保存")
@@ -405,6 +450,30 @@ class ClassroomSession(
         state.modelStatusKind = ModelStatusKind.IDLE
         state.modelStatus = "模型配置已清除"
         changed()
+    }
+
+    fun logout() {
+        state.loggingOut = true
+        disconnect()
+        refreshJob?.cancel(); refreshJob = null
+        credentials.clearLoginData()
+        ledger.edit().clear().apply()
+        problemNotifications.clearHistory()
+        com.zaytsev.yuketanghelper.ui.SlideImages.clear()
+        state.lessons = emptyList()
+        state.connected = null
+        state.selectedProblem = null
+        state.questions.clear()
+        state.courseAnswers.clear()
+        state.chatDraft = ""
+        state.slideIndex = 0
+        state.events.clear()
+        report("正在退出全部雨课堂账号并清除缓存…")
+    }
+
+    fun finishLogout() {
+        state.loggingOut = false
+        report("已退出全部雨课堂账号并清除缓存，请重新登录")
     }
 
     fun disconnect(notify: Boolean = true) {

@@ -67,8 +67,8 @@ class GlassDrawable(
         canvas.translate(rect.left, rect.top)
         if (paint.shader == null) {
             paint.shader = LinearGradient(0f, 0f, rect.width(), rect.height(),
-                if (tint > 0f) intArrayOf(0xFFF2FFFB.toInt(), 0xFFD2EEE5.toInt(), 0xFFC7E4ED.toInt())
-                else intArrayOf(0xFFFDFEFF.toInt(), 0xFFE6F0F5.toInt(), 0xFFE1E8F3.toInt()), null, Shader.TileMode.CLAMP)
+                if (tint > 0f) intArrayOf(0xFFE6EFFA.toInt(), 0xFFC9DBEF.toInt(), 0xFFB8CFE7.toInt())
+                else intArrayOf(0xFFF1F6FC.toInt(), 0xFFDFE9F5.toInt(), 0xFFD1DEEE.toInt()), null, Shader.TileMode.CLAMP)
         }
         canvas.drawRoundRect(0f, 0f, rect.width(), rect.height(), radius, radius, paint)
         paint.shader = null
@@ -120,11 +120,11 @@ private object GlassShader {
             float2 normal = normalize(p - size * 0.5 + float2(0.001));
             float2 refracted = (p + origin + normal * edge * 16.0 * density) / density;
             float blue = 0.5 + 0.5 * sin(refracted.x * 0.013 + refracted.y * 0.008);
-            float mint = 0.5 + 0.5 * cos(refracted.y * 0.012 - refracted.x * 0.006);
-            half3 backdrop = mix(half3(0.90,0.95,0.98), half3(0.82,0.90,0.96), blue * 0.55);
-            backdrop = mix(backdrop, half3(0.79,0.94,0.89), mint * (0.10 + accent * 0.65));
+            float depth = 0.5 + 0.5 * cos(refracted.y * 0.012 - refracted.x * 0.006);
+            half3 backdrop = mix(half3(0.85,0.91,0.97), half3(0.75,0.84,0.94), blue * 0.55);
+            backdrop = mix(backdrop, half3(0.60,0.75,0.92), depth * (0.10 + accent * 0.65));
             float topLight = 1.0 - p.y / max(size.y, 1.0);
-            half3 color = mix(backdrop, half3(1.0), 0.32 + topLight * 0.30);
+            half3 color = mix(backdrop, half3(1.0), 0.22 + topLight * 0.18);
             color += half3(0.08) * edge * topLight;
             color -= half3(0.045, 0.035, 0.015) * edge * (1.0 - topLight);
             color -= half3(0.035) * pressed;
@@ -141,13 +141,15 @@ private object GlassShader {
 }
 
 object GlassUi {
-    val ink = Color.rgb(31, 48, 65)
-    val secondary = Color.rgb(96, 113, 129)
-    val accent = Color.rgb(19, 103, 88)
+    val ink = Color.rgb(32, 52, 74)
+    val secondary = Color.rgb(75, 97, 120)
+    val accent = Color.rgb(45, 82, 122)
+    val paper = 0xFFF1F5FA.toInt()
+    val control = 0xFFE4EDF6.toInt()
     fun dp(view: View, value: Int) = (value * view.resources.displayMetrics.density).toInt()
     fun surface(view: View, radius: Float = 24f, tint: Float = 0f, interactive: Boolean = true) {
         val glass = GlassDrawable(view, radius, tint)
-        view.background = if (interactive) RippleDrawable(ColorStateList.valueOf(0x181A655B), glass,
+        view.background = if (interactive) RippleDrawable(ColorStateList.valueOf(0x18355F8C), glass,
             GradientDrawable().apply { cornerRadius = radius * view.resources.displayMetrics.density; setColor(Color.WHITE) }) else glass
         view.elevation = dp(view, 2).toFloat()
     }
@@ -191,10 +193,10 @@ object GlassUi {
             override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup) = text(position, convertView, true)
         }
     }
-    fun card(view: View, tint: Int = 0xFFFCFDFE.toInt(), radius: Float = 22f) {
+    fun card(view: View, tint: Int = paper, radius: Float = 22f) {
         view.background = GradientDrawable().apply {
             setColor(tint); cornerRadius = radius * view.resources.displayMetrics.density
-            setStroke(dp(view, 1), 0xDFE3EAF1.toInt())
+            setStroke(dp(view, 1), 0xFFC1D0DF.toInt())
         }
     }
 }
@@ -249,7 +251,7 @@ class GlassTabBar @JvmOverloads constructor(context: Context, attrs: AttributeSe
             val selected = button.id == id
             button.isChecked = selected
             button.isSelected = selected
-            button.background = RippleDrawable(ColorStateList.valueOf(0x181A655B),
+            button.background = RippleDrawable(ColorStateList.valueOf(0x18355F8C),
                 if (selected) GlassDrawable(button, 26f, 1f) else null,
                 GradientDrawable().apply {
                     cornerRadius = 26f * resources.displayMetrics.density

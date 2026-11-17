@@ -29,6 +29,7 @@ class ClassroomFlowTest {
     @Volatile private var aiDelay = 0L
     @Volatile private var answer = "B"
     @Volatile private var rejectSubmit = false
+    @Volatile private var presentationPayload: String? = null
     private val lesson = Lesson("12345", "模拟物理课堂", "active", "c1", "p1")
 
     @Before fun setup() = runBlocking {
@@ -39,7 +40,7 @@ class ClassroomFlowTest {
         server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse = when {
                 request.path == "/api/v3/lesson/checkin" -> json("""{"code":0,"data":{"lessonToken":"test-lesson-token"}}""")
-                request.path?.startsWith("/api/v3/lesson/presentation/fetch") == true -> json(deck)
+                request.path?.startsWith("/api/v3/lesson/presentation/fetch") == true -> json(presentationPayload ?: deck)
                 request.path == "/wsapp/" -> MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
                     override fun onOpen(webSocket: WebSocket, response: Response) { socket = webSocket }
                 })
@@ -130,6 +131,52 @@ class ClassroomFlowTest {
         waitUntil { manager.activeNotifications.none { it.id == 20 } }
         assertTrue(completions.isEmpty())
     }
+    @Test fun automaticSuccessPostsBothQuestionAndSubmissionNotificationsWithoutDuplicates() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        grantNotificationPermission(context)
+        val manager = context.getSystemService(android.app.NotificationManager::class.java)
+        send("q1")
+        waitUntil { manager.activeNotifications.any { it.id == 21 } }
+        assertTrue(manager.activeNotifications.any { it.id == 20 })
+        val success = manager.activeNotifications.single { it.id == 21 }
+        assertEquals("助手已帮你自动提交了一道题，刷新查看", success.notification.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString())
+        assertEquals("刷新查看", success.notification.actions.single().title.toString())
+        send("q1")
+        delay(300)
+        assertEquals(1, submissions.size)
+        assertEquals(success.postTime, manager.activeNotifications.single { it.id == 21 }.postTime)
+    }
+    @Test fun rejectedAutomaticSubmissionDoesNotSendSuccessNotification() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        grantNotificationPermission(context)
+        val manager = context.getSystemService(android.app.NotificationManager::class.java)
+        rejectSubmit = true
+        send("q1")
+        waitUntil { submissions.size == 1 && session.state.questions["q1"]?.analyzing == false }
+        assertTrue(session.state.questions["q1"]!!.submissionUnknown)
+        assertTrue(manager.activeNotifications.none { it.id == 21 })
+    }
+    @Test fun manualSubmissionDoesNotClaimAssistantAutomaticallySubmitted() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        grantNotificationPermission(context)
+        val manager = context.getSystemService(android.app.NotificationManager::class.java)
+        withContext(Dispatchers.Main) { session.saveSettings(UserSettings(autoAnalyze = false)) }
+        send("q1")
+        waitUntil { session.state.selectedProblem?.unlockedAt != null }
+        withContext(Dispatchers.Main) { session.submit(session.state.selectedProblem!!, "A") }
+        waitUntil { session.state.selectedProblem?.answered == true }
+        assertTrue(manager.activeNotifications.none { it.id == 21 })
+    }
+    @Test fun submissionNotificationSettingDoesNotMuteNewQuestionNotification() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        grantNotificationPermission(context)
+        val manager = context.getSystemService(android.app.NotificationManager::class.java)
+        withContext(Dispatchers.Main) { session.saveSettings(session.settings.settings().copy(notifyAutoSubmissions = false)) }
+        send("q1")
+        waitUntil { session.state.questions["q1"]?.status == "已提交" }
+        assertTrue(manager.activeNotifications.any { it.id == 20 })
+        assertTrue(manager.activeNotifications.none { it.id == 21 })
+    }
     @Test fun twoNewQuestionsAreAnsweredWhileAiIsBusyAndDuplicatePushesAreIgnored() = runBlocking {
         aiDelay = 250
         send("q1"); send("q2"); send("q1")
@@ -158,6 +205,7 @@ class ClassroomFlowTest {
             assertEquals("B", session.state.questions["q1"]!!.draft)
             assertEquals("已提交", session.state.questions["q1"]!!.status)
             assertTrue(session.state.connected!!.problems.first { it.id == "q1" }.answered)
+            assertEquals(listOf("B"), session.state.connected!!.problems.first { it.id == "q1" }.submittedAnswer!!.values)
         }
     }
     @Test fun expiredQuestionCanBeManuallyRetriedAndConfirmedAnswerCanBeCorrected() = runBlocking {
@@ -173,6 +221,35 @@ class ClassroomFlowTest {
         }
         waitUntil { retries.size == 2 && session.state.questions["q1"]?.submitting == false }
         assertEquals(listOf("A", "B"), retries.map { JSONObject(it).getJSONArray("problems").getJSONObject(0).getJSONArray("result").getString(0) })
+        withContext(Dispatchers.Main) { session.connect(lesson) }
+        waitUntil { session.state.online && session.state.connected?.problems?.size == 2 }
+        assertEquals(listOf("B"), session.state.connected!!.problems.first().submittedAnswer!!.values)
+        acknowledgeRetry = false
+        withContext(Dispatchers.Main) { session.submit(session.state.connected!!.problems.first(), "A", forceRetry = true) }
+        waitUntil { retries.size == 3 && session.state.questions["q1"]?.submitting == false }
+        assertEquals(listOf("B"), session.state.connected!!.problems.first().submittedAnswer!!.values)
+        assertTrue(session.state.questions["q1"]!!.submissionUnknown)
+    }
+
+    @Test fun otherDeviceAnswerFetchesActualContentAndReplacesCachedAnswer() = runBlocking {
+        withContext(Dispatchers.Main) {
+            session.saveSettings(UserSettings(autoAnalyze = false, autoSubmit = false))
+            session.state.question(session.state.connected!!.problems.first()).draft = "A"
+        }
+        presentationPayload = JSONObject(deck).apply {
+            getJSONObject("data").getJSONArray("slides").getJSONObject(0).getJSONObject("problem")
+                .put("result", org.json.JSONArray().put("C"))
+        }.toString()
+        socket!!.send("""{"op":"problemanswered","problemId":"q1"}""")
+        waitUntil { session.state.connected!!.problems.first().submittedAnswer?.values == listOf("C") }
+        assertEquals("A", session.state.questions["q1"]!!.draft)
+        socket!!.send("""{"op":"problemanswered","problemId":"q1","result":["B"]}""")
+        waitUntil { session.state.connected!!.problems.first().submittedAnswer?.values == listOf("B") }
+        presentationPayload = null
+        withContext(Dispatchers.Main) { session.connect(lesson) }
+        waitUntil { session.state.online && session.state.connected?.problems?.size == 2 }
+        assertEquals(listOf("B"), session.state.connected!!.problems.first().submittedAnswer!!.values)
+        assertTrue(submissions.isEmpty())
     }
     @Test fun unconfirmedRetryIsBlockedAfterRejoiningUntilManualVerification() = runBlocking {
         acknowledgeRetry = false
@@ -184,6 +261,7 @@ class ClassroomFlowTest {
             val p = session.state.connected!!.problems.first()
             assertTrue(session.state.question(p).submissionUnknown)
             assertFalse(p.answered)
+            assertNull(p.submittedAnswer)
             session.submit(p, "B", forceRetry = true)
         }
         delay(200)

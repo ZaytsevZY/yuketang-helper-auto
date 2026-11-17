@@ -53,6 +53,21 @@ class ProblemNotificationsTest {
     }
     @After fun teardown() { alerts.clear() }
 
+    @Test fun submissionSuccessIsIndependentAndDeduplicatedAcrossInstances() {
+        assertTrue(alerts.show(Environment.STANDARD, lesson, problem("submitted"), true))
+        assertTrue(alerts.showAutomaticSubmission(Environment.STANDARD, lesson, "submitted", true))
+        val end = System.currentTimeMillis() + 4000
+        while (manager.activeNotifications.none { it.id == 21 } && System.currentTimeMillis() < end) Thread.sleep(25)
+        assertTrue(manager.activeNotifications.any { it.id == 20 })
+        val notification = manager.activeNotifications.single { it.id == 21 }.notification
+        assertEquals("高等数学 · 自动提交成功", notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        assertEquals("刷新查看", notification.actions.single().title.toString())
+        assertFalse(ProblemNotifications(context).showAutomaticSubmission(Environment.STANDARD, lesson, "submitted", true))
+        alerts.clearNewProblems()
+        assertTrue(manager.activeNotifications.any { it.id == 21 })
+        alerts.clearAutomaticSubmissions()
+    }
+
     @Test fun timedAndUntimedNotificationsAreDistinctAndDuplicatesSurviveRecreation() {
         val first = problem("timed")
         assertTrue(alerts.show(Environment.STANDARD, lesson, first, true))

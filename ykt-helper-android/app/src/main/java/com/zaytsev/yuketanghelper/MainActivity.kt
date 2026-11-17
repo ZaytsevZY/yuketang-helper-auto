@@ -30,12 +30,15 @@ import kotlinx.coroutines.*
 class MainActivity : AppCompatActivity(), AssistantController.Actions {
     private lateinit var binding: ActivityMainBinding
     private var assistantVisible = true
+    private var styledAssistantVisible: Boolean? = null
     private lateinit var assistant: AssistantController
     private val session get() = (application as HelperApplication).session
     private val state get() = session.state
     private lateinit var observer: com.zaytsev.yuketanghelper.web.ClassroomObserver
     private var fileCallback: ValueCallback<Array<Uri>>? = null
     private var exportUrl: String? = null
+    private var browserDestroyed = false
+    private var waitingForLogout = false
     private val listener: () -> Unit = { render() }
     private val notifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
         if (!allowed) toast("通知未开启，无法显示新题目提醒；请在设置 → 系统通知设置中允许通知")
@@ -102,10 +105,13 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
             }
         }
         assistant.show()
-        if (savedInstanceState == null || binding.webView.restoreState(savedInstanceState) == null) binding.webView.loadUrl(state.environment.startUrl)
+        waitingForLogout = state.loggingOut
+        if (!waitingForLogout && (savedInstanceState == null || binding.webView.restoreState(savedInstanceState) == null))
+            binding.webView.loadUrl(state.environment.startUrl)
         render()
         if (savedInstanceState == null) openNotifiedProblem(intent)
         onBackPressedDispatcher.addCallback(this) {
+            if (state.loggingOut || waitingForLogout) return@addCallback
             when {
                 assistantVisible && assistant.page in setOf(AssistantController.Page.ABOUT, AssistantController.Page.BACKGROUND) -> assistant.show(AssistantController.Page.SETTINGS)
                 assistantVisible -> showAssistant(false)
@@ -150,6 +156,7 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
             override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean = navigate(url)
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) { observer.pageStarted(url) }
             override fun onPageFinished(view: WebView?, url: String?) {
+                if (state.loggingOut || browserDestroyed || view !== binding.webView) return
                 CookieManager.getInstance().flush(); updateNavigation()
                 lifecycleScope.launch { session.credentials.capturePage(binding.webView, state.environment) }
             }
@@ -157,6 +164,7 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
                 if (request?.isForMainFrame == true) toast("网页加载失败，请检查网络后点击刷新")
             }
             override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                if (state.loggingOut || browserDestroyed) return true
                 // Recreate the UI; the native classroom session and foreground service remain independent.
                 (view?.parent as? android.view.ViewGroup)?.removeView(view); view?.destroy()
                 recreate()
@@ -177,7 +185,6 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
             .onFailure { toast("没有可打开此链接的应用") }
     }
     private fun configureToolbar() {
-        com.zaytsev.yuketanghelper.ui.GlassUi.surface(binding.browserToolbar, 30f, interactive = false)
         listOf(binding.backButton, binding.forwardButton, binding.reloadButton).forEach {
             com.zaytsev.yuketanghelper.ui.GlassUi.surface(it, 24f)
         }
@@ -223,8 +230,19 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
     }
     private fun render() {
         if (!::assistant.isInitialized) return
-        binding.sheetTitle.text = if (state.active) "${if (state.online) "上课中" else "重连中"} · ${if(session.settings.settings().autoSubmit) "自动回答开" else "自动提交关"} · 网页"
-            else "课堂未连接 · 点击打开登录网页"
+        if (state.loggingOut) {
+            waitingForLogout = true
+            window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+            binding.sheetTitle.text = "正在退出全部账号并清除缓存…"
+            return
+        }
+        if (waitingForLogout) {
+            // Recreate instead of restoring the old WebView: drops sessionStorage and history.
+            recreate()
+            return
+        }
+        binding.sheetTitle.text = if (state.active) "${if (state.online) "上课中" else "重连中"} · ${if(session.settings.settings().autoSubmit) "自动回答开" else "自动提交关"}"
+            else "课堂未连接"
         if (state.active && session.settings.settings().keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         assistant.refresh()
@@ -266,9 +284,9 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
         binding.webView.loadUrl(environment.startUrl)
     }
     override fun saveSettings(value: UserSettings) {
-        val wasEnabled = session.settings.settings().notifyNewProblems
+        val previous = session.settings.settings()
         session.saveSettings(value)
-        if (value.notifyNewProblems && !wasEnabled) requestNotificationPermission()
+        if ((value.notifyNewProblems && !previous.notifyNewProblems) || (value.notifyAutoSubmissions && !previous.notifyAutoSubmissions)) requestNotificationPermission()
     }
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
@@ -279,9 +297,8 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
             toast("无法打开系统设置，请在手机设置中查找雨课堂助手的电池与后台运行选项")
     }
     override fun openNotificationSettings() {
-        val target = if (Build.VERSION.SDK_INT >= 26) Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+        val target = if (Build.VERSION.SDK_INT >= 26) Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
             .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName)
-            .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, ProblemNotifications.CHANNEL)
         else Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
         runCatching { startActivity(target) }.onFailure { toast("请在手机系统设置中允许雨课堂助手通知") }
     }
@@ -290,12 +307,19 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
         openNotifiedProblem(intent)
     }
     private fun openNotifiedProblem(source: Intent?) {
+        if (state.loggingOut || waitingForLogout) return
         if (source?.action != ProblemNotifications.ACTION_OPEN) return
         showAssistant(true)
         val lessonMatches = state.active && state.environment.name == source.getStringExtra(ProblemNotifications.EXTRA_ENVIRONMENT) &&
             state.connected?.lesson?.id == source.getStringExtra(ProblemNotifications.EXTRA_LESSON)
         val problem = if (lessonMatches) state.connected?.problems?.find { it.id == source.getStringExtra(ProblemNotifications.EXTRA_PROBLEM) } else null
         if (problem != null) {
+            if (source.getBooleanExtra(ProblemNotifications.EXTRA_REFRESH, false)) {
+                val classroomUrl = "${state.environment.origin}/lesson/fullscreen/v3/${Uri.encode(state.connected!!.lesson.id)}"
+                val current = binding.webView.url.orEmpty()
+                if (current == classroomUrl || current.startsWith("$classroomUrl/")) binding.webView.reload()
+                else binding.webView.loadUrl(classroomUrl)
+            }
             session.selectProblem(problem)
             assistant.show(AssistantController.Page.PROBLEMS)
         } else {
@@ -307,11 +331,44 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
     override fun openWebsite() { showAssistant(false) }
     override fun cancelAi() { session.cancelChat() }
     override fun clearProfile() { session.clearProfile(); assistant.show(AssistantController.Page.MODELS) }
+    @Suppress("DEPRECATION")
+    override fun logout() {
+        if (state.loggingOut || waitingForLogout) return
+        waitingForLogout = true
+        session.logout()
+        stopService(Intent(this, ClassroomService::class.java))
+        fileCallback?.onReceiveValue(null); fileCallback = null
+        exportUrl = null
+        // Cancel pending page-token capture and image export before destroying the browser.
+        lifecycleScope.coroutineContext.cancelChildren()
+        binding.webView.apply {
+            stopLoading()
+            settings.javaScriptEnabled = false
+            clearCache(true)
+            clearHistory()
+            clearFormData()
+            (parent as? android.view.ViewGroup)?.removeView(this)
+            destroy()
+        }
+        browserDestroyed = true
+        // Cleanup belongs to the application session, so rotation cannot cancel it.
+        val currentSession = session
+        com.zaytsev.yuketanghelper.web.BrowserDataCleaner.clear(applicationContext) {
+            currentSession.finishLogout()
+        }
+    }
     override fun exportSlide() {
         exportUrl = state.connected?.presentation?.slides?.getOrNull(state.slideIndex)?.imageUrl
         if (exportUrl == null) toast("本页没有可保存的图片") else saveImage.launch("课件-${state.slideIndex + 1}.png")
     }
     private fun updateNavigation() {
+        if (styledAssistantVisible != assistantVisible) {
+            styledAssistantVisible = assistantVisible
+            binding.root.setBackgroundColor(ContextCompat.getColor(this,
+                if (assistantVisible) R.color.assistant_background else R.color.browser_chrome))
+            binding.browserToolbar.setBackgroundResource(
+                if (assistantVisible) R.drawable.assistant_toolbar else R.drawable.browser_toolbar)
+        }
         binding.backButton.isEnabled = binding.webView.canGoBack()
         binding.forwardButton.isEnabled = binding.webView.canGoForward()
         binding.backButton.visibility = if (assistantVisible) View.GONE else View.VISIBLE
@@ -321,13 +378,17 @@ class MainActivity : AppCompatActivity(), AssistantController.Actions {
         binding.reloadButton.contentDescription = if (assistantVisible) "刷新课堂" else "刷新网页"
     }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-    override fun onSaveInstanceState(outState: Bundle) { binding.webView.saveState(outState); super.onSaveInstanceState(outState) }
-    override fun onResume() { super.onResume(); if (::binding.isInitialized) { binding.webView.onResume(); render() } }
-    override fun onPause() { if (::binding.isInitialized) { binding.webView.onPause(); CookieManager.getInstance().flush() }; super.onPause() }
+    override fun onSaveInstanceState(outState: Bundle) {
+        if (!browserDestroyed && !waitingForLogout && !state.loggingOut) binding.webView.saveState(outState)
+        super.onSaveInstanceState(outState)
+    }
+    override fun onResume() { super.onResume(); if (::binding.isInitialized) { if (!browserDestroyed) binding.webView.onResume(); render() } }
+    override fun onPause() { if (::binding.isInitialized && !browserDestroyed) { binding.webView.onPause(); CookieManager.getInstance().flush() }; super.onPause() }
     override fun onDestroy() {
+        if (::assistant.isInitialized) assistant.dispose()
         session.unobserve(listener); session.onNewProblem = null
         fileCallback?.onReceiveValue(null); fileCallback = null
-        binding.webView.apply { stopLoading(); (parent as? android.view.ViewGroup)?.removeView(this); destroy() }
+        if (!browserDestroyed) binding.webView.apply { stopLoading(); (parent as? android.view.ViewGroup)?.removeView(this); destroy() }
         super.onDestroy()
     }
 }

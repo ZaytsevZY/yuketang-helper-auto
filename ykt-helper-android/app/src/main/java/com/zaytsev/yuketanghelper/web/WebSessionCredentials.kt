@@ -20,6 +20,13 @@ interface CredentialSource {
 
 // Does not retain an Activity/WebView: background classroom sessions use the same cookie store.
 class WebSessionCredentials(private val settings: SettingsStore) : CredentialSource {
+    private var pageGeneration = 0L
+
+    fun clearLoginData() {
+        pageGeneration++
+        Environment.entries.forEach { settings.saveBearerToken(it.name, null) }
+    }
+
     override suspend fun load(environment: Environment): BrowserCredentials = withContext(Dispatchers.Main) {
         val cookies = CookieManager.getInstance().getCookie(environment.origin).orEmpty()
         val userId = cookies.split(';').map(String::trim).firstOrNull { it.startsWith("user_id=") }?.substringAfter('=')
@@ -36,6 +43,7 @@ class WebSessionCredentials(private val settings: SettingsStore) : CredentialSou
     }
 
     suspend fun capturePage(webView: WebView, environment: Environment) = withContext(Dispatchers.Main) {
+        val current = pageGeneration
         val origin = runCatching { android.net.Uri.parse(webView.url).let { "${it.scheme}://${it.host}" } }.getOrNull()
         if (origin != environment.origin) return@withContext
         val token = withTimeoutOrNull(2000) {
@@ -48,6 +56,6 @@ class WebSessionCredentials(private val settings: SettingsStore) : CredentialSou
                 }
             }
         }
-        if (token != null) saveBearerToken(environment, token)
+        if (current == pageGeneration && token != null) saveBearerToken(environment, token)
     }
 }
