@@ -4,6 +4,7 @@ import {
   nextTick,
   onMounted,
   onUnmounted,
+  onScopeDispose,
   reactive,
   ref,
   watch,
@@ -145,6 +146,8 @@ const props = defineProps<{
   runtime: RuntimeStatus | undefined;
   browserUrl: string | undefined;
   collapsed: boolean;
+  automationOwner?: boolean;
+  active?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -501,6 +504,28 @@ const sourceModules: ReadonlyArray<{
   },
 ];
 
+let panelDisposed = false;
+onScopeDispose(() => { panelDisposed = true; configurationChannel?.close(); });
+let lastPanelRefresh = 0;
+let panelRefreshing = false;
+const configurationChannel = typeof window.BroadcastChannel === 'undefined' ? undefined : new BroadcastChannel('ykt-configuration');
+if (configurationChannel) configurationChannel.onmessage = (event) => {
+  if (event.data?.kind === 'connected-lesson') {
+    if (props.automationOwner !== false && event.data.environment === props.environment && typeof event.data.id === 'string') {
+      selectedLessonId.value = event.data.id;
+      connectedLessonIds.clear();
+      connectedLessonIds.add(event.data.id);
+      void loadLessonData();
+    }
+    return;
+  }
+  void Promise.all([window.yuketang.getSettings(), window.yuketang.listAiProfiles()]).then(([nextSettings, nextProfiles]) => {
+    if (props.automationOwner !== false) applySettings(nextSettings);
+    else settings.value = nextSettings; // Preserve an unfinished settings form.
+    aiProfiles.value = nextProfiles;
+  }).catch(() => {});
+};
+
 onMounted(async () => {
   subscriptions.push(
     window.yuketang.onNetworkEntryAdded((entry) => {
@@ -508,18 +533,25 @@ onMounted(async () => {
       if (entries.value.length > 500) entries.value.shift();
     }),
     window.yuketang.onClassroomNotice((notice) => {
-      void handleClassroomNotice(notice);
+      if (props.automationOwner !== false) void handleClassroomNotice(notice);
     }),
     window.yuketang.onLessonCollectionStatusChanged(receiveCollectionStatus),
   );
   await loadWorkspace();
+  if (panelDisposed) return;
   automationTimer = setInterval(() => {
     collectionNow.value = Date.now();
-    void automationTick();
+    if (props.automationOwner !== false) void automationTick();
+    else if (props.active && Date.now() - lastPanelRefresh > 5000 && !panelRefreshing) {
+      lastPanelRefresh = Date.now();
+      panelRefreshing = true;
+      void loadLessonData().finally(() => { panelRefreshing = false; });
+    }
   }, 1000);
 });
 
 onUnmounted(() => {
+  configurationChannel?.close();
   subscriptions.forEach((unsubscribe) => unsubscribe());
   if (automationTimer) clearInterval(automationTimer);
   for (const timer of scheduledProblems.values()) clearTimeout(timer);
@@ -575,6 +607,16 @@ watch(
     }
   },
 );
+
+watch(() => settings.value?.llmAutoGenerate, (enabled, before) => {
+  if (props.automationOwner === false) return;
+  if (!enabled) {
+    for (const timer of scheduledProblems.values()) clearTimeout(timer);
+    scheduledProblems.clear();
+  } else if (before === false) {
+    for (const problem of problems.value) seenAvailableProblems.delete(problem.id);
+  }
+});
 
 watch(selectedPresentationId, () => {
   selectedSlideId.value = selectedPresentation.value?.slides[0]?.id ?? '';
@@ -684,6 +726,7 @@ async function connectLesson(): Promise<void> {
     );
     connectedLessonIds.clear();
     connectedLessonIds.add(selectedLessonId.value);
+    configurationChannel?.postMessage({ kind: 'connected-lesson', id: selectedLessonId.value, environment: props.environment });
     collectingLessonId.value = selectedLessonId.value;
     infoMessage.value = '已打开官方课堂，正在收集题目与课件';
     await loadLessonData();
@@ -1427,6 +1470,7 @@ async function saveSettings(): Promise<void> {
       logRetentionDays: clamp(draft.logRetentionDays, 1, 365),
     });
     applySettings(next);
+    configurationChannel?.postMessage('changed');
     infoMessage.value = '设置已保存';
   });
   if (!settings.value?.llmAutoGenerate) {
@@ -1490,6 +1534,7 @@ async function resetSettings(): Promise<void> {
 }
 
 function applyProfiles(value: readonly AiProfileView[]): void {
+  configurationChannel?.postMessage('changed');
   aiProfiles.value = value;
   if (
     settings.value &&
@@ -1830,6 +1875,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 async function automationTick(): Promise<void> {
+  if (props.automationOwner === false) return;
   const currentSettings = settings.value;
   if (!currentSettings || automationRunning) return;
   automationRunning = true;
@@ -2140,6 +2186,12 @@ function clamp(value: number, min: number, max: number): number {
       </p>
 
       <div class="panel-scroll">
+        <div v-show="page === 'assignments' || page === 'courses'" class="panel-page">
+          <KeepAlive>
+            <AssignmentsPanel v-if="page === 'assignments'" :environment="environment" @explain="explainAssignment" />
+            <CourseProgressPanel v-else-if="page === 'courses'" :environment="environment" />
+          </KeepAlive>
+        </div>
         <section v-if="page === 'classroom'" class="panel-page">
           <div class="section-heading">
             <h2>当前课堂</h2>
@@ -2236,17 +2288,6 @@ function clamp(value: number, min: number, max: number): number {
               连接课堂后，这里会显示对应 API 或 WebSocket 事件。
             </p>
           </div>
-        </section>
-
-        <section v-else-if="page === 'assignments'" class="panel-page">
-          <AssignmentsPanel
-            :environment="environment"
-            @explain="explainAssignment"
-          />
-        </section>
-
-        <section v-else-if="page === 'courses'" class="panel-page">
-          <CourseProgressPanel :environment="environment" />
         </section>
 
         <section v-else-if="page === 'problems'" class="panel-page">
@@ -3590,7 +3631,7 @@ function clamp(value: number, min: number, max: number): number {
           </div>
         </section>
 
-        <section v-else class="panel-page diagnostics-page">
+        <section v-else-if="page === 'diagnostics'" class="panel-page diagnostics-page">
           <div class="section-heading">
             <h2>诊断</h2>
             <button
@@ -3726,7 +3767,7 @@ function clamp(value: number, min: number, max: number): number {
   background: transparent;
   color: var(--green-strong);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.45;
   writing-mode: vertical-rl;
@@ -3761,7 +3802,7 @@ function clamp(value: number, min: number, max: number): number {
 .panel-header span {
   margin-top: 3px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .panel-scroll {
@@ -3784,7 +3825,7 @@ function clamp(value: number, min: number, max: number): number {
   margin: 0;
   padding: 9px 14px;
   border-bottom: 1px solid var(--line);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -3832,7 +3873,7 @@ select,
 textarea,
 input {
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -3898,7 +3939,7 @@ button:disabled {
   gap: 12px;
   padding: 9px 0;
   border-bottom: 1px solid var(--line);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .fact-list dt {
@@ -3928,7 +3969,7 @@ button:disabled {
 .section-divider span,
 .count-badge {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .selection-list,
@@ -3964,14 +4005,14 @@ button:disabled {
 }
 
 .selection-row strong {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
 .selection-row small {
   margin-top: 3px;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .empty-state {
@@ -3993,7 +4034,7 @@ button:disabled {
 
 .collection-progress p {
   margin: 6px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 
@@ -4009,7 +4050,7 @@ button:disabled {
 
 .empty-state strong {
   color: var(--text);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .empty-state p,
@@ -4017,7 +4058,7 @@ button:disabled {
 .honest-note {
   margin: 5px 0 0;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -4049,7 +4090,7 @@ button:disabled {
 }
 
 .source-list strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .source-list small {
@@ -4063,7 +4104,7 @@ button:disabled {
   gap: 6px;
   margin-top: 12px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 650;
 }
 
@@ -4138,7 +4179,7 @@ button:focus-visible {
 
 .problem-context p {
   margin: 10px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   line-height: 1.65;
 }
@@ -4154,7 +4195,7 @@ button:focus-visible {
   display: block;
   margin-top: 7px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .selected-source-row,
@@ -4169,7 +4210,7 @@ button:focus-visible {
 .selected-source-row {
   min-height: 34px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .ai-slide-preview {
@@ -4214,7 +4255,7 @@ button:focus-visible {
 }
 
 .ai-chat-heading strong {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .ai-chat-heading span,
@@ -4222,7 +4263,7 @@ button:focus-visible {
 .request-recovery,
 .ai-composer small {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .ai-message-list {
@@ -4256,7 +4297,7 @@ button:focus-visible {
 
 .ai-message-label strong {
   color: var(--text);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
 }
 
@@ -4264,7 +4305,7 @@ button:focus-visible {
   width: 100%;
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -4334,7 +4375,7 @@ button:focus-visible {
   padding: 4px 0;
   color: var(--green-strong);
   background: transparent;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
 }
 
@@ -4396,17 +4437,17 @@ button:focus-visible {
 
 .proposal-answer span {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .proposal-answer strong {
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .proposal-explanation {
   margin: 8px 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -4414,7 +4455,7 @@ button:focus-visible {
   min-width: 0;
   overflow-wrap: anywhere;
   color: inherit;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.65;
 }
 
@@ -4451,7 +4492,7 @@ button:focus-visible {
 .ai-markdown :deep(h4),
 .ai-markdown :deep(h5),
 .ai-markdown :deep(h6) {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .ai-markdown :deep(ul),
@@ -4492,7 +4533,7 @@ button:focus-visible {
 .ai-markdown :deep(.ai-markdown-code code),
 .ai-markdown :deep(.ai-markdown-inline-code) {
   font-family: Consolas, monospace;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .ai-markdown :deep(.ai-markdown-inline-code) {
@@ -4515,7 +4556,7 @@ button:focus-visible {
   padding: 8px 9px;
   color: #8d2d2d;
   background: #fff3f1;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .proposal-failure p {
@@ -4525,7 +4566,7 @@ button:focus-visible {
 .proposal-meta,
 .credential-note {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .help-list {
@@ -4534,7 +4575,7 @@ button:focus-visible {
   margin: 9px 0;
   padding-left: 20px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -4547,7 +4588,7 @@ button:focus-visible {
   padding: 10px;
   background: var(--surface-subtle);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -4555,7 +4596,7 @@ button:focus-visible {
 .proposal-raw {
   margin: 9px 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .proposal-raw summary {
@@ -4606,7 +4647,7 @@ button:focus-visible {
   place-items: center;
   border: 1px solid #c6d1cb;
   border-radius: 50%;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 800;
 }
 
@@ -4626,7 +4667,7 @@ button:focus-visible {
   border: 1px solid;
   border-radius: 6px;
   padding: 9px 10px;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .validation-result.valid {
@@ -4657,13 +4698,13 @@ button:focus-visible {
   align-items: start;
   gap: 7px;
   color: #7d581a;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
 .inline-success {
   color: #16683f;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .slide-stage {
@@ -4686,7 +4727,7 @@ button:focus-visible {
 
 .missing-slide {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .slide-controls {
@@ -4718,7 +4759,7 @@ button:focus-visible {
   align-items: center;
   gap: 5px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .slide-picker-summary svg {
@@ -4755,12 +4796,12 @@ button:focus-visible {
 }
 
 .slide-picker-panel > header strong {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .slide-picker-panel > header span {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .slide-thumbnail-list {
@@ -4813,7 +4854,7 @@ button:focus-visible {
   overflow: hidden;
   color: var(--text-muted);
   background: var(--surface-subtle);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .slide-thumbnail-media img {
@@ -4834,7 +4875,7 @@ button:focus-visible {
 
 .slide-thumbnail-meta > strong {
   overflow: hidden;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4844,7 +4885,7 @@ button:focus-visible {
   display: flex;
   flex: 0 0 auto;
   gap: 3px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .current-state,
@@ -4924,7 +4965,7 @@ button:focus-visible {
 
 .settings-form legend {
   padding: 0 5px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 750;
 }
 
@@ -4937,7 +4978,7 @@ button:focus-visible {
 
 .profile-connect-panel legend {
   padding: 0 5px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -5013,7 +5054,7 @@ button:focus-visible {
 .profile-card-meta,
 .field-label small {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .profile-card-head div > span {
@@ -5026,7 +5067,7 @@ button:focus-visible {
   padding: 3px 5px;
   color: var(--green-strong);
   background: var(--green-soft);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -5050,7 +5091,7 @@ button:focus-visible {
 }
 
 .capability-heading strong {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .capability-row {
@@ -5072,7 +5113,7 @@ button:focus-visible {
 .capability-row > span strong,
 .capability-row > span small,
 .capability-row .model-hint {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .capability-row > span strong {
@@ -5111,7 +5152,7 @@ button:focus-visible {
 .temperature-row strong,
 .temperature-row small,
 .temperature-row input {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .temperature-row small {
@@ -5140,7 +5181,7 @@ button:focus-visible {
   gap: 7px;
   margin-top: 8px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .compact-check input {
@@ -5199,7 +5240,7 @@ button:focus-visible {
 
 .switch-row strong,
 .number-row {
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .switch-row small {
@@ -5242,7 +5283,7 @@ button:focus-visible {
   align-items: center;
   gap: 7px;
   color: var(--text);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .reminder-option-grid input {
@@ -5257,10 +5298,14 @@ button:focus-visible {
   top: auto;
   bottom: 12px;
   right: 12px;
-  width: min(340px, calc(var(--assistant-width) - 24px));
+  width: min(340px, calc(100% - 24px));
+  max-height: calc(100% - 80px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
   display: grid;
   gap: 6px;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .notice-stack article {
@@ -5279,7 +5324,7 @@ button:focus-visible {
 .notice-stack strong,
 .notice-stack span {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .notice-stack span {
@@ -5294,7 +5339,7 @@ button:focus-visible {
   padding: 2px 3px;
   color: var(--green-strong);
   background: transparent;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -5313,7 +5358,7 @@ button:focus-visible {
   padding: 7px 0;
   border-bottom: 1px solid var(--line);
   counter-increment: flow;
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .data-flow li::before {
@@ -5357,7 +5402,7 @@ button:focus-visible {
 
 .module-list strong,
 .log-list strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .module-list code {
@@ -5437,6 +5482,6 @@ button:focus-visible {
 .module-list p,
 .log-list small,
 .log-list pre {
-  font-size: 12px;
+  font-size: 13px;
 }
 </style>

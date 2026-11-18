@@ -271,7 +271,7 @@ function remaining(item: Assignment): string {
 
 <style scoped>
 .assignments-panel {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
 }
 .heading,
@@ -350,7 +350,7 @@ button:disabled {
   padding: 0 5px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 13px;
 }
 .score {
   font-weight: 600;

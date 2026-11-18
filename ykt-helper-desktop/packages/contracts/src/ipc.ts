@@ -1,3 +1,4 @@
+import type { ToolPanelAction } from './tool-panels.js';
 import type { AssignmentDetail, AssignmentAsset } from './assignment-detail.js';
 import type {
   WebProbeReport,
@@ -80,6 +81,7 @@ export const IpcChannel = {
   ValidateAnswer: 'backend:validate-answer',
   SubmitAnswer: 'backend:submit-answer',
   GetBrowserState: 'browser:get-state',
+  ControlToolPanel: 'browser:control-tool-panel',
   SelectBrowserEnvironment: 'browser:select-environment',
   BrowserBack: 'browser:back',
   BrowserForward: 'browser:forward',
@@ -181,6 +183,7 @@ export interface DesktopApi {
   validateAnswer(input: AnswerInput): Promise<ValidationResult>;
   submitAnswer(input: AnswerInput): Promise<SubmissionResult>;
   getBrowserState(): Promise<BrowserState>;
+  controlToolPanel(action: ToolPanelAction): Promise<void>;
   selectBrowserEnvironment(environment: BrowserEnvironment): Promise<void>;
   browserBack(): Promise<void>;
   browserForward(): Promise<void>;

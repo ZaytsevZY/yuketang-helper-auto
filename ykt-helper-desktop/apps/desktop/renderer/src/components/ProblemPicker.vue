@@ -181,7 +181,7 @@ function statusLabel(status: ProblemContext['status']): string {
 
 .problem-choice-heading strong {
   overflow: hidden;
-  font-size: 10px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -215,7 +215,7 @@ function statusLabel(status: ProblemContext['status']): string {
 
 .problem-prompt {
   color: var(--text);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -229,7 +229,7 @@ function statusLabel(status: ProblemContext['status']): string {
   border-radius: 7px;
   padding: 16px;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 13px;
   text-align: center;
 }
 </style>

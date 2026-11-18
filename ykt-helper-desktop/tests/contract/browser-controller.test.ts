@@ -1,3 +1,4 @@
+import { ToolPanelsController } from '../../apps/desktop/main/tool-panels-controller.js';
 import { EventEmitter } from 'node:events';
 
 import { BrowserEnvironment } from '@ykt/contracts';
@@ -77,7 +78,7 @@ class FakeContents extends EventEmitter {
   }
 
   reload(): void {}
-  focus(): void {}
+  readonly focus = vi.fn();
 
   isDestroyed(): boolean {
     return this.destroyed;
@@ -108,6 +109,7 @@ describe('embedded browser tabs', () => {
       await import('../../apps/desktop/main/browser-controller.js');
     const children: FakeView[] = [];
     const window = {
+      webContents: new FakeContents(),
       contentView: {
         addChildView: (view: FakeView) => children.push(view),
         removeChildView: (view: FakeView) => {
@@ -142,6 +144,7 @@ describe('embedded browser tabs', () => {
       await import('../../apps/desktop/main/browser-controller.js');
     const children: FakeView[] = [];
     const window = {
+      webContents: new FakeContents(),
       contentView: {
         addChildView: (view: FakeView) => children.push(view),
         removeChildView: (view: FakeView) => {
@@ -181,6 +184,7 @@ describe('embedded browser tabs', () => {
     const { BrowserController } =
       await import('../../apps/desktop/main/browser-controller.js');
     const window = {
+      webContents: new FakeContents(),
       contentView: {
         addChildView: vi.fn(),
         removeChildView: vi.fn(),
@@ -206,6 +210,7 @@ describe('embedded browser tabs', () => {
     const { BrowserController } =
       await import('../../apps/desktop/main/browser-controller.js');
     const window = {
+      webContents: new FakeContents(),
       contentView: {
         addChildView: vi.fn(),
         removeChildView: vi.fn(),
@@ -228,6 +233,7 @@ describe('web area layout', () => {
   async function createController() {
     const children: FakeView[] = [];
     const window = {
+      webContents: new FakeContents(),
       contentView: {
         addChildView: (view: FakeView) => children.push(view),
         removeChildView: (view: FakeView) => {
@@ -258,9 +264,9 @@ describe('web area layout', () => {
     const { activeView } = await createController();
     expect(activeView().setBounds).toHaveBeenLastCalledWith({
       x: 0,
-      y: 128,
-      width: 800,
-      height: 372,
+      y: 104,
+      width: 1180,
+      height: 696,
     });
     expect(activeView().setVisible).toHaveBeenLastCalledWith(true);
   });
@@ -282,6 +288,40 @@ describe('web area layout', () => {
     expect(activeView().setVisible).toHaveBeenLastCalledWith(true);
   });
 
+  it('keeps multiple floating tools above new and replacement pages without shrinking the webpage', async () => {
+    const { controller, children, window } = await createController();
+    const page = children[0]!;
+    const views: FakeView[] = [];
+    const panels = new ToolPanelsController(
+      window as never,
+      () => {
+        const view = new FakeView();
+        views.push(view);
+        return view as never;
+      },
+      () => controller.refreshLayout(),
+    );
+    controller.attachToolPanels(panels);
+    controller.controlToolPanel({ action: 'open', id: 'settings' });
+    controller.controlToolPanel({ action: 'open', id: 'network' });
+    expect(
+      controller.getState().panels?.filter((panel) => panel.visible),
+    ).toHaveLength(2);
+    expect(page.setBounds).toHaveBeenLastCalledWith({
+      x: 0,
+      y: 104,
+      width: 1180,
+      height: 696,
+    });
+    await controller.newTab();
+    expect(children.at(-1)).toBe(views[1]);
+    for (const tab of [...controller.getState().tabs])
+      await controller.closeTab(tab.id);
+    expect(children.at(-1)).toBe(views[1]);
+    controller.destroy();
+    for (const view of views) expect(view.webContents.isDestroyed()).toBe(true);
+  });
+
   it('rejects malformed measured bounds', async () => {
     const { controller } = await createController();
     expect(() =>
@@ -295,26 +335,26 @@ describe('web area layout', () => {
   it('reports panel collapse state and re-lays out on toggles', async () => {
     const { controller, activeView, onStateChanged } = await createController();
     expect(controller.getState()).toMatchObject({
-      assistantPanelCollapsed: false,
-      networkLabCollapsed: false,
+      assistantPanelCollapsed: true,
+      networkLabCollapsed: true,
     });
 
     controller.setAssistantPanelCollapsed(true);
     expect(controller.getState().assistantPanelCollapsed).toBe(true);
     expect(activeView().setBounds).toHaveBeenLastCalledWith({
       x: 0,
-      y: 128,
-      width: 1136,
-      height: 372,
+      y: 104,
+      width: 1180,
+      height: 696,
     });
 
     controller.setNetworkLabCollapsed(true);
     expect(controller.getState().networkLabCollapsed).toBe(true);
     expect(activeView().setBounds).toHaveBeenLastCalledWith({
       x: 0,
-      y: 128,
-      width: 1136,
-      height: 629,
+      y: 104,
+      width: 1180,
+      height: 696,
     });
     expect(onStateChanged).toHaveBeenCalled();
   });

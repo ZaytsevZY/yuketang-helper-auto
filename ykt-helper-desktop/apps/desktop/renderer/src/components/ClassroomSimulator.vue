@@ -195,7 +195,7 @@ function errorText(value: unknown): string {
 .simulator-events span,
 .simulator-events time {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .simulator-heading span {
@@ -210,7 +210,7 @@ button {
   padding: 6px 10px;
   color: var(--green-strong);
   background: #f8fcfa;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   cursor: pointer;
 }
@@ -245,7 +245,7 @@ button:focus-visible {
 
 .pane-heading h3,
 .event-heading {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 750;
 }
 
@@ -265,7 +265,7 @@ button:focus-visible {
 .simulation-facts {
   display: grid;
   gap: 5px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .simulation-facts dt {
@@ -290,7 +290,7 @@ button:focus-visible {
   color: var(--green-strong);
   background: var(--green-soft);
   font-family: Consolas, monospace;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .event-heading {
@@ -317,7 +317,7 @@ button:focus-visible {
 .simulator-events strong,
 .simulator-events span {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .simulator-events span {
@@ -347,6 +347,6 @@ button:focus-visible {
   padding: 8px 9px;
   color: #8d2d2d;
   background: #fff3f1;
-  font-size: 12px;
+  font-size: 13px;
 }
 </style>

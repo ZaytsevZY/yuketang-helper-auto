@@ -333,7 +333,7 @@ const evidence = computed(() => {
   grid-template-rows: 38px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .probe-toolbar,
 nav,
@@ -454,7 +454,7 @@ nav .active {
 pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 .source-detail {

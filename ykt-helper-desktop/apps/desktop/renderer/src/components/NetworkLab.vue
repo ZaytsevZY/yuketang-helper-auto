@@ -354,7 +354,7 @@ function shortUrl(value: string): string {
   gap: 8px;
   padding: 0 12px;
   border-bottom: 1px solid var(--line);
-  font-size: 12px;
+  font-size: 13px;
   overflow-x: auto;
 }
 
@@ -488,7 +488,7 @@ function shortUrl(value: string): string {
   width: 42px;
   flex: 0 0 auto;
   color: var(--green-strong);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -513,14 +513,14 @@ function shortUrl(value: string): string {
 }
 
 .entry-main strong {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
 }
 
 .entry-main small {
   margin-top: 3px;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .detail-pane {
@@ -546,7 +546,7 @@ function shortUrl(value: string): string {
 .detail-pane h3 {
   margin: 0;
   padding: 8px 10px 0;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -562,7 +562,7 @@ function shortUrl(value: string): string {
   padding: 6px 10px 12px;
   color: #4b5851;
   font-family: Consolas, monospace;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-all;
@@ -596,7 +596,7 @@ function shortUrl(value: string): string {
   margin: 32px 0;
   color: var(--text-muted);
   text-align: center;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .lab-message {
@@ -610,15 +610,9 @@ function shortUrl(value: string): string {
   background: #fff2dc;
   padding: 4px 7px;
   color: #8a5c12;
-  font-size: 10px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-@media (max-width: 680px) {
-  .network-lab {
-    display: none;
-  }
 }
 
 .entry-kind,
@@ -627,6 +621,6 @@ function shortUrl(value: string): string {
 .detail-pane h3,
 .detail-pane pre,
 .lab-message {
-  font-size: 12px;
+  font-size: 13px;
 }
 </style>

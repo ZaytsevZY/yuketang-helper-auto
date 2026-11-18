@@ -456,7 +456,7 @@ describe('LLM automation settings', () => {
   });
 });
 
-function setupPanel(settings: Record<string, boolean>) {
+function setupPanel(settings: Record<string, boolean>, automationOwner = true) {
   vi.useFakeTimers();
   const problem: ProblemContext = {
     id: 'problem-1',
@@ -515,6 +515,7 @@ function setupPanel(settings: Record<string, boolean>) {
   scopes.push(scope);
   const emit = vi.fn();
   const props = reactive({
+    automationOwner,
     page: 'settings',
     environment: BrowserEnvironment.Standard,
     runtime: undefined,
@@ -579,4 +580,16 @@ it('prefills assignment extraction in AI without auto-send or leaking classroom/
   );
   panel.startNewAiChat();
   expect(panel.aiCustomPrompt.value).toBe(draft.text);
+});
+
+it('does not run background automation in additional feature panels', async () => {
+  const { panel, api } = setupPanel(
+    { llmAutoGenerate: true, llmManagedSubmit: true, autoJoinEnabled: true },
+    false,
+  );
+  await panel.automationTick();
+  await vi.runAllTimersAsync();
+  expect(api.generateAnswerProposal).not.toHaveBeenCalled();
+  expect(api.submitAnswer).not.toHaveBeenCalled();
+  expect(api.listProblems).not.toHaveBeenCalled();
 });

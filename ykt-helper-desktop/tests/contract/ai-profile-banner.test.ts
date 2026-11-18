@@ -35,11 +35,15 @@ let app: App | undefined;
 const oldApi = window.yuketang;
 afterEach(() => {
   app?.unmount();
+  window.location.hash = '';
+  window.onmessage = null;
   document.body.innerHTML = '';
   window.yuketang = oldApi;
   vi.unstubAllGlobals();
 });
-it('shows the no-profile status in the logo area and restores the brand after connecting', async () => {
+it('shows the no-profile status in the tool launcher and clears it after connecting', async () => {
+  window.location.hash = '#tools';
+  vi.stubGlobal('BroadcastChannel', undefined);
   vi.stubGlobal('matchMedia', () => ({ matches: false }));
   vi.stubGlobal(
     'ResizeObserver',
@@ -65,12 +69,10 @@ it('shows the no-profile status in the logo area and restores the brand after co
   await new Promise((resolve) => setTimeout(resolve, 0));
   control.publish(false);
   await nextTick();
-  expect(host.querySelector('.brand [role="status"]')?.textContent).toBe(
-    '无可用 Profile',
-  );
-  expect(host.querySelector('.brand-mark')).toBeNull();
+  expect(
+    host.querySelector('.tool-launcher [role="status"]')?.textContent?.trim(),
+  ).toBe('无可用 Profile');
   control.publish(true);
   await nextTick();
   expect(host.querySelector('.profile-unavailable')).toBeNull();
-  expect(host.querySelector('.brand')?.textContent).toContain('雨课堂助手');
 });

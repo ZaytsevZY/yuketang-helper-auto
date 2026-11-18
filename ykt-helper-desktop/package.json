@@ -28,7 +28,8 @@
     "fixture:replay": "node scripts/replay-fixture.mjs",
     "lesson:replay": "node scripts/replay-lesson-fixture.mjs",
     "make:mac": "npm run prepare:desktop && npm run make:mac -w yuketang-helper-desktop-package --",
-    "make:mac:release": "npm run prepare:desktop && npm run make:mac:release -w yuketang-helper-desktop-package --"
+    "make:mac:release": "npm run prepare:desktop && npm run make:mac:release -w yuketang-helper-desktop-package --",
+    "test:panels": "npm run build -w @ykt/contracts && npm run build -w @ykt/desktop && electron scripts/test-desktop-panels.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

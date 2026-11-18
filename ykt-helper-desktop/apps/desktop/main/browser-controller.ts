@@ -1,3 +1,4 @@
+import type { ToolPanelsController } from './tool-panels-controller.js';
 import {
   WebContentsView,
   type BrowserWindow,
@@ -11,6 +12,7 @@ import {
   type BrowserTabState,
   type Lesson,
   type WebAreaBounds,
+  type ToolPanelAction,
 } from '@ykt/contracts';
 
 import {
@@ -21,12 +23,8 @@ import {
 } from './browser-policy.js';
 
 const SESSION_PARTITION = 'persist:yuketang-browser';
-const TOOLBAR_HEIGHT = 128;
+const TOOLBAR_HEIGHT = 104;
 const NEW_TAB_HOME_URL = 'https://www.yuketang.cn/v2/web/index';
-const NETWORK_LAB_EXPANDED_HEIGHT = 300;
-const NETWORK_LAB_COLLAPSED_HEIGHT = 43;
-const ASSISTANT_PANEL_EXPANDED_WIDTH = 380;
-const ASSISTANT_PANEL_COLLAPSED_WIDTH = 44;
 
 interface BrowserTab {
   id: string;
@@ -41,10 +39,11 @@ export class BrowserController {
   readonly #contentsListeners = new Set<(contents: WebContents) => void>();
   #activeTabId = '';
   #nextTabId = 1;
-  #networkLabHeight = NETWORK_LAB_EXPANDED_HEIGHT;
-  #assistantPanelWidth = ASSISTANT_PANEL_EXPANDED_WIDTH;
+  #networkCollapsed = true;
+  #assistantCollapsed = true;
   #measuredBounds: WebAreaBounds | null = null;
   #destroying = false;
+  #panels: ToolPanelsController | undefined;
 
   constructor(
     private readonly window: BrowserWindow,
@@ -55,7 +54,17 @@ export class BrowserController {
     this.window.contentView.addChildView(initialTab.view);
     this.configurePermissions(initialTab.view.webContents);
     this.applyActiveBounds();
-    this.window.on('resize', () => this.applyActiveBounds());
+    this.window.on('resize', () => this.refreshLayout());
+  }
+
+  attachToolPanels(panels: ToolPanelsController): void {
+    this.#panels = panels;
+    this.applyActiveBounds();
+  }
+
+  controlToolPanel(action: ToolPanelAction): void {
+    if (!this.#panels) throw new Error('Tool panels are not available.');
+    this.#panels.control(action);
   }
 
   getState(): BrowserState {
@@ -71,10 +80,17 @@ export class BrowserController {
       canGoBack: active.view.webContents.navigationHistory.canGoBack(),
       canGoForward: active.view.webContents.navigationHistory.canGoForward(),
       errorMessage: active.errorMessage,
-      assistantPanelCollapsed:
-        this.#assistantPanelWidth === ASSISTANT_PANEL_COLLAPSED_WIDTH,
-      networkLabCollapsed:
-        this.#networkLabHeight === NETWORK_LAB_COLLAPSED_HEIGHT,
+      assistantPanelCollapsed: this.#panels
+        ? !this.#panels
+            .snapshot()
+            .some((panel) => panel.id === 'tools' && panel.visible)
+        : this.#assistantCollapsed,
+      networkLabCollapsed: this.#panels
+        ? !this.#panels
+            .snapshot()
+            .some((panel) => panel.id === 'network' && panel.visible)
+        : this.#networkCollapsed,
+      ...(this.#panels ? { panels: this.#panels.snapshot() } : {}),
     };
   }
 
@@ -179,6 +195,7 @@ export class BrowserController {
     this.#activeTabId = next.id;
     this.window.contentView.addChildView(next.view);
     this.applyActiveBounds();
+    this.#panels?.raiseAll();
     next.view.webContents.focus();
     this.emitState();
   }
@@ -190,18 +207,20 @@ export class BrowserController {
   }
 
   setNetworkLabCollapsed(collapsed: boolean): void {
-    this.#networkLabHeight = collapsed
-      ? NETWORK_LAB_COLLAPSED_HEIGHT
-      : NETWORK_LAB_EXPANDED_HEIGHT;
-    this.applyActiveBounds();
+    this.#networkCollapsed = collapsed;
+    this.#panels?.control({
+      action: collapsed ? 'close' : 'open',
+      id: 'network',
+    });
     this.emitState();
   }
 
   setAssistantPanelCollapsed(collapsed: boolean): void {
-    this.#assistantPanelWidth = collapsed
-      ? ASSISTANT_PANEL_COLLAPSED_WIDTH
-      : ASSISTANT_PANEL_EXPANDED_WIDTH;
-    this.applyActiveBounds();
+    this.#assistantCollapsed = collapsed;
+    this.#panels?.control({
+      action: collapsed ? 'close' : 'open',
+      id: 'tools',
+    });
     this.emitState();
   }
 
@@ -215,7 +234,7 @@ export class BrowserController {
       throw new Error('Invalid web area bounds.');
     }
     this.#measuredBounds = bounds;
-    this.applyActiveBounds();
+    this.refreshLayout();
   }
 
   refreshLayout(): void {
@@ -225,6 +244,8 @@ export class BrowserController {
 
   destroy(): void {
     this.#destroying = true;
+    this.#panels?.destroy();
+    this.#panels = undefined;
     for (const tab of this.#tabs) {
       if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
     }
@@ -394,6 +415,7 @@ export class BrowserController {
       const replacement = this.createTab(BrowserEnvironment.Standard);
       this.#activeTabId = replacement.id;
       this.window.contentView.addChildView(replacement.view);
+      this.#panels?.raiseAll();
       this.applyActiveBounds();
       void this.loadUrl(replacement, NEW_TAB_HOME_URL);
       return;
@@ -403,6 +425,7 @@ export class BrowserController {
     this.#activeTabId = next.id;
     this.window.contentView.addChildView(next.view);
     this.applyActiveBounds();
+    this.#panels?.raiseAll();
     next.view.webContents.focus();
     this.emitState();
   }
@@ -431,11 +454,19 @@ export class BrowserController {
 
   private applyActiveBounds(): void {
     if (this.#tabs.length === 0) return;
-    const bounds = this.#measuredBounds ?? this.defaultBounds();
+    const { width, height } = this.window.getContentBounds();
+    const measured = this.#measuredBounds ?? this.defaultBounds();
+    const bounds = {
+      x: Math.min(measured.x, width),
+      y: Math.min(measured.y, height),
+      width: Math.max(0, Math.min(measured.width, width - measured.x)),
+      height: Math.max(0, Math.min(measured.height, height - measured.y)),
+    };
     const view = this.activeTab().view;
     const visible = bounds.width > 0 && bounds.height > 0;
     view.setVisible(visible);
     view.setBounds(bounds);
+    this.#panels?.layout(bounds);
   }
 
   private defaultBounds(): WebAreaBounds {
@@ -443,8 +474,8 @@ export class BrowserController {
     return {
       x: 0,
       y: TOOLBAR_HEIGHT,
-      width: Math.max(0, width - this.#assistantPanelWidth),
-      height: Math.max(0, height - TOOLBAR_HEIGHT - this.#networkLabHeight),
+      width: Math.max(0, width),
+      height: Math.max(0, height - TOOLBAR_HEIGHT),
     };
   }
 

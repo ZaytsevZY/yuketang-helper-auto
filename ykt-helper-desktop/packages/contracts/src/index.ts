@@ -15,3 +15,4 @@ export * from './assignments.js';
 export * from './web-probe.js';
 export * from './assignment-detail.js';
 export * from './course-progress.js';
+export * from './tool-panels.js';

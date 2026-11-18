@@ -1,3 +1,4 @@
+import type { ToolPanelState } from './tool-panels.js';
 export const BrowserEnvironment = {
   Standard: 'standard',
   Pro: 'pro',
@@ -51,6 +52,7 @@ export interface BrowserState {
   errorMessage: string | null;
   assistantPanelCollapsed: boolean;
   networkLabCollapsed: boolean;
+  panels?: readonly ToolPanelState[];
 }
 
 export function isBrowserEnvironment(

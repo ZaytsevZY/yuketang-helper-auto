@@ -2,5 +2,6 @@
  * family to this stack inside a scoped renderer; see docs/font-policy.md. */
 :root {
   --ykt-font-body:
-    'Microsoft YaHei UI', 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif;
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI',
+    'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
 }

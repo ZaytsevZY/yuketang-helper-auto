@@ -1,3 +1,4 @@
+import { ToolPanelsController } from './tool-panels-controller.js';
 import { AssignmentAssets } from './assignment-assets.js';
 import { openAssignmentAnswerWindow } from './assignment-answer-window.js';
 import { existsSync } from 'node:fs';
@@ -7,6 +8,8 @@ import { dirname, join } from 'node:path';
 import {
   app,
   BrowserWindow,
+  WebContentsView,
+  screen,
   dialog,
   ipcMain,
   Menu,
@@ -23,6 +26,7 @@ import {
   isCourseProgressRangeMonths,
   parseLessonPage,
   isWebAreaBounds,
+  isToolPanelAction,
   type AnswerInput,
   type ConnectAiProfileInput,
   type ClassroomSimulationAction,
@@ -64,6 +68,7 @@ let assignmentAssets: AssignmentAssets | undefined;
 let assignmentAnswerPending = false;
 let runtime: BackendRuntime | undefined;
 let mainWindow: BrowserWindow | undefined;
+const toolContents = new Set<WebContents>();
 let browserController: BrowserController | undefined;
 let networkLabController: NetworkLabController | undefined;
 let lessonCollector: BrowserLessonCollector | undefined;
@@ -118,7 +123,7 @@ function configureStorageProfile(): void {
 
 function isTrustedRenderer(sender: WebContents, senderUrl: string): boolean {
   return (
-    sender === mainWindow?.webContents &&
+    (sender === mainWindow?.webContents || toolContents.has(sender)) &&
     senderUrl === sender.getURL() &&
     senderUrl.startsWith('file:')
   );
@@ -465,6 +470,12 @@ function registerIpc(): void {
     return getRuntime().facade.submitAnswer(input);
   });
 
+  ipcMain.handle(IpcChannel.ControlToolPanel, (event, action: unknown) => {
+    assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
+    if (!isToolPanelAction(action))
+      throw new Error('Invalid tool panel action.');
+    getBrowserController().controlToolPanel(action);
+  });
   ipcMain.handle(IpcChannel.GetBrowserState, (event) => {
     assertTrustedIpc(event.sender, event.senderFrame?.url ?? '');
     return getBrowserController().getState();
@@ -968,12 +979,13 @@ async function createWindow(): Promise<void> {
     await serviceCleanupPromise;
     serviceCleanupPromise = undefined;
   }
+  const available = screen.getPrimaryDisplay().workAreaSize;
   const window = new BrowserWindow({
     show: false,
-    width: 1180,
-    height: 800,
-    minWidth: 720,
-    minHeight: 680,
+    width: Math.min(1180, available.width),
+    height: Math.min(800, available.height),
+    minWidth: Math.min(480, available.width),
+    minHeight: Math.min(400, available.height),
     title: '雨课堂助手',
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
@@ -985,19 +997,56 @@ async function createWindow(): Promise<void> {
     },
   });
   mainWindow = window;
+  const publish = (channel: string, value: unknown): void => {
+    for (const contents of [window.webContents, ...toolContents]) {
+      if (!contents.isDestroyed()) contents.send(channel, value);
+    }
+  };
 
   const nextBrowserController = new BrowserController(window, (state) => {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
-      window.webContents.send(IpcChannel.BrowserStateChanged, state);
+      publish(IpcChannel.BrowserStateChanged, state);
     }
     syncScreenWakeLock();
   });
   browserController = nextBrowserController;
+  let launcherReady: Promise<void> = Promise.resolve();
+  const panels = new ToolPanelsController(
+    window,
+    (id) => {
+      const view = new WebContentsView({
+        webPreferences: {
+          preload: join(__dirname, '../preload/index.cjs'),
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true,
+          backgroundThrottling: id !== 'tools',
+          autoplayPolicy: 'no-user-gesture-required',
+        },
+      });
+      view.setBackgroundColor('#00000000');
+      const contents = view.webContents;
+      contents.on('will-navigate', (event) => event.preventDefault());
+      contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      toolContents.add(contents);
+      contents.once('destroyed', () => toolContents.delete(contents));
+      contents.on('render-process-gone', () => panels.failed(id));
+      const ready = contents
+        .loadFile(join(__dirname, '../renderer/index.html'), {
+          hash: id === 'tools' ? 'tools' : `panel=${id}`,
+        })
+        .catch(() => panels.failed(id));
+      if (id === 'tools') launcherReady = ready;
+      return view;
+    },
+    () => nextBrowserController.refreshLayout(),
+  );
+  nextBrowserController.attachToolPanels(panels);
   const browserLessonCollector = new BrowserLessonCollector();
   lessonCollector = browserLessonCollector;
   browserLessonCollector.onCollectionStatusChanged((status) => {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
-      window.webContents.send(IpcChannel.LessonCollectionStatusChanged, status);
+      publish(IpcChannel.LessonCollectionStatusChanged, status);
     }
   });
   const networkRecorder = await createNetworkRecorderForDesktop({
@@ -1009,12 +1058,12 @@ async function createWindow(): Promise<void> {
     nextBrowserController.webContents,
     (entry) => {
       if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
-        window.webContents.send(IpcChannel.NetworkEntryAdded, entry);
+        publish(IpcChannel.NetworkEntryAdded, entry);
       }
     },
     (state) => {
       if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
-        window.webContents.send(IpcChannel.NetworkCaptureStateChanged, state);
+        publish(IpcChannel.NetworkCaptureStateChanged, state);
       }
     },
     browserLessonCollector,
@@ -1110,7 +1159,7 @@ async function createWindow(): Promise<void> {
     }),
     onClassroomNotice: (notice) => {
       if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
-        window.webContents.send(IpcChannel.ClassroomNotice, notice);
+        publish(IpcChannel.ClassroomNotice, notice);
         recordNotificationLog({
           level: 'info',
           message: '课堂提醒已转发到界面。',
@@ -1178,6 +1227,8 @@ async function createWindow(): Promise<void> {
   const browserStart = nextBrowserController.start(initialEnvironment);
   try {
     await window.loadFile(join(__dirname, '../renderer/index.html'));
+    panels.prepare();
+    await launcherReady;
   } catch (error: unknown) {
     if (window.isDestroyed()) return;
     throw error;

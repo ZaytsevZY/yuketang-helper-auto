@@ -213,7 +213,7 @@ async function openLesson(item: CourseProgressItem): Promise<void> {
 
 <style scoped>
 .course-progress {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.55;
 }
 .heading {

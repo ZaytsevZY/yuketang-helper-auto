@@ -12,6 +12,7 @@ import {
   type AppSettings,
   type BrowserEnvironment,
   type BrowserState,
+  type ToolPanelAction,
   type ClassroomNotice,
   type NoticeDeliveryReport,
   type ClassroomSimulationAction,
@@ -214,6 +215,8 @@ const api: DesktopApi = Object.freeze({
       IpcChannel.SubmitAnswer,
       input,
     ) as Promise<SubmissionResult>,
+  controlToolPanel: (action: ToolPanelAction) =>
+    ipcRenderer.invoke(IpcChannel.ControlToolPanel, action) as Promise<void>,
   getBrowserState: () =>
     ipcRenderer.invoke(IpcChannel.GetBrowserState) as Promise<BrowserState>,
   selectBrowserEnvironment: (environment: BrowserEnvironment) =>

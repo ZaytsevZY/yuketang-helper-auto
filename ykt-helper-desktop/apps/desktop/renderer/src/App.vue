@@ -3,47 +3,34 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import {
   BrowserEnvironment,
   BrowserTargets,
+  isToolPanelId,
+  type ToolPanelId,
   type BrowserState,
   type RuntimeStatus,
   type WebAreaBounds,
 } from '@ykt/contracts';
 
-import AssistantPanel from './components/AssistantPanel.vue';
-import { assignmentCollection } from './assignment-collection';
-import { courseProgressCollection } from './course-progress-collection';
-import NetworkLab from './components/NetworkLab.vue';
-
-type WorkspacePage =
-  | 'assignments'
-  | 'courses'
-  | 'classroom'
-  | 'problems'
-  | 'ai'
-  | 'courseware'
-  | 'profiles'
-  | 'settings'
-  | 'simulator'
-  | 'diagnostics';
-
-const pages: ReadonlyArray<{ id: WorkspacePage; label: string }> = [
-  { id: 'classroom', label: '课堂' },
-  { id: 'assignments', label: '作业' },
-  { id: 'courses', label: '课程' },
-  { id: 'problems', label: '题目' },
-  { id: 'ai', label: 'AI' },
-  { id: 'courseware', label: '课件' },
-  { id: 'profiles', label: '模型' },
-  { id: 'settings', label: '设置' },
-  { id: 'simulator', label: '模拟' },
-  { id: 'diagnostics', label: '诊断' },
-];
+import ToolWorkspace from './components/ToolWorkspace.vue';
+import { toolLabels } from './tool-catalog';
 
 const runtimeStatus = ref<RuntimeStatus>();
 const profileAvailable = ref<boolean | null>(null);
 const browserState = ref<BrowserState>();
-const activePage = ref<WorkspacePage>('classroom');
-const initiallyCollapsed = window.matchMedia('(max-width: 680px)').matches;
-const assistantCollapsed = ref(initiallyCollapsed);
+const route =
+  window.location.hash === '#tools'
+    ? 'tools'
+    : window.location.hash.replace(/^#panel=/, '');
+const panelId = isToolPanelId(route) ? route : undefined;
+const assistantCollapsed = ref(true);
+const networkCollapsed = ref(true);
+const profileChannel =
+  typeof window.BroadcastChannel === 'undefined'
+    ? undefined
+    : new BroadcastChannel('ykt-profile-status');
+if (profileChannel)
+  profileChannel.onmessage = (event) => {
+    if (typeof event.data === 'boolean') profileAvailable.value = event.data;
+  };
 const controlError = ref('');
 const addressDraft = ref('');
 const editingAddress = ref(false);
@@ -58,10 +45,23 @@ const pageStatus = computed(() => {
   return '页面就绪';
 });
 
-const shellStyle = computed(() => ({
-  '--assistant-width': assistantCollapsed.value ? '44px' : '380px',
-}));
-
+const toolsVisible = computed(
+  () =>
+    browserState.value?.panels?.some(
+      (panel) => panel.id === 'tools' && panel.visible,
+    ) ?? !assistantCollapsed.value,
+);
+const openedPanels = computed(
+  () =>
+    browserState.value?.panels?.filter(
+      (panel) => panel.visible && panel.id !== 'tools',
+    ) ?? [],
+);
+async function openPanel(id: ToolPanelId): Promise<void> {
+  await runControl(() =>
+    window.yuketang.controlToolPanel({ action: 'open', id }),
+  );
+}
 function reportWebAreaBounds(): void {
   const element = webArea.value;
   if (!element) return;
@@ -81,29 +81,25 @@ function reportWebAreaBounds(): void {
 }
 
 onMounted(async () => {
-  // Startup collection is independent of browser navigation and global refresh.
-  void assignmentCollection
-    .initialize()
-    .then(() => courseProgressCollection.initialize());
+  if (panelId) return;
   resizeObserver = new ResizeObserver(() => reportWebAreaBounds());
   if (webArea.value) resizeObserver.observe(webArea.value);
 
   unsubscribe = window.yuketang.onBrowserStateChanged((state) => {
     browserState.value = state;
     assistantCollapsed.value = state.assistantPanelCollapsed;
+    networkCollapsed.value = state.networkLabCollapsed;
     if (!editingAddress.value) addressDraft.value = state.url;
     controlError.value = '';
   });
 
   try {
-    if (initiallyCollapsed) {
-      await window.yuketang.setAssistantPanelCollapsed(true);
-    }
     [runtimeStatus.value, browserState.value] = await Promise.all([
       window.yuketang.getRuntimeStatus(),
       window.yuketang.getBrowserState(),
     ]);
     assistantCollapsed.value = browserState.value.assistantPanelCollapsed;
+    networkCollapsed.value = browserState.value.networkLabCollapsed;
     addressDraft.value = browserState.value.url;
     reportWebAreaBounds();
   } catch {
@@ -114,6 +110,7 @@ onMounted(async () => {
 onUnmounted(() => {
   unsubscribe?.();
   resizeObserver?.disconnect();
+  profileChannel?.close();
 });
 
 async function selectEnvironment(event: Event): Promise<void> {
@@ -129,25 +126,12 @@ async function selectEnvironment(event: Event): Promise<void> {
 }
 
 async function toggleAssistant(): Promise<void> {
-  const next = !assistantCollapsed.value;
-  assistantCollapsed.value = next;
-  try {
-    await window.yuketang.setAssistantPanelCollapsed(next);
-  } catch {
-    assistantCollapsed.value = !next;
-    controlError.value = '无法调整助手面板';
-  }
-}
-
-async function revealNotice(): Promise<void> {
-  if (!assistantCollapsed.value) return;
-  assistantCollapsed.value = false;
-  await runControl(() => window.yuketang.setAssistantPanelCollapsed(false));
-}
-
-function selectPage(page: WorkspacePage): void {
-  activePage.value = page;
-  if (assistantCollapsed.value) void toggleAssistant();
+  await runControl(() =>
+    window.yuketang.controlToolPanel({
+      action: toolsVisible.value ? 'close' : 'open',
+      id: 'tools',
+    }),
+  );
 }
 
 async function runControl(action: () => Promise<void>): Promise<void> {
@@ -192,11 +176,7 @@ async function navigateAddress(): Promise<void> {
 </script>
 
 <template>
-  <div
-    class="desktop-shell"
-    :class="{ 'assistant-is-collapsed': assistantCollapsed }"
-    :style="shellStyle"
-  >
+  <div v-if="!panelId" class="desktop-shell">
     <header class="browser-chrome">
       <div class="tab-row">
         <div class="brand" aria-label="雨课堂助手">
@@ -264,6 +244,21 @@ async function navigateAddress(): Promise<void> {
             <path d="M12 5v14M5 12h14" />
           </svg>
         </button>
+        <nav
+          v-if="openedPanels.length"
+          class="open-panels"
+          aria-label="已打开的悬浮面板"
+        >
+          <button
+            v-for="panel in openedPanels"
+            :key="panel.id"
+            type="button"
+            :class="{ active: panel.focused }"
+            @click="openPanel(panel.id)"
+          >
+            {{ toolLabels[panel.id] }}
+          </button>
+        </nav>
       </div>
 
       <div class="browser-row">
@@ -317,10 +312,7 @@ async function navigateAddress(): Promise<void> {
             @blur="finishAddressEdit"
           />
         </form>
-      </div>
-
-      <div class="task-row">
-        <label class="environment-picker">
+        <div class="environment-picker">
           <span class="environment-status" aria-hidden="true" />
           <select
             aria-label="雨课堂服务器"
@@ -335,28 +327,22 @@ async function navigateAddress(): Promise<void> {
               {{ target.label }}
             </option>
           </select>
-        </label>
-
-        <nav class="task-navigation" aria-label="助手功能">
-          <button
-            v-for="page in pages"
-            :key="page.id"
-            type="button"
-            :class="{ active: activePage === page.id }"
-            :aria-current="activePage === page.id ? 'page' : undefined"
-            @click="selectPage(page.id)"
-          >
-            {{ page.label }}
-          </button>
-        </nav>
-
-        <div class="runtime-state" :class="runtimeStatus?.state">
-          <span class="status-dot" aria-hidden="true" />
-          <span>{{ controlError || pageStatus }}</span>
-          <span class="runtime-label"
-            >Backend {{ runtimeStatus?.state ?? 'connecting' }}</span
-          >
         </div>
+
+        <button
+          class="tools-trigger"
+          type="button"
+          :aria-expanded="toolsVisible"
+          @click="toggleAssistant"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="4" y="4" width="6" height="6" rx="1.5" />
+            <rect x="14" y="4" width="6" height="6" rx="1.5" />
+            <rect x="4" y="14" width="6" height="6" rx="1.5" />
+            <rect x="14" y="14" width="6" height="6" rx="1.5" />
+          </svg>
+          工具
+        </button>
       </div>
     </header>
 
@@ -366,17 +352,14 @@ async function navigateAddress(): Promise<void> {
       </div>
     </main>
 
-    <AssistantPanel
-      :page="activePage"
-      :environment="browserState?.environment ?? BrowserEnvironment.Standard"
-      :runtime="runtimeStatus"
-      :browser-url="browserState?.url"
-      :collapsed="assistantCollapsed"
-      @toggle="toggleAssistant"
-      @select-page="selectPage"
-      @profile-availability="profileAvailable = $event"
-      @reveal-notice="revealNotice"
-    />
-    <NetworkLab />
+    <p
+      v-if="controlError || browserState?.errorMessage"
+      class="browser-error"
+      role="alert"
+    >
+      {{ controlError || pageStatus }}
+    </p>
   </div>
+
+  <ToolWorkspace v-else :panel-id="panelId" />
 </template>
